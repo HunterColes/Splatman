@@ -1,0 +1,10 @@
+appId: com.huntercoles.splatman
+---
+- launchApp
+- assertVisible: "Tournament"
+- assertVisible: "Bank"
+- assertVisible: "Settings"
+- tapOn: "Tournament"
+- assertVisible: "Calculate Payout"
+- assertVisible: "Buy-In Amount"
+- assertVisible: "Total Players"

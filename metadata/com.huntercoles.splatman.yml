@@ -1,0 +1,33 @@
+Categories:
+  - Graphics
+  - Science & Education
+License: MIT
+AuthorName: Hunter Coles, Joshua Glenn
+AuthorEmail: hunter.colesw@gmail.com
+AuthorWebSite: https://links.fatline.win
+SourceCode: https://github.com/HunterColes/Splatman
+IssueTracker: https://github.com/HunterColes/Splatman/issues
+Changelog: https://github.com/HunterColes/Splatman/releases
+
+AutoName: Splatman
+
+RepoType: git
+Repo: https://github.com/HunterColes/Splatman.git
+Binaries: https://github.com/HunterColes/Splatman/releases/download/v%v/Splatman-v%v-release.apk
+
+Builds:
+  - versionName: 0.0.0
+    versionCode: 1
+    commit: v0.0.0
+    subdir: app
+    gradle:
+      - yes
+    scandelete:
+      - build-cache
+
+AllowedAPKSigningKeys: 0558e11420a97f212d7048f6b04351fdc82498f9d69cc5c0115270b5e2853de7
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.0.0
+CurrentVersionCode: 1

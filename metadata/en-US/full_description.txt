@@ -1,0 +1,24 @@
+Real-time Gaussian splatting 3D scanner that works 100% offline with no ads, no tracking, and no data collection.
+
+3D CAPTURE & PROCESSING
+• ARCore 6DOF Tracking - Accurate camera pose estimation while recording
+• Video Capture - Walk around objects while the app tracks your movement
+• On-Device Optimization - Process 3D models directly on your phone (3-5 minutes)
+• Mobile-Optimized Quality - 100k-200k Gaussians for fast, high-quality results
+
+INTERACTIVE 3D VIEWER
+• Real-Time Rendering - Smooth 30-60fps playback of your 3D scans
+• Touch Controls - Rotate, pan, and zoom to explore your models
+• Export Formats - Save as .PLY or .SPLAT for use in other apps
+• Screenshot & Share - Capture and share your 3D creations
+
+PRIVACY & DESIGN
+• All data stored locally - no internet connection required
+• No ads, no tracking, no data collection
+• Dark purple theme with Material 3 design
+• OLED-optimized interface for battery efficiency
+
+FREE AND OPEN SOURCE
+Built for creators, makers, and 3D enthusiasts who want professional-grade scanning without compromising privacy. Perfect for archiving objects, creating game assets, and producing AR/VR content.
+
+Your scans. Your device. Your privacy.
