@@ -72,9 +72,11 @@ dependencies {
     implementation(libs.navigation.hilt)
     implementation(libs.timber)
     
-    // Filament for 3D Gaussian splat rendering (v1.68.2 - Dec 2024)
-    implementation("com.google.android.filament:filament-android:1.68.2")
-    implementation("com.google.android.filament:filament-utils-android:1.68.2")
+    // CameraX for camera preview
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
     
     testImplementation(libs.bundles.common.test)
     androidTestImplementation(libs.bundles.common.android.test)

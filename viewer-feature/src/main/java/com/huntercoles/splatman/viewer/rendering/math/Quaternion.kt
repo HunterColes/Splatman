@@ -74,7 +74,7 @@ data class Quaternion(
     
     /**
      * Convert quaternion to 4x4 rotation matrix
-     * Column-major order for OpenGL/Filament
+     * Column-major order for OpenGL
      */
     fun toMatrix4(): FloatArray {
         val xx = x * x

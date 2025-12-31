@@ -4,9 +4,9 @@ import java.nio.FloatBuffer
 
 /**
  * Unified 3D model representation for PLY, STL, OBJ files
- * 
+ *
  * Simpler than SplatScene - represents traditional 3D meshes/point clouds
- * that can be rendered with OpenGL ES 2.0
+ * that can be rendered with OpenGL ES 3.0
  */
 sealed class Model3D {
     abstract val name: String

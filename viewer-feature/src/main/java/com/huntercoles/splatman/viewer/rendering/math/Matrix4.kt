@@ -5,7 +5,7 @@ import kotlin.math.tan
 /**
  * 4x4 Matrix for 3D transformations
  * 
- * Column-major order (OpenGL/Filament convention):
+ * Column-major order (OpenGL convention):
  * [m0, m4, m8,  m12]   [0  4  8  12]
  * [m1, m5, m9,  m13] = [1  5  9  13]
  * [m2, m6, m10, m14]   [2  6  10 14]

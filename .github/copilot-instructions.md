@@ -100,6 +100,7 @@ SplatBlack = Color(0xFF0B0B0B)      // True black for OLED
 **IMPORTANT:** When building, testing, installing, or stopping the project, you MUST use ONLY the exact commands listed below. Do not use any other commands, variations, or custom PowerShell commands for these purposes. These are the verbatim commands that must be followed exactly as written.
 
 ### Building the Project - When asked for a feature always finish with building the project to ensure no errors.
+### Installing the App - When asked for a feature always finish with installing the app to test on device.
 ```powershell
 # Release build (ONLY command for building)
 .\gradlew assembleRelease

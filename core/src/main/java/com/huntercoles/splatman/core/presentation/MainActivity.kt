@@ -103,29 +103,6 @@ private fun MainScreen() {
 }
 
 @Composable
-private fun LibraryScreenPlaceholder(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = SplatColors.SplatBlack
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "📚 Library Loading...",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                color = SplatColors.AccentPurple
-            )
-        }
-    }
-}
-
-@Composable
 private fun ViewerScreen(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -155,6 +132,29 @@ private fun ViewerScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 32.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryScreenPlaceholder(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = SplatColors.SplatBlack
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "📚 Library Loading...",
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = SplatColors.AccentPurple
             )
         }
     }

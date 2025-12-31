@@ -71,7 +71,7 @@ data class Vector3(
     fun distanceTo(other: Vector3): Float = (this - other).magnitude()
     
     /**
-     * Convert to float array for OpenGL/Filament
+     * Convert to float array for OpenGL
      */
     fun toFloatArray(): FloatArray = floatArrayOf(x, y, z)
     

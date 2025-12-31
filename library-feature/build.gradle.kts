@@ -61,11 +61,7 @@ android {
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":viewer-feature")) // For camera controller and Filament
-    
-    // Filament 3D rendering (from viewer-feature)
-    implementation("com.google.android.filament:filament-android:1.68.2")
-    implementation("com.google.android.filament:filament-utils-android:1.68.2")
+    implementation(project(":viewer-feature")) // For camera controller and OpenGL ES
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

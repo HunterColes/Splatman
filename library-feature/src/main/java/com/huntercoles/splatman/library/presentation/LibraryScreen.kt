@@ -24,7 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
-import com.huntercoles.splatman.library.presentation.components.FilamentGaussianSplatViewer
+import com.huntercoles.splatman.library.presentation.components.GaussianSplatViewer
 import com.huntercoles.splatman.library.presentation.components.SceneInfoOverlay
 import com.huntercoles.splatman.library.presentation.components.LoadingIndicator
 import com.huntercoles.splatman.library.presentation.components.InternalModelsGrid
@@ -141,7 +141,7 @@ fun LibraryScreen(
                         )
                         .clip(RoundedCornerShape(8.dp))
                 ) {
-                    FilamentGaussianSplatViewer(
+                    GaussianSplatViewer(
                         scene = uiState.selectedScene,
                         modifier = Modifier.fillMaxSize()
                     )

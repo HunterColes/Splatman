@@ -26,12 +26,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
-import com.google.android.filament.utils.Utils
 import com.huntercoles.splatman.core.design.SplatmanTheme
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.navigation.NavigationDestination
 import com.huntercoles.splatman.core.navigation.bottomNavigationItems
 import com.huntercoles.splatman.library.LibraryFeature
+import com.huntercoles.splatman.viewer.ViewerFeature
 
 /**
  * Main entry point for Splatman app.
@@ -40,12 +40,6 @@ import com.huntercoles.splatman.library.LibraryFeature
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
-    companion object {
-        init {
-            Utils.init()
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,7 +90,7 @@ private fun MainScreen() {
         }
     ) { paddingValues ->
         when (selectedDestination) {
-            NavigationDestination.Viewer -> ViewerScreen(
+            NavigationDestination.Viewer -> ViewerFeature(
                 modifier = Modifier.padding(paddingValues)
             )
             NavigationDestination.Library -> LibraryFeature(
@@ -106,41 +100,6 @@ private fun MainScreen() {
                 modifier = Modifier.padding(paddingValues)
             )
             else -> {}
-        }
-    }
-}
-
-@Composable
-private fun ViewerScreen(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = SplatColors.SplatBlack
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "📹 Viewer",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                color = SplatColors.AccentPurple
-            )
-            Text(
-                text = "3D Gaussian Splat Viewer",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            Text(
-                text = "Coming Soon: Real-time splat rendering at 30-60fps",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 32.dp)
-            )
         }
     }
 }

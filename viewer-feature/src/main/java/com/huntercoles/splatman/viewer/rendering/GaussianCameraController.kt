@@ -31,7 +31,7 @@ class GaussianCameraController {
     // Camera parameters
     private val fov: Float = ViewerConstants.FOV_DEGREES
     private val nearPlane: Float = ViewerConstants.NEAR_PLANE
-    private val farPlane: Float = ViewerConstants.FAR_PLANE
+    private var farPlane: Float = ViewerConstants.FAR_PLANE
     
     /**
      * Handle rotation gesture (drag)
@@ -41,14 +41,21 @@ class GaussianCameraController {
     fun onRotate(deltaX: Float, deltaY: Float) {
         val sensitivity = ViewerConstants.ROTATION_SENSITIVITY
         
-        // Yaw rotation (around world up axis)
+        // Yaw rotation (around world up axis for horizontal movement)
         val yaw = Quaternion.fromAxisAngle(Vector3.up(), -deltaX * sensitivity)
         
-        // Pitch rotation (around camera right axis)
-        val pitch = Quaternion.fromAxisAngle(Vector3.right(), -deltaY * sensitivity)
+        // Apply yaw first (this rotates the camera around world up)
+        rotation = yaw * rotation
         
-        // Compose rotations: yaw first, then pitch
-        rotation = yaw * rotation * pitch
+        // Get the camera's current right vector after yaw rotation
+        val right = rotation.transform(Vector3.right())
+        
+        // Pitch rotation (around camera's right axis for vertical movement)
+        val pitch = Quaternion.fromAxisAngle(right, -deltaY * sensitivity)
+        
+        // Apply pitch
+        rotation = pitch * rotation
+        
         rotation = rotation.normalized()
     }
     
@@ -87,6 +94,13 @@ class GaussianCameraController {
     }
     
     /**
+     * Set camera target position
+     */
+    fun setTarget(newTarget: Vector3) {
+        target = newTarget
+    }
+    
+    /**
      * Set aspect ratio (call when screen size changes)
      */
     fun setAspectRatio(aspectRatio: Float) {
@@ -94,16 +108,33 @@ class GaussianCameraController {
     }
     
     /**
+     * Set far plane distance
+     */
+    fun setFarPlane(farPlane: Float) {
+        this.farPlane = farPlane
+    }
+    
+    /**
+     * Set camera distance directly (for initial positioning)
+     */
+    fun setDistance(distance: Float) {
+        this.distance = distance.coerceIn(ViewerConstants.MIN_DISTANCE, ViewerConstants.MAX_DISTANCE)
+    }
+    
+    /**
      * Get current view matrix (camera transformation)
-     * Converts camera state to matrix for Filament
+     * Converts camera state to matrix for OpenGL
      */
     fun getViewMatrix(): Matrix4 {
         // Calculate camera position
         val forward = rotation.transform(Vector3.forward())
         val eye = target + forward * distance
         
+        // Get camera's current up direction (transformed by rotation)
+        val up = rotation.transform(Vector3.up())
+        
         // Create look-at matrix
-        return Matrix4.lookAt(eye, target, Vector3.up())
+        return Matrix4.lookAt(eye, target, up)
     }
     
     /**

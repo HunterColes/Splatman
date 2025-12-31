@@ -107,6 +107,15 @@ class GaussianCameraControllerTest {
     }
     
     @Test
+    fun `setTarget changes camera target position`() {
+        val newTarget = Vector3(1.0f, 2.0f, 3.0f)
+        
+        controller.setTarget(newTarget)
+        
+        assertEquals(newTarget, controller.getTarget())
+    }
+    
+    @Test
     fun `setAspectRatio updates projection matrix`() {
         controller.setAspectRatio(16f / 9f)
         val projection1 = controller.getProjectionMatrix()

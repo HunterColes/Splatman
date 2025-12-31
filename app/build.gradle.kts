@@ -28,7 +28,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.0.0"
+        versionName = "0.0.1"
     }
 
     dependenciesInfo {
@@ -155,9 +155,6 @@ dependencies {
     implementation(libs.navigation) // needed for Room
     implementation(libs.room.ktx)
     implementation(libs.timber)
-
-    // Filament initialization
-    implementation("com.google.android.filament:filament-utils-android:1.68.2")
 
     // Baseline profiles disabled for F-Droid reproducible builds
     // implementation(libs.test.android.profile.installer)

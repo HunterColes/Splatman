@@ -139,6 +139,81 @@ fun InternalModelsGrid(
 }
 
 /**
+ * Unified model tile component for both internal and external models
+ * Displays a condensed card with file type indicator and model name
+ */
+@Composable
+private fun ModelTile(
+    modelName: String,
+    fileType: String = "ply",
+    isSelected: Boolean = false,
+    heightMultiplier: Float = 1f,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(SplatDimens.ModelGridItemSize * heightMultiplier)
+            .clip(RoundedCornerShape(SplatDimens.CornerSmall))
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                SplatColors.SplatGold.copy(alpha = 0.2f)
+            else
+                SplatColors.DarkPurple.copy(alpha = 0.8f)
+        ),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(
+            SplatDimens.BorderMedium,
+            SplatColors.SplatGold
+        ) else null
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(SplatDimens.SpacingSmall), // Reduced padding for more density
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // File type indicator - condensed
+                Box(
+                    modifier = Modifier
+                        .width(SplatDimens.ModelGridItemSize * 0.8f) // Slightly narrower
+                        .height(SplatDimens.ModelGridItemSize * 0.35f) // Very condensed height
+                        .background(
+                            SplatColors.MediumPurple.copy(alpha = 0.5f),
+                            RoundedCornerShape(SplatDimens.CornerXSmall)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = fileType,
+                        color = SplatColors.SplatGold,
+                        fontSize = 12.sp, // Slightly smaller font
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(SplatDimens.SpacingXSmall)) // Smaller spacer
+
+                Text(
+                    text = modelName,
+                    color = SplatColors.SplatGold,
+                    fontSize = 12.sp, // Smaller font for density
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    lineHeight = 14.sp // Tighter line height
+                )
+            }
+        }
+    }
+}
+
+/**
  * Individual model card for internal models from assets
  */
 @Composable
@@ -148,65 +223,14 @@ private fun InternalModelCard(
     modifier: Modifier = Modifier
 ) {
     val displayName = fileName.removeSuffix(".ply").removeSuffix(".stl").removeSuffix(".obj")
-    val extension = fileName.substringAfterLast(".")
     
-    Card(
+    ModelTile(
+        modelName = displayName,
+        fileType = "ply",
+        isSelected = false,
+        onClick = onClick,
         modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(SplatDimens.CornerSmall))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = SplatColors.DarkPurple.copy(alpha = 0.8f)
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(SplatDimens.SpacingMedium),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // File type indicator
-                Box(
-                    modifier = Modifier
-                        .size(SplatDimens.ModelGridItemSize)
-                        .background(
-                            SplatColors.MediumPurple.copy(alpha = 0.5f),
-                            RoundedCornerShape(SplatDimens.CornerXSmall)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = extension.uppercase(),
-                        color = SplatColors.SplatGold,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(SplatDimens.SpacingSmall))
-
-                Text(
-                    text = displayName,
-                    color = SplatColors.SplatGold,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2
-                )
-
-                Text(
-                    text = "Internal",
-                    color = SplatColors.SplatGold.copy(alpha = 0.5f),
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
+    )
 }
 
 /**
@@ -246,72 +270,14 @@ private fun ModelCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    ModelTile(
+        modelName = scene.name,
+        fileType = "ply",
+        isSelected = isSelected,
+        heightMultiplier = 0.5f, // Half the height of internal models
+        onClick = onClick,
         modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(SplatDimens.CornerSmall))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                SplatColors.SplatGold.copy(alpha = 0.2f)
-            else
-                SplatColors.DarkPurple.copy(alpha = 0.8f)
-        ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(
-            SplatDimens.BorderMedium,
-            SplatColors.SplatGold
-        ) else null
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(SplatDimens.SpacingMedium),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // Placeholder for thumbnail (would show actual preview)
-                Box(
-                    modifier = Modifier
-                        .size(SplatDimens.ModelGridItemSize)
-                        .background(
-                            SplatColors.MediumPurple.copy(alpha = 0.5f),
-                            RoundedCornerShape(SplatDimens.CornerXSmall)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "3D",
-                        color = SplatColors.SplatGold,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(SplatDimens.SpacingSmall))
-
-                Text(
-                    text = scene.name,
-                    color = SplatColors.SplatGold,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2
-                )
-
-                if (scene.gaussians.isNotEmpty()) {
-                    Text(
-                        text = "${scene.gaussians.size} splats",
-                        color = SplatColors.SplatGold.copy(alpha = 0.7f),
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-    }
+    )
 }
 
 /**
