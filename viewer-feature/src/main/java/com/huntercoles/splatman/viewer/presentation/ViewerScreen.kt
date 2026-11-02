@@ -1,32 +1,35 @@
 package com.huntercoles.splatman.viewer.presentation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.opengl.GLSurfaceView
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.IosShare
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,38 +38,67 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
+import com.huntercoles.splatman.core.design.SplatMotion
+import com.huntercoles.splatman.core.design.splatDuration
 import com.huntercoles.splatman.viewer.R
 import com.huntercoles.splatman.viewer.export.ExportIntent
 import com.huntercoles.splatman.viewer.export.ExportSheet
 import com.huntercoles.splatman.viewer.export.ExportViewModel
+import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.gl.RenderStats
 import com.huntercoles.splatman.viewer.rendering.gl.SplatRenderer
+import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * The splat viewer: a GLES 3.0 [SplatRenderer] surface with one-finger orbit, two-finger pan and pinch zoom
- * ([GaussianCameraController]), the bundled samples and a system file picker along the bottom, loading and error
- * states, and a debug overlay with fps, frame time, render scale and splat count.
+ * The splat viewer (docs/design/screens/viewer.md): a full-bleed GLES 3.0 [SplatRenderer] with the chrome floating
+ * on scrims. One finger orbits, two pan and pinch, a double tap eases back to the initial view, a fling keeps
+ * turning and a single tap hides the chrome (not while TalkBack is on). Every gesture also has a button: Reset and
+ * Auto-rotate in the bottom bar, TalkBack custom actions on the render, and arrow, `+`/`-` and `0` keys.
  */
 @Composable
 fun ViewerScreen(
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ViewerViewModel = hiltViewModel(),
     exportViewModel: ExportViewModel = hiltViewModel(),
@@ -76,6 +108,10 @@ fun ViewerScreen(
     val renderer = remember { SplatRenderer(camera) }
     val stats by renderer.stats.collectAsStateWithLifecycle()
     DisposableEffect(renderer) { onDispose { renderer.dispose() } }
+    val talkBack = rememberTalkBackOn()
+    val resetMs = splatDuration(SplatMotion.DurationLong)
+    val fadeMs = splatDuration(SplatMotion.DurationShort)
+    var size by remember { mutableStateOf(IntSize.Zero) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.onIntent(ViewerIntent.Open(SplatSource.Document(uri.toString())))
@@ -85,106 +121,306 @@ fun ViewerScreen(
     val loaded = (load as? ViewerLoad.Loaded)?.scene
     LaunchedEffect(loaded) {
         exportViewModel.setScene(loaded?.name, loaded?.cloud)
-        if (loaded != null) {
-            val framing = loaded.framing
-            synchronized(camera) {
-                camera.reset()
-                camera.setTarget(framing.target)
-                camera.setDistance(framing.distance)
-                camera.setFarPlane(max(FAR_PLANE_MIN, (framing.distance + framing.radius) * FAR_PLANE_FACTOR))
-            }
-        }
+        if (loaded != null) frame(camera, loaded, size)
         renderer.setScene(loaded?.render)
     }
+    LaunchedEffect(state.autoRotate) { synchronized(camera) { camera.autoRotate = state.autoRotate } }
+    LaunchedEffect(state.closed) { if (state.closed) onBack() }
 
-    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        SplatSurface(renderer = renderer, camera = camera, modifier = Modifier.fillMaxSize())
+    val chromeShown = state.chromeVisible || talkBack || loaded == null
+    ImmersiveWhileHidden(hidden = !chromeShown)
+    val reset = { synchronized(camera) { camera.resetToInitial(animated = resetMs > 0) } }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SplatColors.ViewerBackground)
+            .onSizeChanged { size = it },
+    ) {
+        SplatSurface(renderer = renderer, modifier = Modifier.fillMaxSize())
+        if (loaded != null) {
+            GestureLayer(
+                camera = camera,
+                scene = loaded,
+                title = state.title,
+                onTap = {
+                    viewModel.onIntent(ViewerIntent.DismissHint)
+                    if (!talkBack) viewModel.onIntent(ViewerIntent.ToggleChrome)
+                },
+                onDoubleTap = {
+                    viewModel.onIntent(ViewerIntent.DismissHint)
+                    reset()
+                },
+                onGesture = { viewModel.onIntent(ViewerIntent.DismissHint) },
+                onReset = reset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         when (load) {
-            ViewerLoad.Idle -> CentreMessage(stringResource(R.string.viewer_pick_hint))
+            ViewerLoad.Idle -> CentreMessage(stringResource(R.string.view_idle))
             is ViewerLoad.Loading -> Column(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 CircularProgressIndicator()
                 Text(
-                    text = stringResource(R.string.viewer_loading, load.source.name),
+                    text = stringResource(R.string.view_loading, load.source.name),
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
                 )
             }
-            is ViewerLoad.Failed -> Surface(
-                modifier = Modifier.align(Alignment.Center).padding(SplatDimens.SpacingLarge),
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Column(modifier = Modifier.padding(SplatDimens.SpacingDefault)) {
-                    Text(
-                        text = stringResource(R.string.viewer_error_title, load.source.name),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                    Text(
-                        text = load.message,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(top = SplatDimens.SpacingSmall),
-                    )
-                    TextButton(onClick = { viewModel.onIntent(ViewerIntent.Retry) }) {
-                        Text(stringResource(R.string.viewer_retry))
-                    }
-                }
-            }
+            is ViewerLoad.Failed -> OpenError(
+                failure = load,
+                onBack = onBack,
+                onRetry = { viewModel.onIntent(ViewerIntent.Retry) },
+                modifier = Modifier.align(Alignment.Center),
+            )
             is ViewerLoad.Loaded -> Unit
         }
 
-        val current = stats
-        if (state.showStats && loaded != null && current != null) {
-            Text(
-                text = statsLine(current),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(SplatDimens.SpacingSmall)
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .padding(SplatDimens.SpacingXSmall),
-            )
+        AnimatedVisibility(
+            visible = chromeShown,
+            enter = fadeIn(tween(fadeMs)),
+            exit = fadeOut(tween(fadeMs)),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            Column {
+                ViewerTopBar(
+                    title = state.title,
+                    canEdit = state.canEdit,
+                    hasDetails = state.details != null,
+                    onBack = onBack,
+                    onRename = { viewModel.onIntent(ViewerIntent.StartRename) },
+                    onDetails = { viewModel.onIntent(ViewerIntent.ShowDetails) },
+                    onDelete = { viewModel.onIntent(ViewerIntent.AskDelete) },
+                    onOpenFile = { picker.launch(arrayOf("*/*")) },
+                )
+                val current = stats
+                if (state.showStats && loaded != null && current != null) {
+                    Text(
+                        text = statsLine(current),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                        modifier = Modifier
+                            .padding(horizontal = SplatDimens.SpacingDefault)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .padding(SplatDimens.SpacingXSmall),
+                    )
+                }
+            }
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .horizontalScroll(rememberScrollState())
-                .padding(SplatDimens.SpacingDefault),
-            horizontalArrangement = Arrangement.spacedBy(SplatDimens.SpacingSmall),
-        ) {
-            state.samples.forEach { sample ->
-                AssistChip(
-                    onClick = { viewModel.onIntent(ViewerIntent.Open(sample)) },
-                    label = { Text(sample.name) },
-                )
-            }
-            AssistChip(
-                onClick = { picker.launch(arrayOf("*/*")) },
-                label = { Text(stringResource(R.string.viewer_open_file)) },
-                leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-            )
-            if (loaded != null) {
-                AssistChip(
-                    onClick = { exportViewModel.onIntent(ExportIntent.Show) },
-                    label = { Text(stringResource(R.string.viewer_export)) },
-                    leadingIcon = { Icon(Icons.Default.IosShare, contentDescription = null) },
-                )
-            }
-            TextButton(onClick = { viewModel.onIntent(ViewerIntent.ToggleStats) }) {
-                Text(stringResource(R.string.viewer_toggle_stats))
+        if (loaded != null) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                if (state.showHint) {
+                    GestureHint(onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) })
+                }
+                AnimatedVisibility(
+                    visible = chromeShown,
+                    enter = fadeIn(tween(fadeMs)),
+                    exit = fadeOut(tween(fadeMs)),
+                ) {
+                    ViewerBottomBar(
+                        autoRotate = state.autoRotate,
+                        showStats = state.showStats,
+                        onReset = reset,
+                        onAutoRotate = { viewModel.onIntent(ViewerIntent.ToggleAutoRotate) },
+                        onStats = { viewModel.onIntent(ViewerIntent.ToggleStats) },
+                        onShare = { exportViewModel.onIntent(ExportIntent.Show) },
+                    )
+                }
             }
         }
     }
+
+    val details = state.details
+    if (state.showDetails && details != null) {
+        DetailsSheet(details = details, onDismiss = { viewModel.onIntent(ViewerIntent.HideDetails) })
+    }
+    state.rename?.let { dialog ->
+        RenameScanDialog(
+            dialog = dialog,
+            onChange = { viewModel.onIntent(ViewerIntent.RenameChanged(it)) },
+            onSave = { viewModel.onIntent(ViewerIntent.SaveRename) },
+            onCancel = { viewModel.onIntent(ViewerIntent.CancelRename) },
+        )
+    }
+    if (state.confirmDelete) {
+        DeleteScanDialog(
+            onConfirm = { viewModel.onIntent(ViewerIntent.ConfirmDelete) },
+            onCancel = { viewModel.onIntent(ViewerIntent.CancelDelete) },
+        )
+    }
     ExportSheet(exportViewModel)
+}
+
+/** Frames [scene] in the initial view for a screen of [size] (the aspect decides which edge is short). */
+private fun frame(camera: GaussianCameraController, scene: LoadedScene, size: IntSize) {
+    val framing = scene.framing
+    synchronized(camera) {
+        camera.reset()
+        if (size.width > 0 && size.height > 0) camera.setAspectRatio(size.width.toFloat() / size.height)
+        camera.setInitialView(framing.target, framing.radius)
+        camera.setFarPlane(max(FAR_PLANE_MIN, (camera.getMaxDistance() + framing.radius) * FAR_PLANE_FACTOR))
+    }
+}
+
+/**
+ * The render's input and accessibility: drag to orbit (a fling keeps turning), two fingers to pan and pinch, tap
+ * and double tap; TalkBack custom actions and arrow, `+`/`-`, `0` keys for the same moves.
+ */
+@Composable
+private fun GestureLayer(
+    camera: GaussianCameraController,
+    scene: LoadedScene,
+    title: String,
+    onTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+    onGesture: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier,
+) {
+    val tap by rememberUpdatedState(onTap)
+    val doubleTap by rememberUpdatedState(onDoubleTap)
+    val gesture by rememberUpdatedState(onGesture)
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(scene) { runCatching { focus.requestFocus() } }
+
+    val description = stringResource(
+        R.string.view_a11y_render,
+        title,
+        NumberFormat.getIntegerInstance().format(scene.count),
+    )
+    val actions = listOf(
+        stringResource(R.string.view_a11y_rotate_left) to { orbit(camera, -1, 0) },
+        stringResource(R.string.view_a11y_rotate_right) to { orbit(camera, 1, 0) },
+        stringResource(R.string.view_a11y_tilt_up) to { orbit(camera, 0, 1) },
+        stringResource(R.string.view_a11y_tilt_down) to { orbit(camera, 0, -1) },
+        stringResource(R.string.view_a11y_zoom_in) to { zoom(camera, 1) },
+        stringResource(R.string.view_a11y_zoom_out) to { zoom(camera, -1) },
+        stringResource(R.string.view_reset) to onReset,
+    )
+
+    Box(
+        modifier = modifier
+            .semantics {
+                contentDescription = description
+                customActions = actions.map { (label, run) ->
+                    CustomAccessibilityAction(label) {
+                        run()
+                        true
+                    }
+                }
+            }
+            .focusRequester(focus)
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> orbit(camera, -1, 0)
+                    Key.DirectionRight -> orbit(camera, 1, 0)
+                    Key.DirectionUp -> orbit(camera, 0, 1)
+                    Key.DirectionDown -> orbit(camera, 0, -1)
+                    Key.Plus, Key.Equals, Key.NumPadAdd -> zoom(camera, 1)
+                    Key.Minus, Key.NumPadSubtract -> zoom(camera, -1)
+                    Key.Zero, Key.NumPad0 -> onReset()
+                    else -> return@onKeyEvent false
+                }
+                true
+            }
+            .focusable()
+            .pointerInput(camera) {
+                detectTapGestures(onTap = { tap() }, onDoubleTap = { doubleTap() })
+            }
+            .pointerInput(camera) {
+                val slop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    synchronized(camera) { camera.stopMotion() }
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    var moving = false
+                    var multi = false
+                    var travelled = Offset.Zero
+                    do {
+                        val event = awaitPointerEvent()
+                        val fingers = event.changes.count { it.pressed }
+                        if (fingers >= 2) multi = true
+                        val pan = event.calculatePan()
+                        val zoom = event.calculateZoom()
+                        if (!moving) {
+                            travelled += pan
+                            if (travelled.getDistance() > slop || (fingers >= 2 && abs(zoom - 1f) > PINCH_SLOP)) {
+                                moving = true
+                                gesture()
+                            }
+                        }
+                        if (moving) {
+                            synchronized(camera) {
+                                if (fingers >= 2) {
+                                    if (zoom > 0f) camera.onZoom(1f / zoom)
+                                    camera.onPan(-pan.x * PAN_PER_PX, pan.y * PAN_PER_PX)
+                                } else if (fingers == 1 && !multi) {
+                                    camera.onRotate(pan.x * ORBIT_PER_PX, pan.y * ORBIT_PER_PX)
+                                }
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                        event.changes.firstOrNull { it.id == down.id }?.let {
+                            tracker.addPosition(it.uptimeMillis, it.position)
+                        }
+                    } while (event.changes.any { it.pressed })
+                    if (moving && !multi) {
+                        val v = tracker.calculateVelocity()
+                        synchronized(camera) { camera.fling(v.x * ORBIT_PER_PX, v.y * ORBIT_PER_PX) }
+                    }
+                }
+            },
+    )
+}
+
+private fun orbit(camera: GaussianCameraController, yaw: Int, pitch: Int) {
+    synchronized(camera) { camera.orbitStep(yaw, pitch) }
+}
+
+private fun zoom(camera: GaussianCameraController, steps: Int) {
+    synchronized(camera) { camera.zoomStep(steps) }
+}
+
+@Composable
+private fun OpenError(failure: ViewerLoad.Failed, onBack: () -> Unit, onRetry: () -> Unit, modifier: Modifier) {
+    Column(
+        modifier = modifier.padding(SplatDimens.SpacingLarge),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Default.ErrorOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(SplatDimens.SpacingXXLarge),
+        )
+        Text(
+            text = stringResource(R.string.view_error_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
+        )
+        Text(
+            text = stringResource(if (failure.outOfMemory) R.string.view_error_memory else R.string.view_error_body),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = SplatDimens.SpacingSmall),
+        )
+        Text(
+            text = failure.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = SplatDimens.SpacingXSmall),
+        )
+        Button(onClick = onBack, modifier = Modifier.padding(top = SplatDimens.SpacingDefault)) {
+            Text(stringResource(R.string.view_error_back))
+        }
+        TextButton(onClick = onRetry) { Text(stringResource(R.string.view_retry)) }
+    }
 }
 
 @Composable
@@ -198,9 +434,43 @@ private fun CentreMessage(text: String) {
     }
 }
 
+/** True while TalkBack (touch exploration) is on; the chrome then never hides. */
+@Composable
+private fun rememberTalkBackOn(): Boolean {
+    val context = LocalContext.current
+    val manager = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager }
+    var on by remember(manager) { mutableStateOf(manager?.isTouchExplorationEnabled == true) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { on = it }
+        manager?.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager?.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return on
+}
+
+/** Hides the system bars (swipe to reveal) while [hidden]; shows them again on leaving. */
+@Composable
+private fun ImmersiveWhileHidden(hidden: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    val window = view.context.findActivity()?.window ?: return
+    DisposableEffect(hidden, window) {
+        val controller = WindowCompat.getInsetsController(window, view)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (hidden) controller.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { controller.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 /** A GLSurfaceView (GLES 3.0, context kept across pause) driven by [renderer], paused and resumed with the screen. */
 @Composable
-private fun SplatSurface(renderer: SplatRenderer, camera: GaussianCameraController, modifier: Modifier) {
+private fun SplatSurface(renderer: SplatRenderer, modifier: Modifier) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var surface by remember { mutableStateOf<GLSurfaceView?>(null) }
     DisposableEffect(lifecycleOwner, surface) {
@@ -225,26 +495,7 @@ private fun SplatSurface(renderer: SplatRenderer, camera: GaussianCameraControll
                 surface = this
             }
         },
-        modifier = modifier.pointerInput(camera) {
-            awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                do {
-                    val event = awaitPointerEvent()
-                    val fingers = event.changes.count { it.pressed }
-                    val pan = event.calculatePan()
-                    synchronized(camera) {
-                        if (fingers >= 2) {
-                            val zoom = event.calculateZoom()
-                            if (zoom > 0f) camera.onZoom(1f / zoom)
-                            camera.onPan(-pan.x * PAN_PER_PX, pan.y * PAN_PER_PX)
-                        } else if (fingers == 1) {
-                            camera.onRotate(pan.x * ORBIT_PER_PX, pan.y * ORBIT_PER_PX)
-                        }
-                    }
-                    event.changes.forEach { if (it.positionChanged()) it.consume() }
-                } while (event.changes.any { it.pressed })
-            }
-        },
+        modifier = modifier,
     )
 }
 
@@ -263,5 +514,8 @@ private const val GLES_VERSION = 3
 /** Pointer pixels to controller units: about half a turn across a phone screen, a screen of pan per width. */
 private const val ORBIT_PER_PX = 0.03f
 private const val PAN_PER_PX = 0.1f
+
+/** A pinch counts as a gesture once the spread changes by this fraction. */
+private const val PINCH_SLOP = 0.02f
 private const val FAR_PLANE_MIN = 100f
 private const val FAR_PLANE_FACTOR = 10f

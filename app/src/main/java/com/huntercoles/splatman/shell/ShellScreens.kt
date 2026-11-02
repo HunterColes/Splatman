@@ -121,8 +121,8 @@ internal fun LibraryHome(
     }
 }
 
-/** Full screen, always dark: the existing viewer until #18 takes the scan id. */
+/** Full screen, always dark: the viewer of the route's scan id. */
 @Composable
-internal fun ViewerRoute() {
-    ViewerFeature(modifier = Modifier.fillMaxSize())
+internal fun ViewerRoute(onBack: () -> Unit) {
+    ViewerFeature(onBack = onBack, modifier = Modifier.fillMaxSize())
 }

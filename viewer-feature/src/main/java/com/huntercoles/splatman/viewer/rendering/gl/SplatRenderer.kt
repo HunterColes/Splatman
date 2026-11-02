@@ -166,6 +166,7 @@ class SplatRenderer(
         if (current != null && !textureReady) uploadTexture(current.packed)
 
         synchronized(camera) {
+            camera.advance(frameMs / MS_PER_S)
             camera.getViewMatrix().values.copyInto(view)
             camera.getProjectionMatrix().values.copyInto(proj)
         }
@@ -356,6 +357,7 @@ class SplatRenderer(
 
     companion object {
         private const val NS_PER_MS = 1_000_000f
+        private const val MS_PER_S = 1000f
         private const val STATS_INTERVAL_NS = 500_000_000L
         private const val BACKGROUND = 0.04f
     }

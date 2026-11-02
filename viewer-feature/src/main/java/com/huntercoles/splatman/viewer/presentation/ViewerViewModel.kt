@@ -3,6 +3,7 @@ package com.huntercoles.splatman.viewer.presentation
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huntercoles.splatman.splat.io.SplatFormat
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatFileException
 import com.huntercoles.splatman.viewer.presentation.load.SplatLoader
@@ -25,29 +26,75 @@ sealed interface ViewerLoad {
     data object Idle : ViewerLoad
     data class Loading(val source: SplatSource) : ViewerLoad
     class Loaded(val scene: LoadedScene) : ViewerLoad
-    data class Failed(val source: SplatSource, val message: String) : ViewerLoad
+
+    /** [outOfMemory]: the file was too big for this phone (`view_error_memory`). */
+    data class Failed(val source: SplatSource, val message: String, val outOfMemory: Boolean = false) : ViewerLoad
+}
+
+/** The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). */
+data class ViewerDetails(
+    val name: String,
+    val createdAtMs: Long?,
+    val splats: Int,
+    val sizeBytes: Long?,
+    val frames: Int?,
+    val format: SplatFormat,
+)
+
+/** The rename dialog: the field's [text], clipped to [RenameRules.MAX_LENGTH]. */
+data class RenameDialog(val text: String) {
+    val canSave: Boolean get() = RenameRules.canSave(text)
+    val showCounter: Boolean get() = RenameRules.showCounter(text)
 }
 
 data class ViewerUiState(
     val samples: List<SplatSource.Sample> = SplatSamples.ALL,
     val load: ViewerLoad = ViewerLoad.Idle,
     val showStats: Boolean = false,
+    /** The top bar's name: the Library's name for a scan, else the file's. */
+    val title: String = "",
+    /** A scan made on this phone: it can be renamed and deleted. */
+    val canEdit: Boolean = false,
+    val details: ViewerDetails? = null,
+    val chromeVisible: Boolean = true,
+    val autoRotate: Boolean = false,
+    val showHint: Boolean = false,
+    val showDetails: Boolean = false,
+    val rename: RenameDialog? = null,
+    val confirmDelete: Boolean = false,
+    /** The scan was deleted: the screen goes back to the Library. */
+    val closed: Boolean = false,
 )
 
 sealed interface ViewerIntent {
     data class Open(val source: SplatSource) : ViewerIntent
     data object Retry : ViewerIntent
     data object ToggleStats : ViewerIntent
+    data object ToggleChrome : ViewerIntent
+    data object ToggleAutoRotate : ViewerIntent
+    data object DismissHint : ViewerIntent
+    data object ShowDetails : ViewerIntent
+    data object HideDetails : ViewerIntent
+    data object StartRename : ViewerIntent
+    data class RenameChanged(val text: String) : ViewerIntent
+    data object SaveRename : ViewerIntent
+    data object CancelRename : ViewerIntent
+    data object AskDelete : ViewerIntent
+    data object CancelDelete : ViewerIntent
+    data object ConfirmDelete : ViewerIntent
 }
 
 /**
  * Opens a sample or a picked file through [SplatLoader] (off the main thread) and holds the result. The route's
  * `scanId` ([ARG_SCAN_ID]) opens at once: a bundled sample (`sample:<file>`) or a scan's `splat.ply`.
  * A new open cancels the one in flight; leaving the screen clears the ViewModel, which cancels any load still running.
+ * It also holds the chrome (bars shown, auto-rotate, the one-time hint) and the scan's details, rename and delete.
  */
 @HiltViewModel
 class ViewerViewModel @Inject constructor(
     private val loader: SplatLoader,
+    private val scans: ViewerScanStore,
+    private val hints: ViewerHintStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -67,13 +114,79 @@ class ViewerViewModel @Inject constructor(
             is ViewerIntent.Open -> open(intent.source)
             ViewerIntent.Retry -> lastSource?.let(::open)
             ViewerIntent.ToggleStats -> _uiState.update { it.copy(showStats = !it.showStats) }
+            ViewerIntent.ToggleChrome -> _uiState.update { it.copy(chromeVisible = !it.chromeVisible) }
+            ViewerIntent.ToggleAutoRotate -> _uiState.update { it.copy(autoRotate = !it.autoRotate) }
+            ViewerIntent.DismissHint -> dismissHint()
+            ViewerIntent.ShowDetails -> _uiState.update { it.copy(showDetails = it.details != null) }
+            ViewerIntent.HideDetails -> _uiState.update { it.copy(showDetails = false) }
+            ViewerIntent.StartRename -> _uiState.update {
+                if (it.canEdit) it.copy(rename = RenameDialog(RenameRules.clip(it.title))) else it
+            }
+            is ViewerIntent.RenameChanged -> _uiState.update {
+                if (it.rename == null) it else it.copy(rename = RenameDialog(RenameRules.clip(intent.text)))
+            }
+            ViewerIntent.SaveRename -> saveRename()
+            ViewerIntent.CancelRename -> _uiState.update { it.copy(rename = null) }
+            ViewerIntent.AskDelete -> _uiState.update { it.copy(confirmDelete = it.canEdit) }
+            ViewerIntent.CancelDelete -> _uiState.update { it.copy(confirmDelete = false) }
+            ViewerIntent.ConfirmDelete -> confirmDelete()
+        }
+    }
+
+    private fun dismissHint() {
+        if (!_uiState.value.showHint) return
+        hints.markHintSeen()
+        _uiState.update { it.copy(showHint = false) }
+    }
+
+    private fun saveRename() {
+        val state = _uiState.value
+        val dialog = state.rename ?: return
+        val scanId = (lastSource as? SplatSource.Scan)?.scanId ?: return
+        if (!dialog.canSave) return
+        val name = dialog.text.trim()
+        _uiState.update { it.copy(rename = null, title = name, details = it.details?.copy(name = name)) }
+        viewModelScope.launch {
+            try {
+                scans.rename(scanId, name)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                Timber.w(e, "Could not rename %s", scanId)
+            }
+        }
+    }
+
+    private fun confirmDelete() {
+        val scanId = (lastSource as? SplatSource.Scan)?.scanId
+        if (scanId == null || !_uiState.value.confirmDelete) return
+        _uiState.update { it.copy(confirmDelete = false) }
+        viewModelScope.launch {
+            try {
+                scans.delete(scanId)
+                _uiState.update { it.copy(closed = true) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                Timber.w(e, "Could not delete %s", scanId)
+            }
         }
     }
 
     private fun open(source: SplatSource) {
         loadJob?.cancel()
         lastSource = source
-        _uiState.update { it.copy(load = ViewerLoad.Loading(source)) }
+        _uiState.update {
+            it.copy(
+                load = ViewerLoad.Loading(source),
+                title = source.name,
+                canEdit = false,
+                details = null,
+                showDetails = false,
+                rename = null,
+                confirmDelete = false,
+            )
+        }
         loadJob = viewModelScope.launch {
             val next = try {
                 ViewerLoad.Loaded(loader.load(source))
@@ -92,10 +205,40 @@ class ViewerViewModel @Inject constructor(
                 ViewerLoad.Failed(source, "Splatman may not read this file.")
             } catch (e: OutOfMemoryError) {
                 Timber.w(e, "Out of memory loading %s", source)
-                ViewerLoad.Failed(source, "Not enough memory to open this file.")
+                ViewerLoad.Failed(source, "Not enough memory to open this file.", outOfMemory = true)
             }
-            _uiState.update { it.copy(load = next) }
+            val record = if (next is ViewerLoad.Loaded && source is SplatSource.Scan) record(source.scanId) else null
+            _uiState.update { it.mapLoad(source, next, record) }
         }
+    }
+
+    private suspend fun record(scanId: String): ScanRecord? = try {
+        scans.get(scanId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: IOException) {
+        Timber.w(e, "No library row for %s", scanId)
+        null
+    }
+
+    private fun ViewerUiState.mapLoad(source: SplatSource, next: ViewerLoad, record: ScanRecord?): ViewerUiState {
+        if (next !is ViewerLoad.Loaded) return copy(load = next, title = source.name)
+        val scene = next.scene
+        val name = record?.name ?: scene.name
+        return copy(
+            load = next,
+            title = name,
+            canEdit = source is SplatSource.Scan && record != null,
+            details = ViewerDetails(
+                name = name,
+                createdAtMs = record?.createdAtMs,
+                splats = scene.count,
+                sizeBytes = record?.sizeBytes,
+                frames = record?.keyframeCount?.takeIf { source is SplatSource.Scan },
+                format = scene.format,
+            ),
+            showHint = !hints.hintSeen,
+        )
     }
 
     companion object {

@@ -66,11 +66,38 @@ class ViewerViewModelTest {
         )
     }
 
-    private fun viewModel(loader: SplatLoader, scanId: String? = null): ViewerViewModel {
+    /** The Library's rows by scan id; records renames and deletes. */
+    private class FakeScans(val rows: MutableMap<String, ScanRecord> = mutableMapOf()) : ViewerScanStore {
+        val renamed = mutableListOf<Pair<String, String>>()
+        val deleted = mutableListOf<String>()
+
+        override suspend fun get(scanId: String): ScanRecord? = rows[scanId]
+
+        override suspend fun rename(scanId: String, name: String) {
+            renamed += scanId to name
+        }
+
+        override suspend fun delete(scanId: String) {
+            deleted += scanId
+        }
+    }
+
+    private class FakeHints(override var hintSeen: Boolean = false) : ViewerHintStore {
+        override fun markHintSeen() {
+            hintSeen = true
+        }
+    }
+
+    private fun viewModel(
+        loader: SplatLoader,
+        scanId: String? = null,
+        scans: ViewerScanStore = FakeScans(),
+        hints: ViewerHintStore = FakeHints(),
+    ): ViewerViewModel {
         val args = SavedStateHandle(if (scanId == null) emptyMap() else mapOf(ViewerViewModel.ARG_SCAN_ID to scanId))
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = ViewerViewModel(loader, args) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = ViewerViewModel(loader, scans, hints, args) as T
         }
         return ViewModelProvider(store, factory)[ViewerViewModel::class.java]
     }
@@ -120,7 +147,7 @@ class ViewerViewModelTest {
         val vm = viewModel(FakeLoader(mapOf(sample to { throw OutOfMemoryError("1M splats") })))
         vm.onIntent(ViewerIntent.Open(sample))
         advanceUntilIdle()
-        assertEquals(ViewerLoad.Failed(sample, "Not enough memory to open this file."), vm.uiState.value.load)
+        assertEquals(ViewerLoad.Failed(sample, "Not enough memory to open this file.", outOfMemory = true), vm.uiState.value.load)
     }
 
     @Test
@@ -233,5 +260,170 @@ class ViewerViewModelTest {
         assertTrue(vm.uiState.value.showStats)
         vm.onIntent(ViewerIntent.ToggleStats)
         assertFalse(vm.uiState.value.showStats)
+    }
+
+    private val scanId = "0b7e-scan"
+    private val scanSource = SplatSource.Scan(scanId)
+    private val record = ScanRecord("Desk plant", createdAtMs = 1_700_000_000_000, keyframeCount = 42, sizeBytes = 1234)
+
+    private fun TestScope.loadedScan(
+        scans: FakeScans = FakeScans(mutableMapOf(scanId to record)),
+        hints: FakeHints = FakeHints(),
+    ): ViewerViewModel {
+        val vm = viewModel(FakeLoader(mapOf(scanSource to { scene(scanId) })), scanId, scans, hints)
+        advanceUntilIdle()
+        return vm
+    }
+
+    @Test
+    fun `a loaded scan maps to its Library name, details and edit actions`() = test {
+        val state = loadedScan().uiState.value
+        assertEquals("Desk plant", state.title)
+        assertTrue(state.canEdit)
+        assertEquals(
+            ViewerDetails("Desk plant", 1_700_000_000_000, 3, 1234, 42, SplatFormat.PLY),
+            state.details,
+        )
+        assertTrue(state.chromeVisible)
+        assertFalse(state.autoRotate)
+    }
+
+    @Test
+    fun `a sample maps to its file name, shows as imported and cannot be renamed or deleted`() = test {
+        val vm = viewModel(FakeLoader(mapOf(sample to { scene("Tape file") })))
+        vm.onIntent(ViewerIntent.Open(sample))
+        assertEquals(sample.name, vm.uiState.value.title)
+        advanceUntilIdle()
+        val state = vm.uiState.value
+        assertEquals("Tape file", state.title)
+        assertFalse(state.canEdit)
+        assertEquals(null, state.details?.frames)
+        vm.onIntent(ViewerIntent.StartRename)
+        vm.onIntent(ViewerIntent.AskDelete)
+        assertEquals(null, vm.uiState.value.rename)
+        assertFalse(vm.uiState.value.confirmDelete)
+    }
+
+    @Test
+    fun `a failed load keeps the source name as title and offers no details`() = test {
+        val doc = SplatSource.Document("content://x/1", "broken.ply")
+        val vm = viewModel(FakeLoader(mapOf(doc to { throw SplatFileException("bad") })))
+        vm.onIntent(ViewerIntent.Open(doc))
+        advanceUntilIdle()
+        assertEquals("broken.ply", vm.uiState.value.title)
+        vm.onIntent(ViewerIntent.ShowDetails)
+        assertFalse(vm.uiState.value.showDetails)
+    }
+
+    @Test
+    fun `rename opens prefilled, saves the trimmed name and updates the title`() = test {
+        val scans = FakeScans(mutableMapOf(scanId to record))
+        val vm = loadedScan(scans)
+        vm.onIntent(ViewerIntent.StartRename)
+        assertEquals(RenameDialog("Desk plant"), vm.uiState.value.rename)
+        vm.onIntent(ViewerIntent.RenameChanged("  Kitchen fern  "))
+        vm.onIntent(ViewerIntent.SaveRename)
+        advanceUntilIdle()
+        assertEquals(listOf(scanId to "Kitchen fern"), scans.renamed)
+        assertEquals("Kitchen fern", vm.uiState.value.title)
+        assertEquals("Kitchen fern", vm.uiState.value.details?.name)
+        assertEquals(null, vm.uiState.value.rename)
+    }
+
+    @Test
+    fun `rename refuses a blank name and keeps the dialog open`() = test {
+        val scans = FakeScans(mutableMapOf(scanId to record))
+        val vm = loadedScan(scans)
+        vm.onIntent(ViewerIntent.StartRename)
+        vm.onIntent(ViewerIntent.RenameChanged("   "))
+        assertFalse(vm.uiState.value.rename!!.canSave)
+        vm.onIntent(ViewerIntent.SaveRename)
+        advanceUntilIdle()
+        assertTrue(scans.renamed.isEmpty())
+        assertEquals("Desk plant", vm.uiState.value.title)
+        assertEquals(RenameDialog("   "), vm.uiState.value.rename)
+    }
+
+    @Test
+    fun `rename clips at 80 characters and shows the counter past 60`() = test {
+        val vm = loadedScan()
+        vm.onIntent(ViewerIntent.StartRename)
+        vm.onIntent(ViewerIntent.RenameChanged("a".repeat(60)))
+        assertFalse(vm.uiState.value.rename!!.showCounter)
+        vm.onIntent(ViewerIntent.RenameChanged("a".repeat(61)))
+        assertTrue(vm.uiState.value.rename!!.showCounter)
+        vm.onIntent(ViewerIntent.RenameChanged("b".repeat(100)))
+        assertEquals("b".repeat(RenameRules.MAX_LENGTH), vm.uiState.value.rename!!.text)
+        assertTrue(vm.uiState.value.rename!!.canSave)
+    }
+
+    @Test
+    fun `rename rules keep one line and reject blanks`() {
+        assertEquals("a b", RenameRules.clip("a\nb"))
+        assertFalse(RenameRules.canSave(""))
+        assertFalse(RenameRules.canSave(" \t "))
+        assertTrue(RenameRules.canSave(" x "))
+    }
+
+    @Test
+    fun `cancel closes the rename dialog without saving`() = test {
+        val scans = FakeScans(mutableMapOf(scanId to record))
+        val vm = loadedScan(scans)
+        vm.onIntent(ViewerIntent.StartRename)
+        vm.onIntent(ViewerIntent.RenameChanged("Other"))
+        vm.onIntent(ViewerIntent.CancelRename)
+        advanceUntilIdle()
+        assertEquals(null, vm.uiState.value.rename)
+        assertTrue(scans.renamed.isEmpty())
+        assertEquals("Desk plant", vm.uiState.value.title)
+    }
+
+    @Test
+    fun `delete asks first, then deletes the scan and closes the viewer`() = test {
+        val scans = FakeScans(mutableMapOf(scanId to record))
+        val vm = loadedScan(scans)
+        vm.onIntent(ViewerIntent.ConfirmDelete)
+        advanceUntilIdle()
+        assertTrue(scans.deleted.isEmpty(), "no delete without the confirm dialog")
+        vm.onIntent(ViewerIntent.AskDelete)
+        assertTrue(vm.uiState.value.confirmDelete)
+        vm.onIntent(ViewerIntent.ConfirmDelete)
+        advanceUntilIdle()
+        assertEquals(listOf(scanId), scans.deleted)
+        assertTrue(vm.uiState.value.closed)
+    }
+
+    @Test
+    fun `the gesture hint shows on the first open only and a dismiss is remembered`() = test {
+        val hints = FakeHints()
+        val vm = loadedScan(hints = hints)
+        assertTrue(vm.uiState.value.showHint)
+        vm.onIntent(ViewerIntent.DismissHint)
+        assertFalse(vm.uiState.value.showHint)
+        assertTrue(hints.hintSeen)
+
+        store.clear()
+        val again = loadedScan(hints = hints)
+        assertFalse(again.uiState.value.showHint)
+    }
+
+    @Test
+    fun `tap toggles the chrome and the auto-rotate button toggles auto-rotate`() = test {
+        val vm = loadedScan()
+        vm.onIntent(ViewerIntent.ToggleChrome)
+        assertFalse(vm.uiState.value.chromeVisible)
+        vm.onIntent(ViewerIntent.ToggleChrome)
+        assertTrue(vm.uiState.value.chromeVisible)
+        vm.onIntent(ViewerIntent.ToggleAutoRotate)
+        assertTrue(vm.uiState.value.autoRotate)
+    }
+
+    @Test
+    fun `details open and close only once a scene is loaded`() = test {
+        val vm = loadedScan()
+        vm.onIntent(ViewerIntent.ShowDetails)
+        assertTrue(vm.uiState.value.showDetails)
+        vm.onIntent(ViewerIntent.HideDetails)
+        assertFalse(vm.uiState.value.showDetails)
     }
 }

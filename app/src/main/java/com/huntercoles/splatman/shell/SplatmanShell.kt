@@ -136,7 +136,7 @@ fun SplatmanShell(
                 }
                 composable<Viewer> { backStackEntry ->
                     val route = backStackEntry.toRoute<Viewer>()
-                    screen(route) { ViewerRoute() }
+                    screen(route) { ViewerRoute(onBack = { navController.popBackStack() }) }
                 }
                 composable<Settings> {
                     screen(Settings) {

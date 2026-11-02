@@ -5,9 +5,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -76,8 +76,8 @@ class SmokeTest {
         compose.onNodeWithText(SAMPLE_MODEL).performClick()
         waitForLoadedScene()
         check(!exists(hasText(STATS_FPS, substring = true))) { "the stats line shows before Stats is tapped" }
-        // At phone width Stats sits past the right edge of the scrolling chip row: a tap there lands on nothing.
-        compose.onNodeWithText(VIEWER_STATS).performScrollTo().performClick()
+        // Stats is an icon button in the bottom bar, on screen at phone width (no scrolling).
+        compose.onNodeWithContentDescription(VIEWER_STATS).performClick()
         compose.waitUntilAtLeastOneExists(hasText(STATS_FPS, substring = true), STATS_TIMEOUT_MS)
         compose.onNode(hasText(STATS_SPLATS, substring = true)).assertExists()
     }
@@ -92,10 +92,10 @@ class SmokeTest {
         screenshot("capture-phone.png")
     }
 
-    /** The viewer is up (its file chip shows) and neither loading, idle nor failed: the scene is loaded. */
+    /** The viewer is up (its Share button shows) and neither loading, idle nor failed: the scene is loaded. */
     private fun waitForLoadedScene() {
         compose.waitUntil(TIMEOUT_MS) {
-            exists(hasText(VIEWER_OPEN_FILE)) &&
+            exists(hasText(VIEWER_SHARE)) &&
                 !exists(hasText(VIEWER_LOADING, substring = true)) &&
                 !exists(hasText(VIEWER_FAILED, substring = true)) &&
                 !exists(hasText(VIEWER_IDLE))
@@ -124,14 +124,14 @@ class SmokeTest {
         const val SAMPLES = "Samples"
         const val SCAN = "Scan"
         const val SAMPLE_MODEL = "Measuring tape"
-        const val VIEWER_OPEN_FILE = "Open file"
+        const val VIEWER_SHARE = "Share"
         const val VIEWER_LOADING = "Opening "
-        const val VIEWER_FAILED = "Could not open"
+        const val VIEWER_FAILED = "Can't open this splat"
         const val VIEWER_STATS = "Stats"
         const val STATS_FPS = " fps "
         const val STATS_SPLATS = " splats "
         const val STATS_TIMEOUT_MS = 2_000L
-        const val VIEWER_IDLE = "Pick a sample or open a .ply or .splat file."
+        const val VIEWER_IDLE = "Open a .ply or .splat file from the menu."
         const val AR_CORE = "com.google.ar.core"
         const val DEVICE_DIR = "/sdcard/Download/splatman-e2e"
         const val TABLET_SIZE = "1600x2560"

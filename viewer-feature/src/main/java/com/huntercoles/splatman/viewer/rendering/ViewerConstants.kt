@@ -18,8 +18,20 @@ object ViewerConstants {
     const val NEAR_PLANE = 0.1f
     const val FAR_PLANE = 1000f
     
-    // Rendering
-    const val AXIS_LENGTH = 25f
-    const val POINT_SIZE = 2.0f
-    const val AXIS_ARROW_SIZE = 4f
+    // Viewer motion
+    /** One TalkBack or keyboard orbit step (degrees). */
+    const val ORBIT_STEP_DEG = 15f
+
+    /** One TalkBack or keyboard zoom step (distance factor). */
+    const val ZOOM_STEP = 1.25f
+
+    /** Double-tap reset animation length (seconds; SplatMotion.DurationLong). */
+    const val RESET_SECONDS = 0.5f
+
+    /** Fling velocity decays as exp(-FLING_FRICTION * t); it stops below FLING_STOP (controller units/s). */
+    const val FLING_FRICTION = 3f
+    const val FLING_STOP = 0.05f
+
+    /** Auto-rotate speed: a full turn in about 20 s. */
+    const val AUTO_ROTATE_RAD_PER_S = 0.3f
 }
