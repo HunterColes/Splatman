@@ -16,7 +16,7 @@ import javax.inject.Singleton
  * Uses MediaPlayer for longer audio files (10+ seconds) with proper audio focus management.
  * 
  * Note: SoundPool has a 1MB limit per sound (~5.6 seconds at 44.1kHz stereo),
- * so MediaPlayer is used instead for tournament notifications.
+ * so MediaPlayer is used instead.
  */
 @Singleton
 class SoundManager @Inject constructor(

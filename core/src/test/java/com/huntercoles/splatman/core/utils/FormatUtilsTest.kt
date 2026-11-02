@@ -254,7 +254,7 @@ class FormatUtilsTest {
     }
     
     @Test
-    fun `percentage formats - handle common payout percentages`() {
+    fun `percentage formats - handle common whole percentages`() {
         assertEquals("50%", FormatUtils.formatPercent(50.0), "First place 50%")
         assertEquals("30%", FormatUtils.formatPercent(30.0), "Second place 30%")
         assertEquals("20%", FormatUtils.formatPercent(20.0), "Third place 20%")
