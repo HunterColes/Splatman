@@ -26,6 +26,7 @@ class BackwardTileShadersTest {
         "PACK" to BackwardTileShaders.PACK,
         "REPLAY" to BackwardTileShaders.REPLAY,
         "GATHER" to BackwardTileShaders.GATHER,
+        "SPLAT" to BackwardSplatShaders.SPLAT,
     )
 
     private fun reservedIdentifiers(source: String): Set<String> {

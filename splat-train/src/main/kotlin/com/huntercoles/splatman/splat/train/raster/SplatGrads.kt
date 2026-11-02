@@ -71,7 +71,11 @@ class SplatGrads {
      */
     fun screenGrads2d(): DoubleArray = splatGrads2d.copyOf(ENTRY * count)
 
-    internal fun ensureSplats(n: Int) {
+    /**
+     * Sizes every array for [n] splats and zeroes their first [n] entries and the lens sums. The backward pass calls
+     * it; public for the GPU parity tests' read-back (`GpuGrads.readInto`), which fills a [SplatGrads] from outside.
+     */
+    fun ensureSplats(n: Int) {
         count = n
         if (opacityLogits.size < n) {
             positions = FloatArray(3 * n)
