@@ -97,4 +97,25 @@ internal object TestScenes {
         }
         10 * log10(1.0 / (se / count))
     }
+
+    /**
+     * CRC32 of [cloud]'s float bits, big-endian, over positions, logScales, rotations, opacityLogits, shDc and shRest
+     * in that order: a bit-exact fingerprint of a trained cloud.
+     */
+    fun checksum(cloud: SplatCloud): Long {
+        val crc = java.util.zip.CRC32()
+        val arrays = listOf(
+            cloud.positions, cloud.logScales, cloud.rotations, cloud.opacityLogits, cloud.shDc, cloud.shRest,
+        )
+        for (values in arrays) {
+            for (f in values) {
+                val b = java.lang.Float.floatToRawIntBits(f)
+                crc.update(b ushr 24)
+                crc.update(b ushr 16)
+                crc.update(b ushr 8)
+                crc.update(b)
+            }
+        }
+        return crc.value
+    }
 }

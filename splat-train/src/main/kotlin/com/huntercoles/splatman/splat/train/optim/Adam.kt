@@ -54,17 +54,24 @@ class Adam(
      * `source[j]` is -1.
      */
     fun remap(source: IntArray) {
-        val newM = FloatArray(width * source.size)
-        val newV = FloatArray(width * source.size)
-        for (j in source.indices) {
-            val s = source[j]
-            if (s < 0 || width * (s + 1) > m.size) continue
-            System.arraycopy(m, width * s, newM, width * j, width)
-            System.arraycopy(v, width * s, newV, width * j, width)
-        }
-        m = newM
-        v = newV
+        m = remapMoments(m, width, source)
+        v = remapMoments(v, width, source)
     }
+
+    /** Replaces the moments and the step count (a [TrainState] being loaded); the arrays are copied. */
+    internal fun restore(m: FloatArray, v: FloatArray, steps: Int) {
+        require(m.size == v.size && m.size % width == 0) { "m and v must hold the same multiple of $width floats" }
+        require(steps >= 0) { "steps must be >= 0, got $steps" }
+        this.m = m.copyOf()
+        this.v = v.copyOf()
+        this.steps = steps
+    }
+
+    /** A copy of the first moments of [count] splats, zeros where none were taken yet. */
+    internal fun firstMoments(count: Int): FloatArray = m.copyOf(width * count)
+
+    /** A copy of the second moments of [count] splats, zeros where none were taken yet. */
+    internal fun secondMoments(count: Int): FloatArray = v.copyOf(width * count)
 
     /** First moment of element [j] (tests). */
     internal fun moment1(j: Int): Float = m[j]
@@ -78,5 +85,19 @@ class Adam(
 
         /** 3DGS's epsilon. */
         const val EPS = 1e-15
+
+        /**
+         * [moments] ([width] floats per splat) reordered after densification: new splat j takes old splat `source[j]`'s
+         * moments, or zeros where `source[j]` is -1 or past the end.
+         */
+        fun remapMoments(moments: FloatArray, width: Int, source: IntArray): FloatArray {
+            val out = FloatArray(width * source.size)
+            for (j in source.indices) {
+                val s = source[j]
+                if (s < 0 || width * (s + 1) > moments.size) continue
+                System.arraycopy(moments, width * s, out, width * j, width)
+            }
+            return out
+        }
     }
 }

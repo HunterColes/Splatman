@@ -57,6 +57,9 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   Plain Material 3 until #4 restyles it; no recording yet (#41).
 - Splat pipeline: `splat-train` has the `Trainer` interface and `SeedTrainer` (seed points -> 3DGS seed splat, #30);
   nothing yet turns frames plus ARCore poses into seed points, and there is no export.
+- Train backend seam (#100): `SplatOptimizer` keeps the schedule and drives a `TrainBackend` (`optim/TrainBackend.kt`:
+  load, step, read, `TrainState`, `StepRates`); `CpuBackend` is the reference, bit-identical (golden CRC in
+  `TrainBackendTest`). The GPU backend (#49) plugs in there.
 - Real CC0 splat samples live in `app/src/main/assets/samples/` (cactus PLY SH1, measuring-tape PLY SH0, cactus
   SPZ; see its ASSETS-LICENSES.md); the old goat point cloud is gone. Nothing loads them in the app yet.
 - The new data model (ADR 0002) is in `splat-core` (`splat/model`: `SplatCloud`, `CameraIntrinsics`, `Keyframe`, ...;
