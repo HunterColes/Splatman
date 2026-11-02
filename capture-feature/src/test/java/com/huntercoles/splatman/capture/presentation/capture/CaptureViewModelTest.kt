@@ -14,6 +14,8 @@ import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import com.huntercoles.splatman.capture.tracking.TrackingFailure
 import com.huntercoles.splatman.capture.tracking.TrackingState
+import com.huntercoles.splatman.core.preferences.PreferenceStore
+import com.huntercoles.splatman.core.preferences.SettingsPreferences
 import com.huntercoles.splatman.splat.math.Quat
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
@@ -26,7 +28,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -77,10 +83,16 @@ class CaptureViewModelTest {
         }
     }
 
-    private fun frame(state: TrackingState, failure: TrackingFailure, image: FakeImage = FakeImage()) = TrackedFrame(
-        timestampNs = 1L,
+    private fun frame(
+        state: TrackingState,
+        failure: TrackingFailure,
+        image: FakeImage = FakeImage(),
+        timestampNs: Long = 1L,
+        pose: CameraPose = CameraPose(Quat.IDENTITY, Vec3.ZERO),
+    ) = TrackedFrame(
+        timestampNs = timestampNs,
         trackingState = state,
-        pose = CameraPose(Quat.IDENTITY, Vec3.ZERO),
+        pose = pose,
         intrinsics = CameraIntrinsics(fx = 2f, fy = 2f, cx = 1f, cy = 1f, width = 2, height = 2),
         image = image,
         points = FeaturePoints.EMPTY,
@@ -88,6 +100,19 @@ class CaptureViewModelTest {
         trackingFailure = failure,
     )
 
+    private class MapStore : PreferenceStore {
+        val values = mutableMapOf<String, Any>()
+        override fun getBoolean(key: String, default: Boolean) = values[key] as? Boolean ?: default
+        override fun putBoolean(key: String, value: Boolean) {
+            values[key] = value
+        }
+        override fun getString(key: String) = values[key] as? String
+        override fun putString(key: String, value: String) {
+            values[key] = value
+        }
+    }
+
+    private val settings = SettingsPreferences(MapStore())
     private val tracker = FakeTracker()
     private val store = ViewModelStore()
     private val background = StandardTestDispatcher()
@@ -109,7 +134,8 @@ class CaptureViewModelTest {
         store,
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = CaptureViewModel(tracker, recorder) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                CaptureViewModel(tracker, recorder, settings) as T
         },
     )[CaptureViewModel::class.java]
 
@@ -281,5 +307,126 @@ class CaptureViewModelTest {
         assertEquals(0, tracker.releases)
         store.clear()
         assertEquals(1, tracker.releases)
+    }
+
+    private val ms = 1_000_000L
+
+    /** A tracked frame [i] 33 ms apart, standing still at the origin. */
+    private fun still(i: Int, image: FakeImage = FakeImage()) =
+        frame(TrackingState.TRACKING, TrackingFailure.NONE, image, timestampNs = (i + 1) * 33 * ms)
+
+    @Test
+    fun `stages go starting, aim, capturing, paused`() {
+        val vm = viewModel()
+        tracker.mutableStatus.value = PoseSourceStatus.Running
+        assertEquals(CaptureStage.STARTING, vm.uiState.value.stage)
+        assertEquals(Instruction.STARTING, vm.uiState.value.instruction)
+        tracker.channel.trySend(still(0))
+        assertEquals(CaptureStage.AIM, vm.uiState.value.stage)
+        assertEquals(StatusPill.TRACKING, vm.uiState.value.status)
+        vm.onIntent(CaptureIntent.Record)
+        assertEquals(CaptureStage.CAPTURING, vm.uiState.value.stage)
+        assertEquals(Instruction.WALK, vm.uiState.value.instruction)
+        vm.onIntent(CaptureIntent.Pause)
+        assertEquals(CaptureStage.PAUSED, vm.uiState.value.stage)
+        vm.onIntent(CaptureIntent.Resume)
+        assertEquals(CaptureStage.CAPTURING, vm.uiState.value.stage)
+    }
+
+    @Test
+    fun `a tap sets the subject and the reticle sits on it`() {
+        val vm = viewModel()
+        vm.onIntent(CaptureIntent.ViewSize(1080, 2400))
+        tracker.channel.trySend(
+            frame(
+                TrackingState.TRACKING,
+                TrackingFailure.NONE,
+                pose = CameraPose(Quat.IDENTITY, Vec3.ZERO),
+            ),
+        )
+        assertFalse(vm.uiState.value.subjectSet)
+        vm.onIntent(CaptureIntent.Tap(300f, 800f))
+        assertTrue(vm.uiState.value.subjectSet)
+        val reticle = vm.uiState.value.reticle!!
+        assertEquals(300f, reticle.x, 0.5f)
+        assertEquals(800f, reticle.y, 0.5f)
+    }
+
+    @Test
+    fun `a live warning shows, stops frames being kept and plays a reject haptic`() {
+        val vm = viewModel()
+        val haptics = mutableListOf<CaptureHaptic>()
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        vm.haptics.onEach { haptics += it }.launchIn(scope)
+        tracker.channel.trySend(still(0))
+        vm.onIntent(CaptureIntent.Record)
+        assertEquals(listOf(CaptureHaptic.CONFIRM), haptics)
+        tracker.channel.trySend(frame(TrackingState.PAUSED, TrackingFailure.NONE, timestampNs = 66 * ms))
+        assertEquals(GuidanceWarning.LOST, vm.uiState.value.warning)
+        assertEquals(null, vm.uiState.value.instruction)
+        assertEquals(listOf(CaptureHaptic.CONFIRM, CaptureHaptic.REJECT), haptics)
+        scope.cancel()
+    }
+
+    @Test
+    fun `haptics stay silent when Settings turns them off`() {
+        settings.setHaptics(false)
+        val vm = viewModel()
+        val haptics = mutableListOf<CaptureHaptic>()
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        vm.haptics.onEach { haptics += it }.launchIn(scope)
+        vm.onIntent(CaptureIntent.Record)
+        assertEquals(emptyList<CaptureHaptic>(), haptics)
+        scope.cancel()
+    }
+
+    @Test
+    fun `elapsed time counts while capturing and not while paused`() {
+        val vm = viewModel()
+        tracker.channel.trySend(still(0))
+        vm.onIntent(CaptureIntent.Record)
+        for (i in 1..3) tracker.channel.trySend(still(i))
+        assertEquals(99L, vm.uiState.value.elapsedMs)
+        vm.onIntent(CaptureIntent.Pause)
+        for (i in 4..6) tracker.channel.trySend(still(i))
+        assertEquals(99L, vm.uiState.value.elapsedMs)
+    }
+
+    @Test
+    fun `close with nothing captured leaves at once`() {
+        val vm = viewModel()
+        var left = 0
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        vm.leave.onEach { left++ }.launchIn(scope)
+        vm.onIntent(CaptureIntent.Close)
+        assertEquals(1, left)
+        assertFalse(vm.uiState.value.confirmDiscard)
+        scope.cancel()
+    }
+
+    @Test
+    fun `close with frames captured asks, keep scanning stays, discard cancels and leaves`() {
+        val vm = viewModel()
+        var left = 0
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        vm.leave.onEach { left++ }.launchIn(scope)
+        vm.onIntent(CaptureIntent.Record)
+        background.scheduler.advanceUntilIdle()
+        // A keyframe needs a sharp, tracked image; two identical frames are enough for the first one.
+        tracker.channel.trySend(still(0))
+        background.scheduler.advanceUntilIdle()
+        assertTrue(vm.uiState.value.framesKept > 0, "${vm.uiState.value.recorder}")
+        vm.onIntent(CaptureIntent.Close)
+        assertTrue(vm.uiState.value.confirmDiscard)
+        assertEquals(0, left)
+        vm.onIntent(CaptureIntent.KeepScanning)
+        assertFalse(vm.uiState.value.confirmDiscard)
+        assertTrue(vm.uiState.value.recorder is RecorderState.Recording)
+        vm.onIntent(CaptureIntent.Close)
+        vm.onIntent(CaptureIntent.Discard)
+        background.scheduler.advanceUntilIdle()
+        assertEquals(1, left)
+        assertEquals(RecorderState.Idle, vm.uiState.value.recorder)
+        scope.cancel()
     }
 }

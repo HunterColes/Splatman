@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.capture.recording
 
 import com.huntercoles.splatman.capture.tracking.FeaturePoints
+import com.huntercoles.splatman.capture.tracking.LumaPlane
 import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackingState
 import com.huntercoles.splatman.splat.capture.KeyframePolicy
@@ -9,6 +10,7 @@ import com.huntercoles.splatman.splat.capture.SeedAccumulator
 import com.huntercoles.splatman.splat.capture.Sharpness
 import com.huntercoles.splatman.splat.io.bundle.BundleFrameInput
 import com.huntercoles.splatman.splat.io.bundle.CaptureBundleWriter
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.CameraPose
 import com.huntercoles.splatman.splat.model.DepthImage
@@ -38,12 +40,15 @@ sealed interface RecorderState {
     /** Not recording; nothing kept. */
     data object Idle : RecorderState
 
-    /** Taking keyframes: [coverage] is [Coverage.fraction], [droppedFrames] frames skipped to keep up. */
+    /**
+     * Taking keyframes: [coverage] is [Coverage.fraction] of [cells], [droppedFrames] frames skipped to keep up.
+     */
     data class Recording(
         val keyframes: Int,
         val coverage: Float,
         val seedPoints: Int,
         val droppedFrames: Int,
+        val cells: CoverageCells = CoverageCells(),
     ) : RecorderState
 
     /** Writing the bundle of [keyframes] keyframes. */
@@ -89,42 +94,57 @@ class CaptureRecorder(
     private val selector = KeyframeSelector(policy)
     private var seeds: SeedAccumulator? = null
     private val coverage = Coverage()
+    private val mutableMeanLuma = MutableStateFlow<Float?>(null)
     private val kept = ArrayList<BundleFrameInput>()
     private val dropped = AtomicInteger()
 
+    /**
+     * Mean luma (0..255) of the latest frame the worker read while recording, kept or not; null before one. The
+     * exposure signal of the capture guidance.
+     */
+    val meanLuma: StateFlow<Float?> = mutableMeanLuma.asStateFlow()
+
     @Volatile
-    private var inbox: Channel<TrackedFrame>? = null
+    private var inbox: Channel<Submitted>? = null
     private var workerJob: Job? = null
     private var controlJob: Job? = null
 
     /** True between [start] and [stop] or [cancel]. */
     val isRecording: Boolean get() = inbox != null
 
-    /** Starts a new recording; false (and nothing changes) while recording or while a save or cancel runs. */
-    fun start(): Boolean {
+    /**
+     * Starts a new recording whose coverage is measured round [subject] (world frame W); without one, the point
+     * [DEFAULT_SUBJECT_M] in front of the first keyframe. False (and nothing changes) while recording or while a save
+     * or cancel runs.
+     */
+    fun start(subject: Vec3? = null): Boolean {
         if (inbox != null || controlJob?.isActive == true) return false
-        val channel = Channel<TrackedFrame>(capacity = 1, onUndeliveredElement = { it.close() })
+        val channel = Channel<Submitted>(capacity = 1, onUndeliveredElement = { it.frame.close() })
         inbox = channel
         dropped.set(0)
+        mutableMeanLuma.value = null
         mutableState.value = RecorderState.Recording(keyframes = 0, coverage = 0f, seedPoints = 0, droppedFrames = 0)
         workerJob = scope.launch(worker) {
             selector.reset()
-            coverage.reset()
+            coverage.reset(subject)
             kept.clear()
             (seeds ?: SeedAccumulator().also { seeds = it }).clear()
-            for (frame in channel) process(frame)
+            for (item in channel) process(item)
         }
         return true
     }
 
-    /** Takes ownership of [frame]: queues it for the worker, or closes it now when not recording or still busy. */
-    fun submit(frame: TrackedFrame) {
+    /**
+     * Takes ownership of [frame]: queues it for the worker, or closes it now when not recording or still busy. A
+     * frame with [keep] false is only measured ([meanLuma]), never kept (paused, or a warning is live).
+     */
+    fun submit(frame: TrackedFrame, keep: Boolean = true) {
         val channel = inbox
         if (channel == null) {
             frame.close()
             return
         }
-        if (!channel.trySend(frame).isSuccess) {
+        if (!channel.trySend(Submitted(frame, keep)).isSuccess) {
             dropped.incrementAndGet()
             frame.close()
         }
@@ -172,9 +192,10 @@ class CaptureRecorder(
         if (inbox != null) cancel()
     }
 
-    private fun process(frame: TrackedFrame) {
+    private fun process(submitted: Submitted) {
+        val frame = submitted.frame
         val candidate = try {
-            frame.use { select(it) }
+            frame.use { select(it, submitted.keep) }
         } catch (e: IllegalArgumentException) {
             skip(e)
         } catch (e: IllegalStateException) {
@@ -194,6 +215,7 @@ class CaptureRecorder(
             coverage = coverage.fraction,
             seedPoints = seeds?.count ?: 0,
             droppedFrames = dropped.get(),
+            cells = coverage.cells,
         )
     }
 
@@ -204,10 +226,11 @@ class CaptureRecorder(
     }
 
     /** Sharpness and the keyframe policy; for a keyframe, copies out everything kept so the frame can be closed. */
-    private fun select(frame: TrackedFrame): Candidate? {
-        if (frame.trackingState != TrackingState.TRACKING) return null
+    private fun select(frame: TrackedFrame, keep: Boolean): Candidate? {
         val image = frame.image ?: return null
         val luma = image.luma()
+        mutableMeanLuma.value = meanLuma(luma)
+        if (!keep || frame.trackingState != TrackingState.TRACKING) return null
         val sharpness = Sharpness.laplacianVariance(luma.bytes, luma.width, luma.height, luma.rowStride)
         if (!selector.offer(frame.pose, trackingOk = true, sharpness = sharpness)) return null
         return Candidate(frame.timestampNs, frame.pose, frame.intrinsics, image.toRgb(), frame.points, frame.depth)
@@ -225,6 +248,7 @@ class CaptureRecorder(
         val acc = checkNotNull(seeds)
         acc.addPoints(c.points.positions, c.points.confidence, c.points.count, sized.intrinsics, c.pose, sized.image)
         c.depth?.let { acc.addDepth(it, sized.intrinsics, c.pose, sized.image) }
+        if (coverage.subject == null) coverage.reset(subjectAhead(c.pose))
         coverage.add(c.pose)
         kept += BundleFrameInput(c.timestampNs, sized.intrinsics, c.pose, jpeg, c.depth)
     }
@@ -269,6 +293,9 @@ class CaptureRecorder(
         return id
     }
 
+    /** A frame queued for the worker and whether it may be kept. */
+    private class Submitted(val frame: TrackedFrame, val keep: Boolean)
+
     /** What a keyframe keeps of its frame once the camera image is closed. */
     private class Candidate(
         val timestampNs: Long,
@@ -286,6 +313,33 @@ class CaptureRecorder(
         /** Keyframe image size, long side by short side, pixels. */
         const val IMAGE_LONG_SIDE = 640
         const val IMAGE_SHORT_SIDE = 480
+
+        /** Without a subject, coverage is measured round the point this far in front of the first keyframe, metres. */
+        const val DEFAULT_SUBJECT_M = 0.6f
+
+        private const val LUMA_STEP = 8
+        private val LOOK = Vec3(0f, 0f, -1f)
+
+        private fun subjectAhead(pose: CameraPose): Vec3 =
+            pose.translationM + pose.rotation.normalized().rotate(LOOK) * DEFAULT_SUBJECT_M
+
+        /** Mean of every [LUMA_STEP]th pixel of every [LUMA_STEP]th row, 0..255. */
+        internal fun meanLuma(plane: LumaPlane): Float {
+            var sum = 0L
+            var n = 0
+            var y = 0
+            while (y < plane.height) {
+                var x = 0
+                val row = y * plane.rowStride
+                while (x < plane.width) {
+                    sum += plane.bytes[row + x].toInt() and 0xFF
+                    n++
+                    x += LUMA_STEP
+                }
+                y += LUMA_STEP
+            }
+            return sum.toFloat() / n
+        }
     }
 }
 

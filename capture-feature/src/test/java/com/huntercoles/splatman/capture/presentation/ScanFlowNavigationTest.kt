@@ -70,6 +70,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import com.huntercoles.splatman.core.preferences.PreferenceStore
+import com.huntercoles.splatman.core.preferences.SettingsPreferences
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.cos
@@ -122,7 +124,8 @@ class ScanFlowNavigationTest {
             p[o++] = 0.05f * z
         }
         return TrackedFrame(
-            timestampNs = 1_000_000L * i,
+            // 0.3 s apart: 18 degrees a frame is 60 degrees a second, slow enough that no Slow down warning holds frames.
+            timestampNs = 300_000_000L * i,
             trackingState = TrackingState.TRACKING,
             pose = CameraPose(
                 Quat.fromAxisAngle(Vec3(0f, 1f, 0f), theta),
@@ -224,7 +227,15 @@ class ScanFlowNavigationTest {
             scansRoot, File(dir, "recording"), JpegEncoder { _, _ -> ByteArray(4) }, worker, worker,
             newScanId = { "scan_e2e" },
         )
-        val capture = viewModel { CaptureViewModel(tracker, recorder) }
+        val settings = SettingsPreferences(
+            object : PreferenceStore {
+                override fun getBoolean(key: String, default: Boolean) = default
+                override fun putBoolean(key: String, value: Boolean) = Unit
+                override fun getString(key: String): String? = null
+                override fun putString(key: String, value: String) = Unit
+            },
+        )
+        val capture = viewModel { CaptureViewModel(tracker, recorder, settings) }
         val saved = mutableListOf<String>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { capture.openProcessing.collect { saved += it } }
 

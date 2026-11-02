@@ -4,7 +4,10 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -23,7 +26,7 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * #41's Record / Stop / Cancel end to end on a device without ARCore: [FakeCaptureTrackerModule] swaps the ARCore
+ * #41's Record / Stop / Cancel end to end, as #16's Start capture / Finish / Close and Discard on a device without ARCore: [FakeCaptureTrackerModule] swaps the ARCore
  * tracker for [FakeCaptureTracker], which walks a circle. Each test starts on the Capture screen with the tracker
  * running and compares `files/scans/` with what was there before it (earlier tests may have left scans).
  */
@@ -50,16 +53,19 @@ class RecordStopCancelTest {
         compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
         scansBefore = scanFolders()
         compose.onNodeWithText(SCAN, useUnmergedTree = true).performClick() // the label sits inside the button
-        compose.waitUntilAtLeastOneExists(hasText(RECORD) and hasClickAction(), TIMEOUT_MS)
+        compose.waitUntilAtLeastOneExists(START_ENABLED, TIMEOUT_MS)
     }
 
     @Test
-    fun a1_recordThenStopSavesALoadableBundleWithALibraryCard() {
-        compose.onNodeWithText(RECORD).performClick()
+    fun a1_recordThenFinishSavesALoadableBundleWithALibraryCard() {
+        compose.onNode(START_ENABLED).performClick()
         val first = waitForProgress { it.keyframes > 0 && it.coveragePercent > 0 }
         val later = waitForProgress { it.keyframes > first.keyframes && it.coveragePercent > first.coveragePercent }
 
-        compose.onNodeWithText(STOP).performClick()
+        // Finish stays locked until the coverage threshold: the fake rises after its first turn.
+        compose.onNode(FINISH).assertIsNotEnabled()
+        compose.waitUntilAtLeastOneExists(FINISH and isEnabled(), FINISH_TIMEOUT_MS)
+        compose.onNode(FINISH).performClick()
         val id = waitForNewScans(1).single()
 
         val folder = File(scansDir, id)
@@ -71,21 +77,23 @@ class RecordStopCancelTest {
         )
         assertTrue("recording/ still holds ${stagingEntries()}", stagingEntries().isEmpty())
 
-        // Stop opens Processing (in place of Capture); Back from it lands on the library, which lists the scan by
+        // Finish opens Processing (in place of Capture); Back from it lands on the library, which lists the scan by
         // its folder name.
-        compose.waitUntil(TIMEOUT_MS) { !exists(hasText(STOP)) && !exists(hasText(RECORD)) }
+        compose.waitUntil(TIMEOUT_MS) { !exists(FINISH) && !exists(hasContentDescription(START)) }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
         compose.waitUntilAtLeastOneExists(hasText(id), TIMEOUT_MS)
     }
 
     @Test
-    fun a2_recordThenCancelLeavesNoFolderUnderScansOrRecording() {
-        compose.onNodeWithText(RECORD).performClick()
+    fun a2_recordThenCloseAndDiscardLeavesNoFolderUnderScansOrRecording() {
+        compose.onNode(START_ENABLED).performClick()
         waitForProgress { it.keyframes > 0 }
 
-        compose.onNodeWithText(CANCEL).performClick()
-        compose.waitUntilAtLeastOneExists(hasText(RECORD) and hasClickAction(), TIMEOUT_MS)
+        compose.onNode(hasContentDescription(CLOSE)).performClick()
+        compose.waitUntilAtLeastOneExists(hasText(DISCARD) and hasClickAction(), TIMEOUT_MS)
+        compose.onNode(hasText(DISCARD) and hasClickAction()).performClick()
+        compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
         Thread.sleep(SETTLE_MS) // a save that wrongly ran would have finished by now
 
         assertEquals(scansBefore, scanFolders())
@@ -93,12 +101,12 @@ class RecordStopCancelTest {
     }
 
     @Test
-    fun a2_doubleTapStopWritesOneBundle() {
-        compose.onNodeWithText(RECORD).performClick()
-        waitForProgress { it.keyframes > 0 }
+    fun a2_doubleTapFinishWritesOneBundle() {
+        compose.onNode(START_ENABLED).performClick()
+        compose.waitUntilAtLeastOneExists(FINISH and isEnabled(), FINISH_TIMEOUT_MS)
 
-        // Both taps land in the same frame, before the screen can swap Stop for the saving state.
-        val onClick = compose.onNodeWithText(STOP).fetchSemanticsNode().config[SemanticsActions.OnClick].action
+        // Both taps land in the same frame, before the screen can swap Finish for the saving state.
+        val onClick = compose.onNode(FINISH).fetchSemanticsNode().config[SemanticsActions.OnClick].action
         compose.runOnUiThread {
             onClick?.invoke()
             onClick?.invoke()
@@ -113,7 +121,7 @@ class RecordStopCancelTest {
 
     private data class Progress(val keyframes: Int, val coveragePercent: Int)
 
-    /** Waits until the recording line ("n keyframes · p% around") shows a value matching [ok], and returns it. */
+    /** Waits until the caption ("m:ss · n frames") and the ring ("p% covered") show values matching [ok]. */
     private fun waitForProgress(ok: (Progress) -> Boolean): Progress {
         var seen: Progress? = null
         compose.waitUntil(TIMEOUT_MS) {
@@ -124,12 +132,15 @@ class RecordStopCancelTest {
     }
 
     private fun progress(): Progress? {
-        val texts = compose.onAllNodes(hasText(PROGRESS_MARK, substring = true)).fetchSemanticsNodes()
+        val frames = texts(FRAMES_MARK).firstNotNullOfOrNull { FRAMES.find(it) } ?: return null
+        val covered = texts(COVERED_MARK).firstNotNullOfOrNull { COVERED.find(it) } ?: return null
+        return Progress(frames.groupValues[1].toInt(), covered.groupValues[1].toInt())
+    }
+
+    private fun texts(mark: String): List<String> =
+        compose.onAllNodes(hasText(mark, substring = true), useUnmergedTree = true).fetchSemanticsNodes()
             .flatMap { it.config.getOrElse(SemanticsProperties.Text) { emptyList() } }
             .map { it.text }
-        val match = texts.firstNotNullOfOrNull { PROGRESS.find(it) } ?: return null
-        return Progress(match.groupValues[1].toInt(), match.groupValues[2].toInt())
-    }
 
     /** Waits until [count] scan folders not there before the test exist, each with its transforms.json. */
     private fun waitForNewScans(count: Int): Set<String> {
@@ -153,11 +164,16 @@ class RecordStopCancelTest {
         const val ONBOARDING_START = "Skip"
         const val LIBRARY = "Library"
         const val SCAN = "Scan"
-        const val RECORD = "Record"
-        const val STOP = "Stop"
-        const val CANCEL = "Cancel"
-        const val PROGRESS_MARK = " keyframes · "
-        val PROGRESS = Regex("""(\d+) keyframes · (\d+)% around""")
+        const val START = "Start capture"
+        const val CLOSE = "Close"
+        const val DISCARD = "Discard"
+        val START_ENABLED = hasContentDescription(START) and isEnabled()
+        val FINISH = hasText("Finish") and hasClickAction()
+        const val FRAMES_MARK = " frames"
+        val FRAMES = Regex("""\d+:\d\d · (\d+) frames""")
+        const val COVERED_MARK = "% covered"
+        val COVERED = Regex("""(\d+)% covered""")
+        const val FINISH_TIMEOUT_MS = 60_000L
         const val SCANS = "scans"
         const val RECORDING = "recording"
         const val TRANSFORMS = "transforms.json"

@@ -6,25 +6,32 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.VideocamOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,14 +39,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -48,9 +63,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.capture.R
 import com.huntercoles.splatman.capture.preview.CameraPreview
 import com.huntercoles.splatman.capture.preview.PreviewTarget
-import com.huntercoles.splatman.capture.recording.RecorderState
+import com.huntercoles.splatman.capture.tracking.CameraPermission
 import com.huntercoles.splatman.capture.tracking.arcore.ArCoreAvailability
 import com.huntercoles.splatman.capture.tracking.rememberCameraPermissionRequest
+import com.huntercoles.splatman.core.design.SplatColors
+import com.huntercoles.splatman.core.design.SplatDimens
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -58,9 +75,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val PREVIEW_DETACH_TIMEOUT_MS = 1_000L
 
 /**
- * The capture route: live ARCore camera full screen with a tracking hint, or the reason it cannot run (unsupported,
- * install needed, permission, failure). Portrait-locked while shown. Plain Material 3; #4's design restyles it.
- * A saved scan goes to [onScanSaved] (its id), which opens Processing.
+ * The capture route (docs/design/screens/capture.md): live ARCore camera full screen with the guidance overlay
+ * ([CaptureOverlay]), or the reason it cannot run (permission, unsupported, install needed, failure). Always dark and
+ * portrait-locked while shown. Close and system Back go through the view model (it asks before discarding frames);
+ * a saved scan goes to [onScanSaved] (its id), which opens Processing.
  */
 @Composable
 fun CaptureScreen(
@@ -70,13 +88,18 @@ fun CaptureScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val currentOnScanSaved by rememberUpdatedState(onScanSaved)
+    val currentOnBack by rememberUpdatedState(onBack)
     LaunchedEffect(viewModel) { viewModel.openProcessing.collect { currentOnScanSaved(it) } }
+    LaunchedEffect(viewModel) { viewModel.leave.collect { currentOnBack() } }
+    val view = LocalView.current
+    LaunchedEffect(viewModel) { viewModel.haptics.collect { view.play(it) } }
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val availability = remember(context) { ArCoreAvailability(context) }
     val currentState by rememberUpdatedState(state)
 
     LockPortrait(activity)
+    BackHandler { viewModel.onIntent(CaptureIntent.Close) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
@@ -105,23 +128,38 @@ fun CaptureScreen(
         viewModel.onIntent(CaptureIntent.PermissionResult(granted))
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        CaptureContent(state, viewModel, requestPermission, onInstall = {
-            val answer = activity?.let { availability.requestInstall(it, userRequested = true) }
-            if (answer != null) viewModel.onIntent(CaptureIntent.InstallResult(answer))
-        }, onOpenSettings = { context.openAppSettings() }, onBack = onBack)
+    Surface(modifier = Modifier.fillMaxSize(), color = SplatColors.ViewerBackground) {
+        CaptureContent(
+            state = state,
+            viewModel = viewModel,
+            requestPermission = requestPermission,
+            permanentlyDenied = {
+                activity != null &&
+                    !ActivityCompat.shouldShowRequestPermissionRationale(activity, CameraPermission.NAME)
+            },
+            onInstall = {
+                val answer = activity?.let { availability.requestInstall(it, userRequested = true) }
+                if (answer != null) viewModel.onIntent(CaptureIntent.InstallResult(answer))
+            },
+            onOpenSettings = { context.openAppSettings() },
+            onBack = { viewModel.onIntent(CaptureIntent.Close) },
+        )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CaptureContent(
     state: CaptureUiState,
     viewModel: CaptureViewModel,
     requestPermission: () -> Unit,
+    permanentlyDenied: () -> Boolean,
     onInstall: () -> Unit,
     onOpenSettings: () -> Unit,
     onBack: () -> Unit,
 ) {
+    var help by rememberSaveable { mutableStateOf(false) }
+    val fontScale = LocalDensity.current.fontScale
     Box(modifier = Modifier.fillMaxSize()) {
         when (val phase = state.phase) {
             is CapturePhase.Preview -> {
@@ -129,52 +167,93 @@ private fun CaptureContent(
                     onTarget = { target -> attachPreview(viewModel, target) },
                     modifier = Modifier.fillMaxSize(),
                 )
-                Column(
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    TrackingHintChip(hint = phase.hint)
-                    RecordControls(
-                        recorder = state.recorder,
-                        canRecord = !phase.paused,
-                        onIntent = viewModel::onIntent,
-                    )
+                        .fillMaxSize()
+                        .onSizeChanged { viewModel.onIntent(CaptureIntent.ViewSize(it.width, it.height)) }
+                        .pointerInput(viewModel) {
+                            detectTapGestures { viewModel.onIntent(CaptureIntent.Tap(it.x, it.y)) }
+                        },
+                )
+                CaptureOverlay(state, fontScale, viewModel::onIntent, onHelp = { help = true })
+            }
+            CapturePhase.Checking -> Message(R.string.cap_starting, onBack = onBack) {
+                CircularProgressIndicator(modifier = Modifier.padding(top = SplatDimens.SpacingDefault))
+            }
+            CapturePhase.Unsupported ->
+                Message(R.string.ar_unsupported_body, title = R.string.ar_unsupported_title, onBack = onBack)
+            CapturePhase.InstallNeeded ->
+                Message(R.string.ar_install_body, title = R.string.ar_install_title, onBack = onBack) {
+                    Button(onClick = onInstall, modifier = Modifier.padding(top = SplatDimens.SpacingDefault)) {
+                        Text(stringResource(R.string.ar_install_action))
+                    }
                 }
-            }
-            CapturePhase.Checking -> Message(R.string.capture_checking) {
-                CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
-            }
-            CapturePhase.Unsupported -> Message(R.string.capture_unsupported)
-            CapturePhase.InstallNeeded -> Message(R.string.capture_install_needed) {
-                Button(onClick = onInstall, modifier = Modifier.padding(top = 16.dp)) {
-                    Text(stringResource(R.string.capture_install))
-                }
-            }
             CapturePhase.PermissionNeeded -> {
                 LaunchedEffect(Unit) { requestPermission() }
-                Message(R.string.capture_permission_needed)
+                PermissionMessage(permanent = false, requestPermission, onOpenSettings, onBack)
             }
-            CapturePhase.PermissionDenied -> Message(R.string.capture_permission_denied) {
-                Button(onClick = requestPermission, modifier = Modifier.padding(top = 16.dp)) {
-                    Text(stringResource(R.string.capture_permission_allow))
-                }
-                TextButton(onClick = onOpenSettings) {
-                    Text(stringResource(R.string.capture_permission_settings))
-                }
-            }
-            is CapturePhase.Failed -> Message(R.string.capture_failed, phase.reason) {
+            CapturePhase.PermissionDenied ->
+                PermissionMessage(permanent = permanentlyDenied(), requestPermission, onOpenSettings, onBack)
+            is CapturePhase.Failed -> Message(R.string.capture_failed, phase.reason, onBack = onBack) {
                 Button(
                     onClick = { viewModel.onIntent(CaptureIntent.Retry) },
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
                 ) { Text(stringResource(R.string.capture_retry)) }
             }
         }
-        IconButton(onClick = onBack, modifier = Modifier.statusBarsPadding().padding(4.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.capture_back))
+    }
+    if (help) {
+        ModalBottomSheet(onDismissRequest = { help = false }) { Tips() }
+    }
+    if (state.confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { viewModel.onIntent(CaptureIntent.KeepScanning) },
+            title = { Text(stringResource(R.string.cap_discard_title)) },
+            text = { Text(stringResource(R.string.cap_discard_body)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.onIntent(CaptureIntent.Discard) }) {
+                    Text(stringResource(R.string.cap_discard_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.onIntent(CaptureIntent.KeepScanning) }) {
+                    Text(stringResource(R.string.cap_keep_scanning))
+                }
+            },
+        )
+    }
+}
+
+/** The help sheet: the three onboarding tips. */
+@Composable
+private fun Tips() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = SplatDimens.SpacingLarge, vertical = SplatDimens.SpacingDefault),
+        verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingDefault),
+    ) {
+        Text(stringResource(R.string.onb_tips_title), style = MaterialTheme.typography.titleLarge)
+        for (tip in listOf(R.string.onb_tip_slow, R.string.onb_tip_around, R.string.onb_tip_light)) {
+            Text(stringResource(tip), style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
+private fun PermissionMessage(
+    permanent: Boolean,
+    requestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Message(R.string.cap_permission_body, title = R.string.cap_permission_title, icon = true, onBack = onBack) {
+        Button(
+            onClick = if (permanent) onOpenSettings else requestPermission,
+            modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
+        ) {
+            Text(stringResource(if (permanent) R.string.cap_permission_settings else R.string.cap_permission_allow))
         }
     }
 }
@@ -185,108 +264,61 @@ private fun attachPreview(viewModel: CaptureViewModel, target: PreviewTarget?) {
     if (target == null) runBlocking { withTimeoutOrNull(PREVIEW_DETACH_TIMEOUT_MS) { job.join() } }
 }
 
-/** Record, then the live keyframe count and coverage with Stop and Cancel, then how the save went. */
-@Composable
-private fun RecordControls(recorder: RecorderState, canRecord: Boolean, onIntent: (CaptureIntent) -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        when (recorder) {
-            is RecorderState.Recording -> {
-                StatusText(
-                    stringResource(
-                        R.string.capture_recording_progress,
-                        recorder.keyframes,
-                        (recorder.coverage * 100).toInt(),
-                    ),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { onIntent(CaptureIntent.Cancel) }) {
-                        Text(stringResource(R.string.capture_cancel))
-                    }
-                    Button(onClick = { onIntent(CaptureIntent.Stop) }) {
-                        Text(stringResource(R.string.capture_stop))
-                    }
-                }
-            }
-            is RecorderState.Saving -> {
-                StatusText(stringResource(R.string.capture_saving, recorder.keyframes))
-                OutlinedButton(onClick = { onIntent(CaptureIntent.Cancel) }) {
-                    Text(stringResource(R.string.capture_cancel))
-                }
-            }
-            else -> {
-                when (recorder) {
-                    is RecorderState.Saved -> StatusText(stringResource(R.string.capture_saved, recorder.keyframes))
-                    RecorderState.NothingRecorded -> StatusText(stringResource(R.string.capture_nothing_recorded))
-                    is RecorderState.Failed -> StatusText(stringResource(R.string.capture_save_failed, recorder.reason))
-                    else -> Unit
-                }
-                Button(onClick = { onIntent(CaptureIntent.Record) }, enabled = canRecord) {
-                    Text(stringResource(R.string.capture_record))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusText(text: String) {
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-    }
-}
-
-@Composable
-private fun TrackingHintChip(hint: TrackingHint, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Text(
-            text = stringResource(hint.label()),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-    }
-}
-
-@StringRes
-private fun TrackingHint.label(): Int = when (this) {
-    TrackingHint.TRACKING -> R.string.capture_hint_tracking
-    TrackingHint.LOOKING_FOR_SURFACES -> R.string.capture_hint_looking
-    TrackingHint.MOVE_SLOWER -> R.string.capture_hint_move_slower
-    TrackingHint.MORE_LIGHT -> R.string.capture_hint_more_light
-    TrackingHint.MORE_DETAIL -> R.string.capture_hint_more_detail
-    TrackingHint.CAMERA_IN_USE -> R.string.capture_hint_camera_in_use
-    TrackingHint.TRACKING_LOST -> R.string.capture_hint_lost
-}
-
+/** A centred message on the dark screen, with its [actions] and then a Back text button. */
 @Composable
 private fun Message(
     @StringRes text: Int,
     vararg args: Any,
+    @StringRes title: Int? = null,
+    icon: Boolean = false,
+    onBack: () -> Unit,
     actions: @Composable ColumnScope.() -> Unit = {},
 ) {
+    val onScrim = SplatColors.OverlayOnScrim
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(SplatDimens.SpacingXLarge),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        if (icon) {
+            Icon(Icons.Rounded.VideocamOff, contentDescription = null, tint = onScrim, modifier = Modifier.size(48.dp))
+        }
+        if (title != null) {
+            Text(
+                stringResource(title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = onScrim,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
+            )
+        }
         Text(
             text = stringResource(text, *args),
             style = MaterialTheme.typography.bodyLarge,
+            color = onScrim,
             textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = SplatDimens.SpacingSmall),
         )
         actions()
+        TextButton(onClick = onBack) { Text(stringResource(R.string.capture_back)) }
     }
+}
+
+/** CONFIRM or REJECT on API 30+, else a long press (docs/design/tokens.md, Haptics). */
+private fun View.play(h: CaptureHaptic) {
+    val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        when (h) {
+            CaptureHaptic.CONFIRM -> HapticFeedbackConstants.CONFIRM
+            CaptureHaptic.REJECT -> HapticFeedbackConstants.REJECT
+        }
+    } else {
+        HapticFeedbackConstants.LONG_PRESS
+    }
+    performHapticFeedback(constant)
 }
 
 /** Portrait while the capture screen is shown (the tracker and preview assume it); restored when it leaves. */

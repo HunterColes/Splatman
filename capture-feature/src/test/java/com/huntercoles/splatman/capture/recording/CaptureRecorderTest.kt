@@ -156,14 +156,16 @@ class CaptureRecorderTest {
             val recorder = recorder(encoder)
             // 0.3 m radius: one 7.2 degree step moves 3.8 cm (below 5 cm and 10 degrees), two steps move 7.5 cm.
             val source = CirclePoseSource(count = 50, radiusM = 0.3f)
-            assertTrue(recorder.start())
+            assertTrue(recorder.start(subject = Vec3.ZERO))
             runCurrent()
             feed(recorder, source)
             advanceUntilIdle()
 
             val live = recorder.state.value as RecorderState.Recording
             assertEquals(25, live.keyframes)
-            assertEquals(1f, live.coverage)
+            // A level circle round the subject fills the whole level band and nothing else.
+            assertEquals(CoverageCells(level = (1 shl Coverage.SEGMENTS) - 1), live.cells)
+            assertEquals(1f / 3, live.coverage, 1e-6f)
             assertEquals(0, live.droppedFrames)
             assertTrue(live.seedPoints > 27, "feature points and depth both seed: ${live.seedPoints}")
 
@@ -296,5 +298,38 @@ class CaptureRecorderTest {
 
         // 36 degrees a step: every frame is a keyframe, and none carry over from the first recording.
         assertEquals(10, (recorder.state.value as RecorderState.Recording).keyframes)
+    }
+
+    @Test
+    fun `frames submitted with keep false are measured but never kept`() = runTest {
+        val recorder = recorder()
+        recorder.start(subject = Vec3.ZERO)
+        runCurrent()
+        CirclePoseSource(count = 10, radiusM = 0.3f).frames.collect {
+            recorder.submit(it, keep = false)
+            runCurrent()
+        }
+        val live = recorder.state.value as RecorderState.Recording
+        assertEquals(0, live.keyframes)
+        assertEquals(CoverageCells(), live.cells)
+        assertNotNull(recorder.meanLuma.value)
+    }
+
+    @Test
+    fun `without a subject coverage is measured round the point in front of the first keyframe`() = runTest {
+        val recorder = recorder()
+        // Radius 0.6 m, the default subject distance: the derived subject is the circle's centre.
+        recorder.start()
+        runCurrent()
+        feed(recorder, CirclePoseSource(count = 50, radiusM = CaptureRecorder.DEFAULT_SUBJECT_M))
+        val live = recorder.state.value as RecorderState.Recording
+        assertEquals(Coverage.SEGMENTS, live.cells.count(CoverageBand.LEVEL))
+        assertEquals(1, live.cells.bandsTouched)
+    }
+
+    @Test
+    fun `mean luma samples the plane`() {
+        val plane = LumaPlane(16, 16, 16, ByteArray(256) { if (it < 128) 0 else 200.toByte() })
+        assertEquals(100f, CaptureRecorder.meanLuma(plane))
     }
 }

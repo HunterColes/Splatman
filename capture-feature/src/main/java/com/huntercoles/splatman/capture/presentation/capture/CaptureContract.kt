@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.capture.presentation.capture
 
+import com.huntercoles.splatman.capture.recording.CoverageCells
 import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
@@ -20,15 +21,45 @@ sealed interface CaptureIntent {
     /** Try to open the tracker again (after a failure or a refused permission). */
     data object Retry : CaptureIntent
 
-    /** Start recording a scan. */
+    /** The preview view is [width] x [height] pixels (for the tap ray and the reticle). */
+    data class ViewSize(val width: Int, val height: Int) : CaptureIntent
+
+    /** A tap on the preview at ([x], [y]) view pixels: sets the subject before recording. */
+    data class Tap(val x: Float, val y: Float) : CaptureIntent
+
+    /** Start recording a scan (round the tapped subject, else what is in the middle). */
     data object Record : CaptureIntent
 
-    /** Stop recording and save the scan. */
+    /** Pause recording: frames are no longer kept. */
+    data object Pause : CaptureIntent
+
+    /** Resume a paused recording. */
+    data object Resume : CaptureIntent
+
+    /** Finish: stop recording and save the scan. */
     data object Stop : CaptureIntent
 
     /** Stop recording (or saving) and keep nothing. */
     data object Cancel : CaptureIntent
+
+    /** Close or system Back: asks first when frames were captured, else leaves. */
+    data object Close : CaptureIntent
+
+    /** The discard dialog's Keep scanning. */
+    data object KeepScanning : CaptureIntent
+
+    /** The discard dialog's Discard: keeps nothing and leaves. */
+    data object Discard : CaptureIntent
 }
+
+/** Where the live capture is (docs/design/screens/capture.md, States). */
+enum class CaptureStage { STARTING, FINDING_SURFACES, AIM, CAPTURING, PAUSED, FINISHING }
+
+/** The status pill at the top. */
+enum class StatusPill { STARTING, TRACKING, LIMITED, LOST, PAUSED }
+
+/** A haptic the screen plays (Settings > Haptics on). */
+enum class CaptureHaptic { CONFIRM, REJECT }
 
 /** The one line telling the user how tracking goes. */
 enum class TrackingHint {
@@ -80,13 +111,65 @@ sealed interface CapturePhase {
 
 /**
  * The capture screen's state. [installPending]: an ARCore install was started; check again on resume. [recorder]:
- * the recording, with its live keyframe count and coverage.
+ * the recording, with its live keyframe count and coverage. The rest is the live guidance overlay: [instruction] is
+ * null while a [warning] replaces it; [reticle] is the subject's view position (null: the centre at half alpha);
+ * [facingSegment] is the coverage segment the phone is in; [ready] unlocks Finish.
  */
 data class CaptureUiState(
     val phase: CapturePhase = CapturePhase.Checking,
     val installPending: Boolean = false,
     val recorder: RecorderState = RecorderState.Idle,
+    val stage: CaptureStage = CaptureStage.STARTING,
+    val status: StatusPill = StatusPill.STARTING,
+    val instruction: Instruction? = Instruction.STARTING,
+    val warning: GuidanceWarning? = null,
+    val subjectSet: Boolean = false,
+    val reticle: ScreenPoint? = null,
+    val cells: CoverageCells = CoverageCells(),
+    val facingSegment: Int = 0,
+    val ready: Boolean = false,
+    val elapsedMs: Long = 0,
+    val framesKept: Int = 0,
+    val confirmDiscard: Boolean = false,
 )
+
+/** The stage for the [recorder], whether the user [paused], whether any frame came yet and the latest [hint]. */
+fun captureStage(recorder: RecorderState, paused: Boolean, hasFrame: Boolean, hint: TrackingHint): CaptureStage =
+    when {
+        recorder is RecorderState.Saving || recorder is RecorderState.Saved -> CaptureStage.FINISHING
+        recorder is RecorderState.Recording -> if (paused) CaptureStage.PAUSED else CaptureStage.CAPTURING
+        !hasFrame -> CaptureStage.STARTING
+        hint == TrackingHint.TRACKING -> CaptureStage.AIM
+        else -> CaptureStage.FINDING_SURFACES
+    }
+
+/** The status pill for [stage] and the latest tracking [hint]. */
+fun statusPill(stage: CaptureStage, hint: TrackingHint): StatusPill = when {
+    stage == CaptureStage.STARTING -> StatusPill.STARTING
+    stage == CaptureStage.PAUSED -> StatusPill.PAUSED
+    hint == TrackingHint.TRACKING -> StatusPill.TRACKING
+    hint == TrackingHint.TRACKING_LOST || hint == TrackingHint.CAMERA_IN_USE -> StatusPill.LOST
+    else -> StatusPill.LIMITED
+}
+
+/** The instruction line for [stage]; null while a [warning] replaces it or while finishing. */
+fun instructionFor(
+    stage: CaptureStage,
+    cells: CoverageCells,
+    warning: GuidanceWarning?,
+    recorder: RecorderState,
+): Instruction? = when (stage) {
+    CaptureStage.STARTING -> Instruction.STARTING
+    CaptureStage.FINDING_SURFACES -> Instruction.FIND_SURFACE
+    CaptureStage.AIM -> when (recorder) {
+        RecorderState.NothingRecorded -> Instruction.NOTHING_RECORDED
+        is RecorderState.Failed -> Instruction.SAVE_FAILED
+        else -> Instruction.AIM
+    }
+    CaptureStage.CAPTURING -> if (warning != null) null else capturingInstruction(cells)
+    CaptureStage.PAUSED -> if (cells.ready) Instruction.READY else Instruction.PAUSED
+    CaptureStage.FINISHING -> null
+}
 
 /** The hint for one frame's tracking [state] and [failure]. */
 fun trackingHint(state: TrackingState, failure: TrackingFailure): TrackingHint = when (failure) {

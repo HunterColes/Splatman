@@ -80,6 +80,21 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `cap_discard_body` | You'll lose what you've captured so far. | |
 | `cap_discard_confirm` | Discard | |
 | `cap_keep_scanning` | Keep scanning | |
+| `cap_close` | Close | Close button description |
+| `cap_help` | Scanning tips | Help button description |
+| `cap_status_starting` | Starting | status pill |
+| `cap_status_tracking` | Tracking | status pill |
+| `cap_status_limited` | Tracking: limited | status pill |
+| `cap_status_lost` | Lost track | status pill |
+| `cap_start_capture` | Start capture | capture button description |
+| `cap_pause_capture` | Pause capture | capture button description |
+| `cap_resume_capture` | Resume capture | capture button description |
+| `cap_caption` | %1$s · %2$d frames | elapsed time and frames kept |
+| `cap_ring_complete` | %1$d percent covered | ring description, nothing missing |
+| `cap_ring_missing` | %1$d percent covered. Missing: %2$s, %3$s | ring description: band, side |
+| `cap_band_low` / `_level` / `_high` | low / level / high | |
+| `cap_side_near` / `_left` / `_right` / `_far` / `_all` | this side / left side / right side / far side / all the way round | |
+| `cap_ring_toggle` | Show a larger ring | ring tap action |
 
 ## Processing
 

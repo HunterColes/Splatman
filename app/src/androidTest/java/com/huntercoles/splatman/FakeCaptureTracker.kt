@@ -36,7 +36,8 @@ import kotlin.math.sin
  * A tracker with no camera, for the emulator (no ARCore): once started it reports Running and, while in the
  * foreground, emits a frame every [FRAME_MS] walking round a circle of [RADIUS_M] about the origin, looking in, with
  * a textured 640x480 image and a few feature points. Each frame turns [STEP_DEG] degrees, so the recorder's
- * keyframe policy (10 degrees) takes one every few frames and coverage grows as it goes round.
+ * keyframe policy (10 degrees) takes one every few frames and coverage grows as it goes round. After the first turn
+ * it rises to [HIGH_DEG] above the origin over [RISE_FRAMES] frames, so a second band fills and Finish unlocks.
  */
 class FakeCaptureTracker : CaptureTracker {
     private val mutableStatus = MutableStateFlow<PoseSourceStatus>(PoseSourceStatus.Idle)
@@ -76,10 +77,18 @@ class FakeCaptureTracker : CaptureTracker {
 
     private fun frame(i: Int): TrackedFrame {
         val theta = (i * STEP_DEG * PI / 180).toFloat()
-        // Cgl looks down -Z; turning it by theta about +Y looks from (r sin, 0, r cos) at the origin.
+        val turn = 360 / STEP_DEG
+        val rise = ((i - turn) / RISE_FRAMES).coerceIn(0.0, 1.0)
+        val elevation = (rise * HIGH_DEG * PI / 180).toFloat()
+        // Cgl looks down -Z; turning it by theta about +Y and pitching it down by the elevation looks from
+        // (r cos e sin, r sin e, r cos e cos) at the origin.
         val pose = CameraPose(
-            Quat.fromAxisAngle(Vec3(0f, 1f, 0f), theta),
-            Vec3(RADIUS_M * sin(theta), 0f, RADIUS_M * cos(theta)),
+            Quat.fromAxisAngle(Vec3(0f, 1f, 0f), theta) * Quat.fromAxisAngle(Vec3(1f, 0f, 0f), -elevation),
+            Vec3(
+                RADIUS_M * cos(elevation) * sin(theta),
+                RADIUS_M * sin(elevation),
+                RADIUS_M * cos(elevation) * cos(theta),
+            ),
         )
         val k = CameraIntrinsics(fx = 500f, fy = 500f, cx = 319.5f, cy = 239.5f, width = WIDTH, height = HEIGHT)
         return TrackedFrame(
@@ -112,6 +121,8 @@ class FakeCaptureTracker : CaptureTracker {
         const val FRAME_MS = 33L
         const val STEP_DEG = 2.0
         const val RADIUS_M = 0.3f
+        const val HIGH_DEG = 45.0
+        const val RISE_FRAMES = 60.0
 
         /** 27 points 5 cm apart round the origin, full confidence. */
         val GRID: FeaturePoints = run {
