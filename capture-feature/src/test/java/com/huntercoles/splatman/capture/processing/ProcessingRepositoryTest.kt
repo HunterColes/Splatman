@@ -108,22 +108,24 @@ class ProcessingRepositoryTest {
         assertFalse(File(scan, ProcessingRepository.RUNNING_MARKER).exists())
     }
 
+    private val hangingSeedTrainer = object : Trainer {
+        val started = MutableStateFlow(false)
+        override fun train(input: TrainingInput): Flow<TrainingProgress> = flow {
+            emit(TrainingProgress(0, 10, Float.NaN, 4, 1L, SeedInit.fromSeeds(input.seedPoints)))
+            emit(TrainingProgress(1, 10, 0.5f, 4, 2L, null))
+            started.value = true
+            awaitCancellation()
+        }
+    }
+
     @Test
-    fun `cancel leaves the bundle intact and no splat ply`() = runTest {
+    fun `cancel leaves the bundle intact and the seed splat as the result`() = runTest {
         writeBundle()
         val before = bundleSnapshot()
-        val started = MutableStateFlow(false)
-        val trainer = object : Trainer {
-            override fun train(input: TrainingInput): Flow<TrainingProgress> = flow {
-                emit(TrainingProgress(1, 10, 0.5f, 4, 1L, SeedInit.fromSeeds(input.seedPoints)))
-                started.value = true
-                awaitCancellation()
-            }
-        }
-        val repo = repository(trainer)
+        val repo = repository(hangingSeedTrainer)
         val job = launch { repo.process(scan) }
         runCurrent()
-        assertTrue(started.value)
+        assertTrue(hangingSeedTrainer.started.value)
         assertTrue(repo.isRunning(scan))
 
         repo.cancel(scan)
@@ -131,9 +133,29 @@ class ProcessingRepositoryTest {
 
         assertTrue(job.isCancelled)
         assertEquals(ProcessingState.Cancelled, repo.state(scan).value)
-        assertFalse(File(scan, ProcessingRepository.SPLAT_FILE).exists())
+        val out = File(scan, ProcessingRepository.SPLAT_FILE)
+        val expected = ByteArrayOutputStream().also { PlyWriter.write(SeedInit.fromSeeds(seeds), it) }.toByteArray()
+        assertArrayEquals(expected, out.readBytes())
+        assertFalse(File(scan, ProcessingRepository.TEMP_FILE).exists())
+        assertFalse(File(scan, ProcessingRepository.RUNNING_MARKER).exists())
         assertFalse(repo.isRunning(scan))
-        assertEquals(before, bundleSnapshot())
+        assertEquals(before + (ProcessingRepository.SPLAT_FILE to expected.toList()), bundleSnapshot())
+    }
+
+    @Test
+    fun `cancel never replaces an earlier splat ply`() = runTest {
+        writeBundle()
+        val out = File(scan, ProcessingRepository.SPLAT_FILE)
+        out.writeBytes(byteArrayOf(7, 7, 7))
+        val repo = repository(hangingSeedTrainer)
+        launch { repo.process(scan) }
+        runCurrent()
+
+        repo.cancel(scan)
+        advanceUntilIdle()
+
+        assertArrayEquals(byteArrayOf(7, 7, 7), out.readBytes())
+        assertEquals(ProcessingState.Cancelled, repo.state(scan).value)
     }
 
     @Test

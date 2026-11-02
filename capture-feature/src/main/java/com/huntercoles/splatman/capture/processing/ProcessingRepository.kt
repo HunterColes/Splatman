@@ -4,6 +4,7 @@ import com.huntercoles.splatman.core.coroutines.DefaultDispatcher
 import com.huntercoles.splatman.splat.io.bundle.CaptureBundleReader
 import com.huntercoles.splatman.splat.io.ply.PlyWriter
 import com.huntercoles.splatman.splat.model.SeedPoints
+import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.splat.packet.TrainingConfig
 import com.huntercoles.splatman.splat.packet.TrainingInput
 import com.huntercoles.splatman.splat.packet.TrainingProgress
@@ -11,6 +12,7 @@ import com.huntercoles.splatman.splat.train.Trainer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -63,7 +65,10 @@ class ProcessingRepository @Inject constructor(
     /** Whether a run for [scan] is in progress in this process. */
     fun isRunning(scan: File): Boolean = jobs.containsKey(key(scan))
 
-    /** Cancels [scan]'s run, if one is going; the bundle and any earlier `splat.ply` are left as they were. */
+    /**
+     * Cancels [scan]'s run, if one is going. The bundle and any earlier `splat.ply` are left as they were; with no
+     * earlier `splat.ply`, the run's latest snapshot (the seed splat at least) is written as the scan's result.
+     */
     fun cancel(scan: File) {
         jobs[key(scan)]?.cancel()
     }
@@ -81,26 +86,35 @@ class ProcessingRepository @Inject constructor(
         val output = File(scan, SPLAT_FILE)
         val temp = File(scan, TEMP_FILE)
         state.value = ProcessingState.Running(null)
+        var latestCloud: SplatCloud? = null
         try {
             withContext(dispatcher) {
                 temp.delete()
                 marker.writeText("")
-                val last = train(scan, state)
-                val cloud = last?.snapshot ?: throw IOException("the trainer produced no splat")
-                FileOutputStream(temp).use { file ->
-                    val out = BufferedOutputStream(file)
-                    PlyWriter.write(cloud, out)
-                    out.flush()
-                    file.fd.sync()
+                var last: TrainingProgress? = null
+                train(scan, state) { progress ->
+                    last = progress
+                    progress.snapshot?.let { latestCloud = it }
                 }
-                ensureActive()
-                if (!temp.renameTo(output)) throw IOException("cannot rename $TEMP_FILE to $SPLAT_FILE")
+                val cloud = last?.snapshot ?: throw IOException("the trainer produced no splat")
+                writeSplat(cloud, temp, output) { ensureActive() }
                 marker.delete()
             }
             state.value = ProcessingState.Done(output)
         } catch (e: CancellationException) {
-            cleanUp(temp, marker)
-            state.value = ProcessingState.Cancelled
+            val fallback = latestCloud
+            try {
+                if (fallback != null && !output.exists()) {
+                    // The seed (or a later snapshot) stays the scan's result; an earlier splat.ply is never replaced.
+                    // withContext rethrows the outer cancellation on return, hence the finally.
+                    withContext(NonCancellable + dispatcher) {
+                        runCatching { writeSplat(fallback, temp, output) }
+                    }
+                }
+            } finally {
+                cleanUp(temp, marker)
+                state.value = ProcessingState.Cancelled
+            }
             throw e
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             cleanUp(temp, marker)
@@ -111,16 +125,30 @@ class ProcessingRepository @Inject constructor(
         return state.value
     }
 
-    private suspend fun train(scan: File, state: MutableStateFlow<ProcessingState>): TrainingProgress? {
+    private inline fun writeSplat(cloud: SplatCloud, temp: File, output: File, beforeRename: () -> Unit = {}) {
+        FileOutputStream(temp).use { file ->
+            val out = BufferedOutputStream(file)
+            PlyWriter.write(cloud, out)
+            out.flush()
+            file.fd.sync()
+        }
+        beforeRename()
+        if (!temp.renameTo(output)) throw IOException("cannot rename $TEMP_FILE to $SPLAT_FILE")
+    }
+
+    private suspend fun train(
+        scan: File,
+        state: MutableStateFlow<ProcessingState>,
+        onProgress: (TrainingProgress) -> Unit,
+    ) {
         val bundle = CaptureBundleReader.read(scan)
         val keyframes = bundle.frames.mapIndexed { i, frame ->
             currentCoroutineContext().ensureActive()
             loadKeyframe(i, frame, decoder, config.imageLongSide)
         }
         val input = TrainingInput(keyframes, bundle.seed ?: SeedPoints(0, FloatArray(0), ByteArray(0)), config)
-        var last: TrainingProgress? = null
         trainer.train(input).collect { progress ->
-            last = progress
+            onProgress(progress)
             // The trainer runs in this collector, so suspending here holds it until the phone cools.
             if (thermal.severe.value) {
                 state.value = ProcessingState.Paused(progress)
@@ -128,7 +156,6 @@ class ProcessingRepository @Inject constructor(
             }
             state.value = ProcessingState.Running(progress)
         }
-        return last
     }
 
     private fun cleanUp(temp: File, marker: File) {
