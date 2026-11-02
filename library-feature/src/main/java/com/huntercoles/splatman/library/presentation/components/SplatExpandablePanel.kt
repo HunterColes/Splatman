@@ -25,7 +25,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.domain.model.SplatScene
 import kotlinx.coroutines.launch
@@ -61,10 +60,10 @@ fun SplatExpandablePanel(
         modifier = modifier
             .fillMaxWidth()
             .height(panelState.currentHeight)
-            .background(SplatColors.DeepPurple)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .border(
-                width = SplatDimens.BorderThick,
-                color = SplatColors.SplatGold,
+                width = 4.dp,
+                color = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(topStart = SplatDimens.CornerLarge, topEnd = SplatDimens.CornerLarge)
             )
             .clip(RoundedCornerShape(topStart = SplatDimens.CornerLarge, topEnd = SplatDimens.CornerLarge))
@@ -130,7 +129,7 @@ private fun PanelHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SplatColors.DarkPurple)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable(onClick = onToggle)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
@@ -146,10 +145,10 @@ private fun PanelHeader(
         // Drag handle indicator
         Box(
             modifier = Modifier
-                .width(SplatDimens.PanelDragHandleWidth)
-                .height(SplatDimens.PanelDragHandleHeight)
-                .clip(RoundedCornerShape(SplatDimens.PanelDragHandleCorner))
-                .background(SplatColors.SplatGold)
+                .width(48.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.primary)
         )
         
         Spacer(modifier = Modifier.height(SplatDimens.SpacingSmall))
@@ -163,14 +162,14 @@ private fun PanelHeader(
             Text(
                 text = "Scene Library ($sceneCount)",
                 style = MaterialTheme.typography.titleMedium,
-                color = SplatColors.SplatGold,
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
             
             Icon(
                 imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                 contentDescription = if (isExpanded) "Collapse" else "Expand",
-                tint = SplatColors.SplatGold
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -192,12 +191,12 @@ private fun SceneListItem(
             .fillMaxWidth()
             .padding(vertical = SplatDimens.SpacingSmall)
             .background(
-                color = if (isSelected) SplatColors.MediumPurple else Color.Transparent,
+                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                 shape = RoundedCornerShape(SplatDimens.CornerSmall)
             )
             .border(
-                width = if (isSelected) SplatDimens.BorderMedium else SplatDimens.BorderThin,
-                color = if (isSelected) SplatColors.SplatGold else SplatColors.LightPurple,
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                 shape = RoundedCornerShape(SplatDimens.CornerSmall)
             )
             .clickable(onClick = onClick)
@@ -211,7 +210,7 @@ private fun SceneListItem(
             Text(
                 text = scene.name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) SplatColors.SplatGold else SplatColors.CardWhite,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -220,7 +219,7 @@ private fun SceneListItem(
             Text(
                 text = "${scene.gaussians.size} Gaussians • ${dateFormat.format(scene.createdAt)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = SplatColors.TextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
             )
         }
@@ -241,7 +240,7 @@ private fun EmptySceneList() {
         Text(
             text = "No scenes captured yet",
             style = MaterialTheme.typography.bodyLarge,
-            color = SplatColors.TextSecondary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

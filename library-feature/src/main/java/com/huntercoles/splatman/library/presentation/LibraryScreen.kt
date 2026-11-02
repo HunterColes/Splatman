@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.library.presentation
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material3.MaterialTheme
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.presentation.components.GaussianSplatViewer
 import com.huntercoles.splatman.library.presentation.components.SceneInfoOverlay
@@ -79,7 +79,7 @@ fun LibraryScreen(
     Scaffold(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = SplatColors.SplatBlack
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             // Top bar with buttons
@@ -96,12 +96,12 @@ fun LibraryScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(SplatColors.DarkPurple.copy(alpha = 0.9f))
+                        .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Folder,
                         contentDescription = "Select PLY folder",
-                        tint = SplatColors.SplatGold,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -115,12 +115,12 @@ fun LibraryScreen(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(SplatColors.DarkPurple.copy(alpha = 0.9f))
+                            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = "Show scene info",
-                            tint = SplatColors.SplatGold,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -136,7 +136,7 @@ fun LibraryScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .border(
                             width = 2.dp,
-                            color = SplatColors.SplatGold.copy(alpha = 0.5f),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(8.dp)
                         )
                         .clip(RoundedCornerShape(8.dp))
@@ -170,8 +170,8 @@ fun LibraryScreen(
             // Bottom folder tabs
             TabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = SplatColors.DeepPurple,
-                contentColor = SplatColors.SplatGold,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Tab(

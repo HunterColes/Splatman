@@ -15,7 +15,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.domain.model.SplatScene
 import java.text.SimpleDateFormat
@@ -45,12 +44,12 @@ fun SceneInfoOverlay(
     
     Column(
         modifier = modifier
-            .width(SplatDimens.SceneInfoOverlayWidth)
+            .width(280.dp)
             .clip(RoundedCornerShape(SplatDimens.CornerMedium))
-            .background(SplatColors.DeepPurple.copy(alpha = 0.95f))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f))
             .border(
-                width = SplatDimens.BorderMedium,
-                color = SplatColors.SplatGold,
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(SplatDimens.CornerMedium)
             )
             .clickable(onClick = onDismiss) // Tap anywhere to dismiss
@@ -61,7 +60,7 @@ fun SceneInfoOverlay(
         Text(
             text = scene.name,
             style = MaterialTheme.typography.titleMedium,
-            color = SplatColors.SplatGold,
+            color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             maxLines = 2
         )
@@ -79,20 +78,20 @@ fun SceneInfoOverlay(
         Text(
             text = "Bounding Box",
             style = MaterialTheme.typography.labelMedium,
-            color = SplatColors.SplatGold.copy(alpha = 0.8f),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
             fontWeight = FontWeight.Bold
         )
         val bbox = scene.boundingBox
         Text(
             text = "Min: [${formatFloat(bbox.min[0])}, ${formatFloat(bbox.min[1])}, ${formatFloat(bbox.min[2])}]",
             style = MaterialTheme.typography.bodySmall,
-            color = SplatColors.TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = FontFamily.Monospace
         )
         Text(
             text = "Max: [${formatFloat(bbox.max[0])}, ${formatFloat(bbox.max[1])}, ${formatFloat(bbox.max[2])}]",
             style = MaterialTheme.typography.bodySmall,
-            color = SplatColors.TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = FontFamily.Monospace
         )
         
@@ -108,7 +107,7 @@ fun SceneInfoOverlay(
             Text(
                 text = "⚠️ Exceeds mobile limits",
                 style = MaterialTheme.typography.bodySmall,
-                color = SplatColors.ErrorRed,
+                color = MaterialTheme.colorScheme.error,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -119,7 +118,7 @@ fun SceneInfoOverlay(
         Text(
             text = "Tap to close",
             style = MaterialTheme.typography.labelSmall,
-            color = SplatColors.TextSecondary.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
@@ -138,12 +137,12 @@ private fun InfoRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = SplatColors.TextSecondary.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = SplatColors.CardWhite,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Medium
         )
     }

@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.library.presentation.components
 
 import android.opengl.GLSurfaceView
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +20,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.library.domain.model.SplatScene
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.ViewerConstants
@@ -59,14 +59,14 @@ fun GaussianSplatViewer(
             ) {
                 Text(
                     text = "🚧 Model Not Yet Loaded",
-                    color = SplatColors.SplatGold,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "${scene.name}\n\nLoading...",
-                    color = SplatColors.SplatGold.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center
                 )

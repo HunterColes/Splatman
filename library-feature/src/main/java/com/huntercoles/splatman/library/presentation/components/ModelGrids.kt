@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.library.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -20,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.data.assets.AssetsModelManager
 import com.huntercoles.splatman.library.data.loader.Model3DConverter
@@ -68,7 +68,7 @@ fun InternalModelsGrid(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = SplatColors.SplatGold)
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
         return
     }
@@ -84,7 +84,7 @@ fun InternalModelsGrid(
             ) {
                 Text(
                     text = "📁 No Internal Models Found",
-                    color = SplatColors.SplatGold,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -92,7 +92,7 @@ fun InternalModelsGrid(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "To add models:\n\n1. Place your .ply, .stl, or .obj files in:\n   app/src/main/assets/models/\n\n2. Rebuild the app\n\n3. Models will appear here",
-                    color = SplatColors.SplatGold.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
@@ -154,18 +154,18 @@ private fun ModelTile(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(SplatDimens.ModelGridItemSize * heightMultiplier)
+            .height(120.dp * heightMultiplier)
             .clip(RoundedCornerShape(SplatDimens.CornerSmall))
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected)
-                SplatColors.SplatGold.copy(alpha = 0.2f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
             else
-                SplatColors.DarkPurple.copy(alpha = 0.8f)
+                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.8f)
         ),
         border = if (isSelected) androidx.compose.foundation.BorderStroke(
-            SplatDimens.BorderMedium,
-            SplatColors.SplatGold
+            2.dp,
+            MaterialTheme.colorScheme.primary
         ) else null
     ) {
         Box(
@@ -181,17 +181,17 @@ private fun ModelTile(
                 // File type indicator - condensed
                 Box(
                     modifier = Modifier
-                        .width(SplatDimens.ModelGridItemSize * 0.8f) // Slightly narrower
-                        .height(SplatDimens.ModelGridItemSize * 0.35f) // Very condensed height
+                        .width(120.dp * 0.8f) // Slightly narrower
+                        .height(120.dp * 0.35f) // Very condensed height
                         .background(
-                            SplatColors.MediumPurple.copy(alpha = 0.5f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                             RoundedCornerShape(SplatDimens.CornerXSmall)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = fileType,
-                        color = SplatColors.SplatGold,
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp, // Slightly smaller font
                         fontWeight = FontWeight.Bold
                     )
@@ -201,7 +201,7 @@ private fun ModelTile(
 
                 Text(
                     text = modelName,
-                    color = SplatColors.SplatGold,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 12.sp, // Smaller font for density
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,

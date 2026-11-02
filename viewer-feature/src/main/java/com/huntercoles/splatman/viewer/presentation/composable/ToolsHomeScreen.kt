@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.viewer.presentation.composable
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -28,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDialog
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.core.navigation.NavigationCommand
@@ -71,7 +71,7 @@ fun ToolsHomeScreen(
             text = "🛠️ Tools",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
-            color = SplatColors.SplatGold
+            color = MaterialTheme.colorScheme.primary
         )
 
         LazyVerticalGrid(
@@ -119,11 +119,11 @@ fun ToolCard(
             .height(140.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = SplatColors.DarkPurple
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
-        border = BorderStroke(1.dp, SplatColors.AccentPurple),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = SplatDimens.ElevationDefault
+            defaultElevation = 4.dp
         ),
         shape = RoundedCornerShape(SplatDimens.CornerMedium)
     ) {
@@ -137,8 +137,8 @@ fun ToolCard(
             Icon(
                 imageVector = tool.icon,
                 contentDescription = tool.title,
-                tint = SplatColors.SplatGold,
-                modifier = Modifier.size(SplatDimens.IconXLarge)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(64.dp)
             )
             
             Spacer(modifier = Modifier.height(SplatDimens.SpacingSmall))
@@ -147,7 +147,7 @@ fun ToolCard(
                 text = tool.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = SplatColors.CardWhite,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
         }
@@ -166,8 +166,8 @@ private fun VolumeControlDialog(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            color = SplatColors.DeepPurple,
-            border = BorderStroke(1.dp, SplatColors.SplatGold.copy(alpha = 0.6f))
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
         ) {
             Row(
                 modifier = Modifier
@@ -183,7 +183,7 @@ private fun VolumeControlDialog(
                     Icon(
                         imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                         contentDescription = if (isMuted) "Unmute" else "Mute",
-                        tint = if (isMuted) SplatColors.CardWhite.copy(alpha = 0.5f) else SplatColors.SplatGold,
+                        tint = if (isMuted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -196,6 +196,7 @@ private fun VolumeControlDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     // Dotted line behind slider
+                    val dottedLineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -203,7 +204,7 @@ private fun VolumeControlDialog(
                             .drawBehind {
                                 val pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                                 drawLine(
-                                    color = SplatColors.SplatGold.copy(alpha = 0.3f),
+                                    color = dottedLineColor,
                                     start = Offset(0f, size.height / 2),
                                     end = Offset(size.width, size.height / 2),
                                     strokeWidth = 2f,
@@ -219,12 +220,12 @@ private fun VolumeControlDialog(
                         valueRange = 0f..1f,
                         enabled = !isMuted,
                         colors = SliderDefaults.colors(
-                            thumbColor = if (isMuted) SplatColors.CardWhite.copy(alpha = 0.3f) else SplatColors.SplatGold,
-                            activeTrackColor = if (isMuted) SplatColors.CardWhite.copy(alpha = 0.3f) else SplatColors.SplatGold,
-                            inactiveTrackColor = SplatColors.DarkPurple,
-                            disabledThumbColor = SplatColors.CardWhite.copy(alpha = 0.3f),
-                            disabledActiveTrackColor = SplatColors.CardWhite.copy(alpha = 0.3f),
-                            disabledInactiveTrackColor = SplatColors.DarkPurple
+                            thumbColor = if (isMuted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f) else MaterialTheme.colorScheme.primary,
+                            activeTrackColor = if (isMuted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f) else MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainer,
+                            disabledThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            disabledActiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            disabledInactiveTrackColor = MaterialTheme.colorScheme.surfaceContainer
                         )
                     )
                 }

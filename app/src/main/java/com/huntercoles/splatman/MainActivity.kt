@@ -26,8 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
-import com.huntercoles.splatman.core.design.SplatmanTheme
-import com.huntercoles.splatman.core.design.SplatColors
+import com.huntercoles.splatman.core.design.SplatTheme
 import com.huntercoles.splatman.core.navigation.NavigationDestination
 import com.huntercoles.splatman.core.navigation.bottomNavigationItems
 import com.huntercoles.splatman.library.LibraryFeature
@@ -44,7 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SplatmanTheme {
+            SplatTheme(forceDark = true) {
                 MainScreen()
             }
         }
@@ -59,8 +58,8 @@ private fun MainScreen() {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             NavigationBar(
-                containerColor = SplatColors.DarkPurple,
-                contentColor = SplatColors.CardWhite
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                contentColor = MaterialTheme.colorScheme.onSurface
             ) {
                 bottomNavigationItems.forEach { item ->
                     NavigationBarItem(
@@ -78,11 +77,11 @@ private fun MainScreen() {
                             selectedDestination = item.destination
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = SplatColors.SplatGold,
-                            selectedTextColor = SplatColors.SplatGold,
-                            unselectedIconColor = SplatColors.CardWhite,
-                            unselectedTextColor = SplatColors.CardWhite,
-                            indicatorColor = SplatColors.MediumPurple
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurface,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurface,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
                         )
                     )
                 }
@@ -108,7 +107,7 @@ private fun MainScreen() {
 private fun ToolsScreen(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = SplatColors.SplatBlack
+        color = MaterialTheme.colorScheme.background
     ) {
         Column(
             modifier = Modifier
@@ -121,7 +120,7 @@ private fun ToolsScreen(modifier: Modifier = Modifier) {
                 text = "🔧 Tools",
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Bold,
-                color = SplatColors.AccentPurple
+                color = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = "ARCore Capture & Settings",

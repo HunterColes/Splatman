@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.library.presentation.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -9,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.splat.math.Vec3
@@ -66,7 +66,7 @@ fun AxisWidget(
         // Draw simple axis lines (Z first for depth ordering)
         // Z axis (blue)
         drawLine(
-            color = SplatColors.AxisBlue,
+            color = AxisBlue,
             start = center,
             end = zEnd,
             strokeWidth = strokeWidth,
@@ -75,7 +75,7 @@ fun AxisWidget(
 
         // X axis (red)
         drawLine(
-            color = SplatColors.AxisRed,
+            color = AxisRed,
             start = center,
             end = xEnd,
             strokeWidth = strokeWidth,
@@ -84,7 +84,7 @@ fun AxisWidget(
 
         // Y axis (green)
         drawLine(
-            color = SplatColors.AxisGreen,
+            color = AxisGreen,
             start = center,
             end = yEnd,
             strokeWidth = strokeWidth,
@@ -92,3 +92,8 @@ fun AxisWidget(
         )
     }
 }
+
+// Axis gizmo colours (X right, Y up, Z forward); viewer-only, not design tokens.
+private val AxisRed = Color(0xFFFF4444)
+private val AxisGreen = Color(0xFF44FF44)
+private val AxisBlue = Color(0xFF4169E1)

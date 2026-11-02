@@ -7,7 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.huntercoles.splatman.core.design.SplatDimens
 import kotlinx.coroutines.launch
 
 /**
@@ -21,8 +20,8 @@ import kotlinx.coroutines.launch
  */
 @Stable
 class ExpandablePanelState(
-    private val collapsedHeight: Dp = SplatDimens.ExpandablePanelCollapsedHeight,
-    private val expandedHeight: Dp = SplatDimens.ExpandablePanelExpandedHeight
+    private val collapsedHeight: Dp = 80.dp,
+    private val expandedHeight: Dp = 300.dp
 ) {
     // Current height of the panel (animated)
     private val _heightPx = Animatable(collapsedHeight.value)
@@ -141,8 +140,8 @@ class ExpandablePanelState(
  */
 @Composable
 fun rememberExpandablePanelState(
-    collapsedHeight: Dp = SplatDimens.ExpandablePanelCollapsedHeight,
-    expandedHeight: Dp = SplatDimens.ExpandablePanelExpandedHeight
+    collapsedHeight: Dp = 80.dp,
+    expandedHeight: Dp = 300.dp
 ): ExpandablePanelState {
     return remember {
         ExpandablePanelState(collapsedHeight, expandedHeight)

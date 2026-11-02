@@ -3,12 +3,9 @@ package com.huntercoles.splatman.core.design
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Centralized dimension constants for consistent spacing throughout the app
- */
+/** Spacing, shape and size tokens (docs/design/tokens.md), on a 4 dp grid. */
 object SplatDimens {
-    // Standard spacing scale
-    val SpacingXXSmall: Dp = 2.dp
+    // Spacing
     val SpacingXSmall: Dp = 4.dp
     val SpacingSmall: Dp = 8.dp
     val SpacingMedium: Dp = 12.dp
@@ -16,71 +13,32 @@ object SplatDimens {
     val SpacingLarge: Dp = 24.dp
     val SpacingXLarge: Dp = 32.dp
     val SpacingXXLarge: Dp = 48.dp
-    val SpacingHuge: Dp = 64.dp
-    
-    // Card and elevation
-    val ElevationNone: Dp = 0.dp
-    val ElevationSmall: Dp = 2.dp
-    val ElevationDefault: Dp = 4.dp
-    val ElevationMedium: Dp = 8.dp
-    val ElevationLarge: Dp = 16.dp
-    
-    // Border widths
-    val BorderThin: Dp = 1.dp
-    val BorderMedium: Dp = 2.dp
-    val BorderThick: Dp = 4.dp
-    
-    // Corner radius
+
+    // Sizes
+    /** Minimum size of anything tappable. */
+    val TouchTarget: Dp = 48.dp
+
+    /** The record / finish button. */
+    val CaptureButton: Dp = 72.dp
+
+    /** Coverage ring diameter on phones. */
+    val CoverageRing: Dp = 112.dp
+
+    /** Coverage ring diameter at 600 dp and up. */
+    val CoverageRingWide: Dp = 136.dp
+
+    val CoverageRingStroke: Dp = 8.dp
+
+    /** Max width of library, settings and sheets on wide screens. */
+    val ContentMaxWidth: Dp = 840.dp
+
+    /** Adaptive grid minimum cell width in the library. */
+    val LibraryCellMin: Dp = 160.dp
+
+    // Shape (corner radius); full rounding is CircleShape
+    val CornerXSmall: Dp = 4.dp
     val CornerSmall: Dp = 8.dp
     val CornerMedium: Dp = 12.dp
     val CornerDefault: Dp = 16.dp
-    val CornerLarge: Dp = 24.dp
-    
-    // Icon sizes
-    val IconSmall: Dp = 16.dp
-    val IconMedium: Dp = 20.dp
-    val IconDefault: Dp = 24.dp
-    val IconLarge: Dp = 48.dp
-    val IconXLarge: Dp = 64.dp
-    
-    // Playing card dimensions
-    val CardWidth: Dp = 40.dp
-    val CardHeight: Dp = 56.dp
-    
-    // Component heights
-    val ButtonHeight: Dp = 48.dp
-    val MinInputWidth: Dp = 120.dp
-    val MaxInputWidth: Dp = 160.dp
-    val TimerDisplayHeight: Dp = 120.dp
-    val BottomSheetMaxHeight: Dp = 400.dp
-    
-    // Panel drag handle
-    val PanelDragHandleWidth: Dp = 48.dp
-    val PanelDragHandleHeight: Dp = 4.dp
-    val PanelDragHandleCorner: Dp = 2.dp
-    
-    // Viewer dimensions
-    val ViewerBorderWidth: Dp = 2.dp
-    val ModelGridHeight: Dp = 200.dp
-    
-    // Axis widget
-    val AxisWidgetSize: Dp = 80.dp
-    val AxisWidgetPadding: Dp = 16.dp
-    
-    // Scene info overlay
-    val SceneInfoOverlayWidth: Dp = 280.dp
-    
-    // Expandable panel
-    val ExpandablePanelCollapsedHeight: Dp = 80.dp
-    val ExpandablePanelExpandedHeight: Dp = 300.dp
-    
-    // Loading indicator
-    val LoadingIndicatorSize: Dp = 120.dp
-    val LoadingIndicatorArcSize: Dp = 100.dp
-    
-    // Model grid
-    val ModelGridItemSize: Dp = 120.dp
-    
-    // Corner radius
-    val CornerXSmall: Dp = 4.dp
+    val CornerLarge: Dp = 28.dp
 }

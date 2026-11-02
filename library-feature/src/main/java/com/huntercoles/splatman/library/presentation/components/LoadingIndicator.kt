@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.library.presentation.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -13,9 +14,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.huntercoles.splatman.core.design.SplatDimens
 import androidx.compose.ui.unit.sp
-import com.huntercoles.splatman.core.design.SplatColors
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -28,14 +27,16 @@ fun LoadingIndicator(
     progress: Float, // 0.0 to 1.0
     modifier: Modifier = Modifier
 ) {
+    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val arcColor = MaterialTheme.colorScheme.primary
     Box(
-        modifier = modifier.size(SplatDimens.LoadingIndicatorSize),
+        modifier = modifier.size(120.dp),
         contentAlignment = Alignment.Center
     ) {
         // Background circle
-        Canvas(modifier = Modifier.size(SplatDimens.LoadingIndicatorArcSize)) {
+        Canvas(modifier = Modifier.size(100.dp)) {
             drawArc(
-                color = SplatColors.DarkPurple.copy(alpha = 0.3f),
+                color = trackColor,
                 startAngle = 0f,
                 sweepAngle = 360f,
                 useCenter = false,
@@ -46,7 +47,7 @@ fun LoadingIndicator(
         // Progress arc
         Canvas(modifier = Modifier.size(100.dp)) {
             drawArc(
-                color = SplatColors.SplatGold,
+                color = arcColor,
                 startAngle = -90f,
                 sweepAngle = progress * 360f,
                 useCenter = false,
@@ -57,7 +58,7 @@ fun LoadingIndicator(
         // Percentage text
         Text(
             text = "${(progress * 100).toInt()}%",
-            color = SplatColors.SplatGold,
+            color = MaterialTheme.colorScheme.primary,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )

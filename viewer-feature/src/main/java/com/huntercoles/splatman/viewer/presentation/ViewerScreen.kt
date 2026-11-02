@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.viewer.presentation
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material3.MaterialTheme
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -27,8 +28,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.huntercoles.splatman.core.design.SplatColors
-import com.huntercoles.splatman.core.design.SplatDimens
 import timber.log.Timber
 
 /**
@@ -79,7 +78,7 @@ fun ViewerScreen(
     
     Scaffold(
         modifier = modifier,
-        containerColor = SplatColors.SplatBlack
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             // Main camera preview area
@@ -89,7 +88,7 @@ fun ViewerScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp)
                     .border(
                         width = 2.dp,
-                        color = SplatColors.SplatGold.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(8.dp)
                     )
                     .clip(RoundedCornerShape(8.dp))
@@ -97,7 +96,7 @@ fun ViewerScreen(
                         if (uiState.isCameraEnabled) {
                             Color.Black // Camera preview background
                         } else {
-                            SplatColors.DeepPurple.copy(alpha = 0.3f) // Grayed out
+                            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.3f) // Grayed out
                         }
                     )
             ) {
@@ -115,14 +114,14 @@ fun ViewerScreen(
                             Icon(
                                 imageVector = Icons.Default.PhotoCamera,
                                 contentDescription = "Camera disabled",
-                                tint = SplatColors.CardWhite.copy(alpha = 0.5f),
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                                 modifier = Modifier.size(64.dp)
                             )
                             // Cross overlay
                             Text(
                                 text = "✕",
                                 style = MaterialTheme.typography.displayLarge,
-                                color = SplatColors.ErrorRed,
+                                color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.offset(y = (-8).dp)
                             )
                         }
@@ -173,10 +172,10 @@ fun ViewerScreen(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(CircleShape)
-                        .background(SplatColors.MediumPurple)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                         .border(
                             width = 2.dp,
-                            color = SplatColors.SplatGold,
+                            color = MaterialTheme.colorScheme.primary,
                             shape = CircleShape
                         )
                 ) {
@@ -184,9 +183,9 @@ fun ViewerScreen(
                         imageVector = Icons.Default.PhotoCamera,
                         contentDescription = "Toggle camera",
                         tint = if (uiState.isCameraEnabled) {
-                            SplatColors.SplatGold
+                            MaterialTheme.colorScheme.primary
                         } else {
-                            SplatColors.CardWhite.copy(alpha = 0.7f)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         },
                         modifier = Modifier.size(32.dp)
                     )
