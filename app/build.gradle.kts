@@ -39,6 +39,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     dependenciesInfo {
@@ -179,6 +180,12 @@ dependencies {
 
     ksp(libs.hilt.compiler)
     ksp(libs.room.compiler)
+
+    // tools/e2e.sh: the device smoke test (app/src/androidTest)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.test.android.compose)
+    androidTestImplementation(libs.test.android.junit)
+    androidTestImplementation(libs.test.android.runner)
 }
 
 ksp {

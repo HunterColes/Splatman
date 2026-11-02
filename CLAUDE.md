@@ -33,6 +33,18 @@ single-use `--no-daemon` Gradle with `-Xmx2g` and the Kotlin daemon at `-Xmx1g`,
 Never run `./gradlew --stop`, never `pkill -f` with a pattern that can match your own shell, never regenerate a
 lint baseline to get green. Do not run other Gradle builds beside the gate.
 
+## Run the app
+
+```bash
+tools/e2e.sh          # headless emulator + :app:connectedDebugAndroidTest (app/src/androidTest/.../SmokeTest.kt)
+```
+
+It boots its own AVD (`splatman_e2e`, API 34, 1080x2400, created if missing; never Medium_Phone or
+pokerpayout_test) on loopback, runs the Compose smoke test under the gate's lock, and kills that emulator on exit or
+Ctrl-C. Screenshots of the opened sample model at phone and tablet width land in `build/e2e/*.png` (the emulator log
+is `build/e2e/emulator.log`). It ends with `OK (n tests)`. No ARCore on the emulator means the capture test is
+skipped, not failed. Not part of the gate.
+
 ## Company conventions
 
 - One card, one branch (`card/...`), one PR into `master`; open it with `tools/pr.sh "<title>" --body-file <file>`

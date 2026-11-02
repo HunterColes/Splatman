@@ -2,6 +2,7 @@
 
 Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
+`tools/e2e.sh` (headless emulator smoke test, screenshots in build/e2e/) is green: OK (2 tests), capture skipped (no ARCore).
 - End to end (#47): Capture's Stop saves the scan and opens `processing/{scanId}` (Capture leaves the back stack); `presentation/processing/ProcessingScreen` starts the foreground runner for an unprocessed scan, shows progress, Cancel and Try again, and on Done opens `viewer/{scanId}` (Processing leaves the back stack), which loads `scans/<id>/splat.ply`. Hops in `core/navigation/ScanFlow`. The runner's starts and ends update the library rows (`ScanStatusSync`, wired in `app/pipeline`); after a restart a row left PROCESSING reads FAILED and Processing offers Try again. Library delete cancels the run first.
 - Forge runner (`deploy/forgejo-runner/`, #60, #74): one job per container start (`forgejo-runner one-job`); credentials in a root-only volume, jobs as uid 1001 with no capabilities; Gradle hooks removed before every job. Shared Gradle jars stay trusted only while only trusted people push (README "Jobs and trust"). Re-register once after #74 (README step 3).
 - `splat-gpu` (#101): GLES 3.1 compute plumbing (`GlesCompute` on one GL thread, `Ssbo`, `ComputeProgram`, `Dispatch`, `Std430`) and `GpuSupport.probe()`; JVM tests in the gate, the on-device smoke test is `./gradlew :splat-gpu:connectedDebugAndroidTest`.
