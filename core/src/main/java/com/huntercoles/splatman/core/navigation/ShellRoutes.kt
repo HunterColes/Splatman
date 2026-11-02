@@ -15,11 +15,15 @@ object ShellRoutes {
 
     /** Onboarding on first run, else the Library (home). */
     fun startDestination(onboardingDone: Boolean): NavigationDestination =
-        if (onboardingDone) NavigationDestination.Library else NavigationDestination.Onboarding
+        if (onboardingDone) NavigationDestination.Library else NavigationDestination.Onboarding()
 
-    /** The path of [destination] (`viewer/{scanId}` style), or null for [NavigationDestination.Back]. */
+    /**
+     * The path of [destination] (`viewer/{scanId}`; `onboarding/{page}` past page 0), or null for
+     * [NavigationDestination.Back].
+     */
     fun path(destination: NavigationDestination): String? = when (destination) {
-        NavigationDestination.Onboarding -> ONBOARDING
+        is NavigationDestination.Onboarding ->
+            if (destination.page == 0) ONBOARDING else "$ONBOARDING/${destination.page}"
         NavigationDestination.Library -> LIBRARY
         NavigationDestination.Capture -> CAPTURE
         is NavigationDestination.Processing -> "$PROCESSING/${destination.scanId}"
@@ -36,7 +40,7 @@ object ShellRoutes {
         val arg = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
         return when {
             parts.size == 1 -> when (name) {
-                ONBOARDING -> NavigationDestination.Onboarding
+                ONBOARDING -> NavigationDestination.Onboarding()
                 LIBRARY -> NavigationDestination.Library
                 CAPTURE -> NavigationDestination.Capture
                 SETTINGS -> NavigationDestination.Settings
@@ -46,6 +50,7 @@ object ShellRoutes {
             parts.size == 2 && arg != null -> when (name) {
                 PROCESSING -> NavigationDestination.Processing(arg)
                 VIEWER -> NavigationDestination.Viewer(arg)
+                ONBOARDING -> arg.toIntOrNull()?.takeIf { it >= 0 }?.let { NavigationDestination.Onboarding(it) }
                 else -> null
             }
             else -> null

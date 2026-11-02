@@ -11,7 +11,7 @@ class ShellRoutesTest {
 
     @Test
     fun `first run starts at onboarding`() {
-        assertEquals(NavigationDestination.Onboarding, ShellRoutes.startDestination(onboardingDone = false))
+        assertEquals(NavigationDestination.Onboarding(), ShellRoutes.startDestination(onboardingDone = false))
     }
 
     @Test
@@ -21,7 +21,7 @@ class ShellRoutesTest {
 
     @Test
     fun `parses routes without arguments`() {
-        assertEquals(NavigationDestination.Onboarding, ShellRoutes.parse("onboarding"))
+        assertEquals(NavigationDestination.Onboarding(), ShellRoutes.parse("onboarding"))
         assertEquals(NavigationDestination.Library, ShellRoutes.parse("library"))
         assertEquals(NavigationDestination.Capture, ShellRoutes.parse("capture"))
         assertEquals(NavigationDestination.Settings, ShellRoutes.parse("settings"))
@@ -32,6 +32,15 @@ class ShellRoutesTest {
     fun `parses the scan id of processing and viewer`() {
         assertEquals(NavigationDestination.Processing("scan-42"), ShellRoutes.parse("processing/scan-42"))
         assertEquals(NavigationDestination.Viewer("abc"), ShellRoutes.parse("viewer/abc"))
+    }
+
+    @Test
+    fun `onboarding takes the page to open at`() {
+        assertEquals("onboarding/1", ShellRoutes.path(NavigationDestination.Onboarding(page = 1)))
+        assertEquals("onboarding", ShellRoutes.path(NavigationDestination.Onboarding()))
+        assertEquals(NavigationDestination.Onboarding(page = 1), ShellRoutes.parse("onboarding/1"))
+        assertNull(ShellRoutes.parse("onboarding/-1"))
+        assertNull(ShellRoutes.parse("onboarding/tips"))
     }
 
     @Test
@@ -53,7 +62,8 @@ class ShellRoutesTest {
     @Test
     fun `every route round-trips through its path`() {
         val all = listOf(
-            NavigationDestination.Onboarding,
+            NavigationDestination.Onboarding(),
+            NavigationDestination.Onboarding(page = 1),
             NavigationDestination.Library,
             NavigationDestination.Capture,
             NavigationDestination.Processing("p1"),

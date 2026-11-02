@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ViewInAr
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -86,16 +85,6 @@ private fun PlaceholderText(text: String) {
     )
 }
 
-@Composable
-internal fun OnboardingPlaceholder(onDone: () -> Unit) {
-    ShellScaffold(title = stringResource(R.string.shell_onboarding_title), onBack = null) {
-        PlaceholderText(stringResource(R.string.shell_onboarding_body))
-        Button(onClick = onDone, modifier = Modifier.padding(top = SplatDimens.SpacingLarge)) {
-            Text(stringResource(R.string.shell_onboarding_start))
-        }
-    }
-}
-
 /** Home. The library's scans and samples, with the two ways out (scan, settings) until #15 redraws it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,9 +137,12 @@ internal fun ViewerRoute() {
 }
 
 @Composable
-internal fun SettingsPlaceholder(onBack: () -> Unit, onAbout: () -> Unit) {
+internal fun SettingsPlaceholder(onBack: () -> Unit, onTips: () -> Unit, onAbout: () -> Unit) {
     ShellScaffold(title = stringResource(R.string.shell_settings_title), onBack = onBack) {
         PlaceholderText(stringResource(R.string.shell_coming_soon))
+        TextButton(onClick = onTips, modifier = Modifier.padding(top = SplatDimens.SpacingLarge)) {
+            Text(stringResource(R.string.set_tips))
+        }
         TextButton(onClick = onAbout, modifier = Modifier.padding(top = SplatDimens.SpacingLarge)) {
             Text(stringResource(R.string.shell_about_title))
         }

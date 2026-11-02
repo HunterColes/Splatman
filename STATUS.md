@@ -12,7 +12,9 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - App shell (#13): no bottom nav; typed routes in `core/navigation/NavigationDestination` (`onboarding`, `library`,
   `capture`, `processing/{scanId}`, `viewer/{scanId}`, `settings`, `about`), rules in `ShellRoutes`; host in
   `app/shell/SplatmanShell.kt` (edge-to-edge, Capture/Processing/Viewer dark, others follow `ThemePreferences.themeMode`).
-  Onboarding on first run (`OnboardingPreferences`), else Library. Every route but Library and Viewer is a placeholder.
+  Onboarding on first run (`OnboardingPreferences`), else Library. Every route but Library, Viewer, Capture and Onboarding is a placeholder.
+- Onboarding (#14): `capture-feature/presentation/onboarding/` (three-page pager, Skip, dots, camera permission, AR
+  unsupported / install pages from `ArCoreAvailability`); Settings > Show scanning tips again opens `Onboarding(page = 1)`.
 - UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
 - Viewer (#38): GLES 3.0 `rendering/gl/SplatRenderer` (RGBA32UI texture, instanced EWA quads, worker-thread
   `DepthSort` into a double-buffered order VBO, 0.5-1.0 render scale, rebuilt on context loss) behind a `Gl` seam;

@@ -5,13 +5,14 @@ import kotlinx.serialization.Serializable
 
 /**
  * The app's typed routes (docs/design/README.md). The serial names make Navigation's route patterns read
- * `onboarding`, `library`, `capture`, `processing/{scanId}`, `viewer/{scanId}`, `settings` and `about`.
+ * `onboarding?page={page}`, `library`, `capture`, `processing/{scanId}`, `viewer/{scanId}`, `settings` and `about`.
  * [Back] is a command, not a route.
  */
 sealed class NavigationDestination {
+    /** [page] is the first page shown (0-based): Settings > Show scanning tips again opens it at 1. */
     @Serializable
     @SerialName("onboarding")
-    data object Onboarding : NavigationDestination()
+    data class Onboarding(val page: Int = 0) : NavigationDestination()
 
     @Serializable
     @SerialName("library")

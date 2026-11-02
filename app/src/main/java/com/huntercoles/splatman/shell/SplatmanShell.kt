@@ -29,6 +29,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.huntercoles.splatman.capture.presentation.capture.CaptureScreen
+import com.huntercoles.splatman.capture.presentation.onboarding.OnboardingScreen
 import com.huntercoles.splatman.core.design.SplatMotion
 import com.huntercoles.splatman.core.design.SplatTheme
 import com.huntercoles.splatman.core.design.rememberAnimatorScale
@@ -87,13 +88,14 @@ fun SplatmanShell(
                 popEnterTransition = { enter(reducedMotion, forward = false) },
                 popExitTransition = { exit(reducedMotion, forward = false) },
             ) {
-                composable<Onboarding> {
-                    screen(Onboarding) {
-                        OnboardingPlaceholder(
+                composable<Onboarding> { backStackEntry ->
+                    screen(backStackEntry.toRoute<Onboarding>()) {
+                        OnboardingScreen(
                             onDone = {
+                                // Both exits land in the Library; its open-a-file flow is the import ticket's.
                                 onOnboardingDone()
                                 navController.navigate(Library) {
-                                    popUpTo<Onboarding> { inclusive = true }
+                                    popUpTo(navController.graph.id) { inclusive = true }
                                 }
                             },
                         )
@@ -126,6 +128,7 @@ fun SplatmanShell(
                     screen(Settings) {
                         SettingsPlaceholder(
                             onBack = { navController.popBackStack() },
+                            onTips = { navController.navigate(Onboarding(page = 1)) },
                             onAbout = { navController.navigate(About) },
                         )
                     }
