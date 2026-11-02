@@ -1,0 +1,31 @@
+# The Splatman runner: one service, label `splatman`, one job at a time (capacity 1 in the image's config).
+# See README.md in this folder.
+# Limits: 4 CPUs and 5 GB of memory, no swap beyond it, 2048 processes. The gate (tools/check.sh) needs about 3 GB:
+# Gradle at -Xmx2g plus the Kotlin daemon at -Xmx1g; the rest is headroom for lint, git, node and the runner.
+# These caps keep it from starving the web app's runners on the same host.
+name: splatman-runner
+
+services:
+  runner:
+    build: .
+    image: splatman-runner:13.2.1
+    restart: unless-stopped
+    cpus: 4
+    mem_limit: 5g
+    memswap_limit: 5g
+    pids_limit: 2048
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Default bridge network, outbound only (the forge, Maven Central, Google's Maven). No host network, no ports.
+    tmpfs:
+      - /tmp:size=1g,uid=1001,gid=1001,mode=1777
+      - /home/runner:size=256m,uid=1001,gid=1001,mode=0700
+    volumes:
+      # Only this project's own named volumes: no docker socket, no host paths, no other project's volumes.
+      - runner-data:/data
+      - gradle-cache:/cache/gradle
+
+volumes:
+  runner-data:
+  gradle-cache:
