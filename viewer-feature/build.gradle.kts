@@ -82,6 +82,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.4")
     
     testImplementation(libs.bundles.common.test)
+    // Frame suite 4 (#146): the viewer's camera is rendered through the trainer's CPU rasteriser.
+    testImplementation(project(":splat-train"))
     androidTestImplementation(libs.bundles.common.android.test)
     debugImplementation(libs.debug.compose.manifest)
 
