@@ -2,6 +2,7 @@ package com.huntercoles.splatman.splat.io.spz
 
 import com.huntercoles.splatman.splat.io.FormatDetector
 import com.huntercoles.splatman.splat.io.SplatFormat
+import com.huntercoles.splatman.splat.io.ply.PlyReader
 import com.huntercoles.splatman.splat.model.SplatCloud
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -155,7 +156,8 @@ class SpzCodecTest {
             floatArrayOf(0f, 0f, 0f, -2f), floatArrayOf(80f), floatArrayOf(-9f, 9f, 0f), FloatArray(0))
         val back = SpzCodec.read(SpzCodec.write(cloud))
         assertEquals(8388607f / 4096f, back.positions[0])
-        assertEquals(-8388608f / 4096f, back.positions[1])
+        // W y = -1e9 is F y = +1e9, clamped to the 24-bit maximum, then read back as -max
+        assertEquals(-8388607f / 4096f, back.positions[1])
         assertEquals(-10f, back.logScales[0])
         assertEquals(255f / 16f - 10f, back.logScales[1])
         assertTrue(back.opacityLogits[0].isFinite() && back.opacity(0) > 0.999f)
@@ -166,6 +168,7 @@ class SpzCodecTest {
 
     @Test
     fun `golden cactus spz decodes to its known count and first splat`() {
+        // Stored in F (#154): W is (x, -y, -z) of the stored position and (w, x, -y, -z) of the stored rotation.
         // app/src/main/assets/samples/cactus.spz (#5): SPZ v3, 452,451 splats, SH 0, 12 fractional bits.
         // First splat's raw bytes: position 54 ff ff | dd e7 ff | be fa ff, alpha 52, colour 147 150 145,
         // scale 51 3 75, rotation 00 66 31 d2 (u32 0xd2316600: largest index 3 = w, then x, y, z fields).
@@ -174,8 +177,8 @@ class SpzCodecTest {
         val cloud = file.inputStream().buffered().use { SpzCodec.read(it) }
         assertEquals(452_451, cloud.count)
         assertEquals(0, cloud.shDegree)
-        // 0xffff54 = -172, 0xffe7dd = -6179, 0xfffabe = -1346; / 4096 exactly
-        assertArrayEquals(floatArrayOf(-172f / 4096f, -6179f / 4096f, -1346f / 4096f), cloud.positions.copyOf(3))
+        // 0xffff54 = -172, 0xffe7dd = -6179, 0xfffabe = -1346; / 4096 exactly, then F -> W
+        assertArrayEquals(floatArrayOf(-172f / 4096f, 6179f / 4096f, 1346f / 4096f), cloud.positions.copyOf(3))
         assertEquals(ln((52f / 255f) / (1f - 52f / 255f)), cloud.opacityLogits[0], 1e-5f)
         assertArrayEquals(
             floatArrayOf((147f / 255f - 0.5f) / 0.15f, (150f / 255f - 0.5f) / 0.15f, (145f / 255f - 0.5f) / 0.15f),
@@ -187,9 +190,58 @@ class SpzCodecTest {
         val x = sqrt(0.5f) * 291f / 511f
         val y = sqrt(0.5f) * 89f / 511f
         val w = sqrt(1f - x * x - y * y)
-        assertArrayEquals(floatArrayOf(w, x, y, 0f), cloud.rotations.copyOf(4), 1e-6f)
+        assertArrayEquals(floatArrayOf(w, x, -y, 0f), cloud.rotations.copyOf(4), 1e-6f)
         assertTrue(cloud.positions.all { it.isFinite() } && cloud.opacityLogits.all { it.isFinite() })
         assertEquals(SplatFormat.SPZ, FormatDetector.detect(file.inputStream().use { it.readNBytes(512) }, file.length()))
+    }
+
+    @Test
+    fun `cactus spz opens in the same frame as the cactus PLY`() {
+        // #154: both samples are the same scan; the PLY is read F -> W, so the SPZ must land on the same W
+        // coordinates. Stored in RUB the SPZ's y would be mirrored (2nd/98th percentile -0.44/1.88 against
+        // 1.86/-0.42 here) and the cactus would show upside down.
+        val spz = sample("cactus.spz").inputStream().buffered().use { SpzCodec.read(it) }
+        val ply = sample("cactus-sh1.ply").inputStream().buffered().use { PlyReader.readWithReport(it) }.cloud
+        for (axis in 0 until 3) {
+            val a = FloatArray(spz.count) { spz.positions[3 * it + axis] }.sorted()
+            val b = FloatArray(ply.count) { ply.positions[3 * it + axis] }.sorted()
+            for (pct in listOf(2, 50, 98)) {
+                val pa = a[a.size * pct / 100]
+                val pb = b[b.size * pct / 100]
+                assertEquals(pb, pa, 0.1f, "axis $axis percentile $pct")
+            }
+        }
+    }
+
+    @Test
+    fun `writer stores positions, rotations and SH in F`() {
+        val sh = FloatArray(9)
+        for (c in 0 until 3) for (kk in 0 until 3) sh[c * 3 + kk] = 0.5f
+        val cloud = SplatCloud(1, 1, floatArrayOf(1f, 2f, 3f), FloatArray(3), floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f),
+            FloatArray(1), FloatArray(3), sh)
+        val raw = gunzip(SpzCodec.write(cloud))
+        val o = SpzCodec.HEADER_BYTES
+        fun fixed(a: Int): Int {
+            val p = o + 3 * a
+            var v = (raw[p].toInt() and 0xFF) or ((raw[p + 1].toInt() and 0xFF) shl 8) or
+                ((raw[p + 2].toInt() and 0xFF) shl 16)
+            if (v and 0x800000 != 0) v = v or -0x1000000
+            return v
+        }
+        assertEquals(listOf(4096, -2 * 4096, -3 * 4096), (0 until 3).map { fixed(it) })
+        // rotation W (w, x, y, z) = (.5, .5, .5, .5) is F (.5, .5, -.5, -.5)
+        val back = SpzCodec.read(SpzCodec.write(cloud))
+        assertRotationClose(floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f), back.rotations.copyOf(4), ROTATION_TOL, "rotation")
+        val rot = o + 9 + 1 + 3 + 3
+        val comp = (raw[rot].toInt() and 0xFF) or ((raw[rot + 1].toInt() and 0xFF) shl 8) or
+            ((raw[rot + 2].toInt() and 0xFF) shl 16) or ((raw[rot + 3].toInt() and 0xFF) shl 24)
+        // all four components tie at 0.5; the largest index is 0 (x) and the y, z fields carry the sign bit
+        assertEquals(0, comp ushr 30)
+        val signs = listOf(20, 10, 0).map { (comp ushr (it + 9)) and 1 } // y, z, w fields from the top
+        assertEquals(listOf(1, 1, 0), signs)
+        // SH degree 1 W -> F signs -, -, +: stored 0.5 * 128 + 128 = 192 or -0.5 -> 64, coefficient-major
+        val shBytes = raw.copyOfRange(raw.size - 9, raw.size).map { it.toInt() and 0xFF }
+        assertEquals(listOf(64, 64, 64, 64, 64, 64, 192, 192, 192), shBytes)
     }
 
     @Test
@@ -211,17 +263,21 @@ class SpzCodecTest {
         val cloud = SpzCodec.read(gzip(body.toByteArray()))
 
         assertEquals(2, cloud.count)
-        assertArrayEquals(floatArrayOf(1f, -0.5f, 0f, 8388607f / 256f, -8388608f / 256f, 1f / 256f), cloud.positions)
+        // stored in F; W = (x, -y, -z)
+        assertArrayEquals(floatArrayOf(1f, 0.5f, -0f, 8388607f / 256f, 8388608f / 256f, -1f / 256f), cloud.positions)
         assertTrue(cloud.opacity(0) < 0.001f && cloud.opacity(1) > 0.999f)
         assertEquals((128f / 255f - 0.5f) / 0.15f, cloud.shDc[0], 1e-6f)
         assertEquals(-0.5f / 0.15f, cloud.shDc[1], 1e-6f)
         assertArrayEquals(floatArrayOf(0f, -10f, 255f / 16f - 10f, 1f / 16f - 10f, 2f / 16f - 10f, 3f / 16f - 10f),
             cloud.logScales)
         val s = 0.5f / 127.5f
-        assertArrayEquals(floatArrayOf(sqrt(1f - 3 * s * s), s, s, s), cloud.rotations.copyOf(4), 1e-6f)
-        assertArrayEquals(floatArrayOf(0f, 1f, s, s), cloud.rotations.copyOfRange(4, 8), 1e-3f)
-        assertTrue((0 until 9).all { cloud.shRest[it] == -1f })
-        assertEquals(0.5f, cloud.shRest[cloud.shRestIndex(1, 2, 1)])
+        assertArrayEquals(floatArrayOf(sqrt(1f - 3 * s * s), s, -s, -s), cloud.rotations.copyOf(4), 1e-6f)
+        assertArrayEquals(floatArrayOf(0f, 1f, -s, -s), cloud.rotations.copyOfRange(4, 8), 1e-3f)
+        // stored -1.0 everywhere; the degree-1 F -> W signs are -, -, + (ADR 0003 rule 5)
+        for (c in 0 until 3) {
+            assertArrayEquals(floatArrayOf(1f, 1f, -1f), FloatArray(3) { cloud.shRest[cloud.shRestIndex(0, c, it)] })
+        }
+        assertEquals(-0.5f, cloud.shRest[cloud.shRestIndex(1, 2, 1)])
         assertEquals(8, (9 until 18).count { cloud.shRest[it] == 0f })
     }
 

@@ -26,8 +26,8 @@ No other file flips an axis, reorders a quaternion or builds a projection from i
 | **Ccv** camera, OpenCV axes | +X right, +Y down, +Z forward (looking direction) | right | m | pinhole projection, covariance Jacobian, trainer |
 | **I** image | u right, v down, origin at the centre of the top-left pixel, pixel `(i,j)` centre at `(i,j)` | | px | `CameraIntrinsics`, keyframe images |
 | **NDC/clip** | OpenGL: x right, y up, z into the screen in NDC, `[-1,1]^3` | left (NDC) | | shaders |
-| **F** file (3DGS PLY, `.splat`) | "RDF": +X right, +Y down, +Z forward, i.e. `W` turned 180 degrees about X | right | m | PLY and `.splat` import/export |
-| **SPZ, glTF** | "RUB" = W's axes (+Y up), glTF quaternions x,y,z,w | right | m | SPZ and glTF I/O |
+| **F** file (3DGS PLY, `.splat`, SPZ) | "RDF": +X right, +Y down, +Z forward, i.e. `W` turned 180 degrees about X | right | m | PLY, `.splat` and SPZ import/export |
+| **glTF** | "RUB" = W's axes (+Y up), glTF quaternions x,y,z,w | right | m | glTF I/O (later) |
 | **NS** Nerfstudio `transforms.json` | world = W; `transform_matrix` is `T_W_Cgl` (OpenGL camera axes, as Nerfstudio expects), row-major nested list | right | m | capture bundle |
 
 ## The conversions (exact)
@@ -45,7 +45,7 @@ No other file flips an axis, reorders a quaternion or builds a projection from i
    `P[2][2] = -(f + n)/(f - n)`, `P[2][3] = -2fn/(f - n)`, `P[3][2] = -1`, others 0. This maps pixel edges
    `u = -0.5` and `u = w - 0.5` to NDC x = -1 and +1 and the image top row to NDC y = +1. The orbit viewer uses its own
    field-of-view projection built in the same file.
-5. **W <-> F (PLY, `.splat`).** `G = diag(1, -1, -1)` (180 degrees about X, a proper rotation). Position
+5. **W <-> F (PLY, `.splat`, SPZ).** `G = diag(1, -1, -1)` (180 degrees about X, a proper rotation). Position
    `p_F = G * p_W`; quaternion `q_F = (w, x, -y, -z)` (conjugating by the X half-turn); log-scales and opacity
    unchanged; SH coefficients get one sign each (the basis function's parity under `y -> -y, z -> -z`):
    - degree 1 (`sh1..sh3` = y, z, x): `-, -, +`
@@ -53,8 +53,10 @@ No other file flips an axis, reorders a quaternion or builds a projection from i
    - degree 3 (`sh9..sh15`): `-, +, -, -, +, -, +`
    - degree 0: unchanged.
    The map is its own inverse, so import uses the same function.
-6. **W <-> SPZ, glTF.** No axis change. glTF and SPZ quaternion component order is handled by their codecs via
-   `FrameConversions.quatToXyzw` / `quatFromXyzw`.
+6. **W <-> glTF; SPZ quaternion order.** glTF: no axis change. SPZ is stored in F like PLY (rule 5; #154: tools
+   that convert PLY to SPZ store the coordinates as they are, and the bundled cactus.spz matches the PLY cactus's raw
+   F coordinates), so it takes rule 5's signs. glTF and SPZ quaternion component order (x, y, z, w) is handled by
+   their codecs via `FrameConversions.quatToXyzw` / `quatFromXyzw`.
 7. **W <-> NS.** `transform_matrix` = `T_W_Cgl` written row-major; intrinsics as `fl_x, fl_y, cx, cy, w, h`.
 
 ## Why W = ARCore world

@@ -6,7 +6,7 @@ Status: accepted (2026-11-01, council #2)
 |---|---|---|---|---|---|
 | **3DGS PLY** (INRIA layout) | yes | yes, default | v1, first | F (RDF) | lossless; SH degree 0-3 |
 | **`.splat`** (antimatter15) | yes | yes | v1 | F (RDF) | 32 B/splat, SH0 only, lossy |
-| **SPZ** (Niantic, v2 and v3) | yes | yes | after PLY | RUB (= W) | gzip, quantised, ~10x smaller than PLY |
+| **SPZ** (Niantic, v2 and v3) | yes | yes | after PLY | F (RDF), like PLY (#154) | gzip, quantised, ~10x smaller than PLY |
 | glTF `KHR_gaussian_splatting` | later | later | when Khronos ratifies it | glTF (= W) | watch only |
 | **Capture bundle** (Nerfstudio `transforms.json`) | yes (re-train) | yes (zip) | v1 storage, export later | NS (ADR 0003) | the training dataset |
 
@@ -37,7 +37,9 @@ Android types, and return/accept `SplatCloud` in frame W. The frame change happe
 
 Follow Niantic's spz reference (MIT, github.com/nianticlabs/spz) for the header (magic `NGSP`, version, count, SH
 degree, fractional bits, flags), the gzip stream and every quantisation; support versions 2 and 3 on import, write
-version 3. Tests compare against a sample file and state per-field tolerances from the quantisation steps.
+version 3. Coordinates are stored in F, the PLY frame (ADR 0003 rule 5): converters keep the PLY's raw values
+(the bundled cactus.spz matches the cactus PLY's raw coordinates, #154), so the codec converts positions,
+quaternions and SH signs W <-> F through `FrameConversions`. Tests compare against a sample file and state per-field tolerances from the quantisation steps.
 
 ## Capture bundle (on disk, per scan)
 

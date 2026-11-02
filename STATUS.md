@@ -50,7 +50,7 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - Capture bundle (#33, ADR 0007): `splat-io/bundle` `CaptureBundleWriter`/`CaptureBundleReader` write and read
   `transforms.json` (Nerfstudio + `splatman_version`), JPEGs, f32 depth and `seed.ply`, each file temp + rename and
   `transforms.json` last; nothing records a capture into it yet (#41).
-- SPZ (#34, ADR 0007): `splat-io/spz/SpzCodec` reads v2/v3 and writes v3 (Niantic reference quantisation, RUB = W),
+- SPZ (#34, ADR 0007): `splat-io/spz/SpzCodec` reads v2/v3 and writes v3 (Niantic reference quantisation, stored in F like PLY, #154),
   streamed through one 64 KiB buffer (1M splats decode in ~1 s); no export menu uses it yet.
 - CPU rasteriser forward (#37): `splat-train/raster/Rasterizer.forward` (16x16 tiles, front-to-back, deterministic
   over threads; 50k splats at 320x240 in ~19 ms on the desktop) is the golden renderer. Backward (#40):

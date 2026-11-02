@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.splat.io.spz
 
 import com.huntercoles.splatman.splat.frames.FrameConversions
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.SplatCloud
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -33,8 +34,9 @@ import kotlin.math.sqrt
  * - SH: 3K x u8 per splat, `(b - 128) / 128`, coefficient-major with the colour channel innermost; written with
  *   5 bits for degree 1 and 4 bits above (bucketed to 8 and 16 steps).
  *
- * The frame is RUB, which is W (ADR 0003 rule 6): no axis change, only the quaternion order through
- * [FrameConversions]. Reads versions 2 and 3, writes version 3. The stream is decoded section by section through
+ * The frame is F, the PLY file frame (RDF, +Y down; ADR 0003 rule 5): tools that convert PLY to SPZ store the
+ * coordinates as they are (the bundled cactus.spz, #154). Positions, quaternions and SH signs go W <-> F through
+ * [FrameConversions], per splat and in place, as the sections stream. Reads versions 2 and 3, writes version 3. The stream is decoded section by section through
  * one fixed-size buffer; no full decompressed copy is held.
  *
  * Deviation from the reference: alpha bytes 0 and 255 decode to finite logits (alpha 0.25/255 and 254.75/255,
@@ -81,7 +83,7 @@ object SpzCodec {
     fun read(bytes: ByteArray): SplatCloud = read(ByteArrayInputStream(bytes))
 
     /**
-     * Decodes a whole SPZ stream (gzip included) into a [SplatCloud] in frame W. Does not close [input].
+     * Decodes a whole SPZ stream (gzip included, stored in frame F) into a [SplatCloud] in frame W. Does not close [input].
      * A header whose decoded arrays would exceed [maxBytes] (default: half the heap) is rejected with
      * [SpzFormatException] before anything is allocated.
      */
@@ -112,6 +114,10 @@ object SpzCodec {
                 if (fixed and 0x800000 != 0) fixed = fixed or -0x1000000
                 positions[3 * i + a] = fixed * posScale
             }
+            val w = FrameConversions.fileToWorld(Vec3(positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]))
+            positions[3 * i] = w.x
+            positions[3 * i + 1] = w.y
+            positions[3 * i + 2] = w.z
         }
         section(z, buf, 1, n, "alphas") { b, o, i -> opacity[i] = ALPHA_LOGIT[u8(b[o])] }
         section(z, buf, 3, n, "colours") { b, o, i ->
@@ -139,10 +145,11 @@ object SpzCodec {
             }
         }
         if (k > 0) {
+            val signs = FrameConversions.shRestSigns(h.shDegree)
             section(z, buf, 3 * k, n, "sh") { b, o, i ->
                 val base = i * 3 * k
                 for (kk in 0 until k) for (c in 0 until 3) {
-                    shRest[base + c * k + kk] = SH[u8(b[o + kk * 3 + c])]
+                    shRest[base + c * k + kk] = SH[u8(b[o + kk * 3 + c])] * signs[kk]
                 }
             }
         }
@@ -254,7 +261,7 @@ object SpzCodec {
     }
 
     private fun putRotation(rotations: FloatArray, i: Int, xyzw: FloatArray) {
-        val q = FrameConversions.quatFromXyzw(xyzw)
+        val q = FrameConversions.fileToWorld(FrameConversions.quatFromXyzw(xyzw))
         rotations[4 * i] = q.w
         rotations[4 * i + 1] = q.x
         rotations[4 * i + 2] = q.y
@@ -266,7 +273,7 @@ object SpzCodec {
     fun write(cloud: SplatCloud): ByteArray = ByteArrayOutputStream().also { write(cloud, it) }.toByteArray()
 
     /**
-     * Encodes [cloud] (frame W) as an SPZ v3 gzip stream onto [output]; the gzip trailer is written, [output] is not
+     * Encodes [cloud] (frame W) as an SPZ v3 gzip stream in frame F onto [output]; the gzip trailer is written, [output] is not
      * closed. Output is byte-identical across runs (gzip mtime 0).
      */
     fun write(cloud: SplatCloud, output: OutputStream) {
@@ -285,8 +292,12 @@ object SpzCodec {
 
             val posScale = (1 shl FRACTIONAL_BITS).toDouble()
             emit(z, buf, 9, n) { b, o, i ->
+                val f = FrameConversions.worldToFile(
+                    Vec3(cloud.positions[3 * i], cloud.positions[3 * i + 1], cloud.positions[3 * i + 2]),
+                )
                 for (a in 0 until 3) {
-                    val fixed = Math.round(cloud.positions[3 * i + a] * posScale)
+                    val v = when (a) { 0 -> f.x; 1 -> f.y; else -> f.z }
+                    val fixed = Math.round(v * posScale)
                         .coerceIn(FIXED_MIN.toLong(), FIXED_MAX.toLong()).toInt()
                     b[o + 3 * a] = fixed.toByte()
                     b[o + 3 * a + 1] = (fixed shr 8).toByte()
@@ -301,14 +312,15 @@ object SpzCodec {
                 for (a in 0 until 3) b[o + a] = toU8((cloud.logScales[3 * i + a] + 10f) * 16f)
             }
             emit(z, buf, 4, n) { b, o, i ->
-                packSmallestThree(FrameConversions.quatToXyzw(cloud.rotation(i)), b, o)
+                packSmallestThree(FrameConversions.quatToXyzw(FrameConversions.worldToFile(cloud.rotation(i))), b, o)
             }
             if (k > 0) {
+                val signs = FrameConversions.shRestSigns(cloud.shDegree)
                 emit(z, buf, 3 * k, n) { b, o, i ->
                     val base = i * 3 * k
                     for (kk in 0 until k) for (c in 0 until 3) {
                         val bucket = if (kk < 3) SH1_BUCKET else SH_REST_BUCKET
-                        b[o + kk * 3 + c] = quantizeSh(cloud.shRest[base + c * k + kk], bucket)
+                        b[o + kk * 3 + c] = quantizeSh(cloud.shRest[base + c * k + kk] * signs[kk], bucket)
                     }
                 }
             }
