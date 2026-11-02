@@ -1,17 +1,13 @@
 package com.huntercoles.splatman.shell
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,42 +79,25 @@ private fun PlaceholderText(text: String) {
     )
 }
 
-/** Home. The library's scans and samples, with the two ways out (scan, settings) until #15 redraws it. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Home: the Library screen (#15) with its top bar, FAB and every way out. */
 @Composable
 internal fun LibraryHome(
     onScan: () -> Unit,
+    onOpenFile: () -> Unit,
     onSettings: () -> Unit,
+    onAbout: () -> Unit,
     onOpenViewer: (String) -> Unit,
     onOpenProcessing: (String) -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.shell_library_title)) },
-                actions = {
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.shell_settings_title))
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onScan,
-                icon = { Icon(Icons.Rounded.ViewInAr, contentDescription = null) },
-                text = { Text(stringResource(R.string.shell_scan)) },
-            )
-        },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            LibraryFeature(
-                onOpenViewer = onOpenViewer,
-                onOpenProcessing = onOpenProcessing,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
+    LibraryFeature(
+        onOpenViewer = onOpenViewer,
+        onOpenProcessing = onOpenProcessing,
+        onScan = onScan,
+        onOpenFile = onOpenFile,
+        onSettings = onSettings,
+        onAbout = onAbout,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 /** Full screen, always dark: the viewer of the route's scan id. */

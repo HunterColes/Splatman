@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="shell_back">Back</string>
-    <string name="shell_scan">Scan</string>
-    <string name="shell_library_title">Library</string>
-    <string name="shell_settings_title">Settings</string>
 </resources>
