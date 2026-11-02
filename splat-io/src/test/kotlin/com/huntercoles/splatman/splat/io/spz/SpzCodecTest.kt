@@ -226,6 +226,15 @@ class SpzCodecTest {
     }
 
     @Test
+    fun `a forged count of 10M splats at degree 3 is a format error, not OOM`() {
+        val bytes = gzip(header(3, 10_000_000, 3, 12) + ByteArray(8))
+        assertTrue(bytes.size < 200)
+        val e = assertThrows<SpzFormatException> { SpzCodec.read(ByteArrayInputStream(bytes), maxBytes = 64L shl 20) }
+        assertTrue(e.message!!.contains("budget"), e.message)
+        assertThrows<SpzFormatException> { SpzCodec.read(bytes) }
+    }
+
+    @Test
     fun `wrong magic is a clear error`() {
         val bytes = gzip(header(3, 0, 0, 12, magic = 0x31474e50) + ByteArray(8))
         val e = assertThrows<SpzFormatException> { SpzCodec.read(bytes) }

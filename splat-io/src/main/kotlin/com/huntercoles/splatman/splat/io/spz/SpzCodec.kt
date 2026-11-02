@@ -80,12 +80,22 @@ object SpzCodec {
 
     fun read(bytes: ByteArray): SplatCloud = read(ByteArrayInputStream(bytes))
 
-    /** Decodes a whole SPZ stream (gzip included) into a [SplatCloud] in frame W. Does not close [input]. */
-    fun read(input: InputStream): SplatCloud {
+    /**
+     * Decodes a whole SPZ stream (gzip included) into a [SplatCloud] in frame W. Does not close [input].
+     * A header whose decoded arrays would exceed [maxBytes] (default: half the heap) is rejected with
+     * [SpzFormatException] before anything is allocated.
+     */
+    fun read(input: InputStream, maxBytes: Long = defaultBudget()): SplatCloud {
         val z = gunzip(input)
         val h = headerFrom(z)
         val n = h.count
         val k = SplatCloud.restCoefficients(h.shDegree)
+        val need = decodedBytes(n, k)
+        if (need > maxBytes) {
+            throw SpzFormatException(
+                "SPZ count $n at SH degree ${h.shDegree} needs $need bytes, above the budget of $maxBytes",
+            )
+        }
         val positions = FloatArray(3 * n)
         val logScales = FloatArray(3 * n)
         val rotations = FloatArray(4 * n)
@@ -138,6 +148,11 @@ object SpzCodec {
         }
         return SplatCloud(n, h.shDegree, positions, logScales, rotations, opacity, shDc, shRest)
     }
+
+    /** Bytes of float arrays [read] allocates for [n] splats with [k] rest coefficients per channel. */
+    internal fun decodedBytes(n: Int, k: Int): Long = 4L * n * (3 + 3 + 4 + 1 + 3 + 3L * k)
+
+    private fun defaultBudget(): Long = Runtime.getRuntime().maxMemory() / 2
 
     /** Reads only the header of an SPZ stream (gzip included). Does not close [input]. */
     fun readHeader(input: InputStream): SpzHeader = headerFrom(gunzip(input))
