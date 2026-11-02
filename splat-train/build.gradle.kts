@@ -17,6 +17,8 @@ kotlin {
 
 dependencies {
     api(project(":splat-core"))
+    // Trainer.train returns a Flow (ADR 0005): the JVM core artifact, same version as the app's coroutines.
+    api(libs.kotlin.coroutines.core)
     testImplementation(libs.test.junit)
 }
 
