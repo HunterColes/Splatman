@@ -61,4 +61,23 @@ class DefaultSplatLoaderTest {
         assertThrows<SplatFileException> { DefaultSplatLoader(opener, d, d).load(doc) }
         assertEquals(listOf(doc), opener.closed)
     }
+
+    @Test
+    fun `random bytes the size of a splat file are refused instead of framed`() = runTest {
+        // QA on #38: 4000 random bytes decode as 125 .splat splats with NaN and astronomic values; framing them
+        // crashed the GL thread in Mat4.lookAt. They must end in the viewer's error state instead.
+        val opener = BytesOpener(mapOf(doc to ByteArray(4000).also { java.util.Random(38).nextBytes(it) }))
+        val d = StandardTestDispatcher(testScheduler)
+        val e = assertThrows<SplatFileException> { DefaultSplatLoader(opener, d, d).load(doc) }
+        assertTrue(e.message!!.startsWith("The file holds broken splats"), e.message)
+    }
+
+    @Test
+    fun `a PLY with a NaN centre is refused`() = runTest {
+        val cloud = TestClouds.cloud(6).also { it.positions[4] = Float.NaN }
+        val opener = BytesOpener(mapOf(sample to TestClouds.ply(cloud)))
+        val d = StandardTestDispatcher(testScheduler)
+        val e = assertThrows<SplatFileException> { DefaultSplatLoader(opener, d, d).load(sample) }
+        assertTrue(e.message!!.startsWith("The file holds broken splats"), e.message)
+    }
 }

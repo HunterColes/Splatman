@@ -20,13 +20,17 @@ class DecodedSplats(val cloud: SplatCloud, val format: SplatFormat, val shDroppe
  * Opens a splat file by content (ADR 0007, [FormatDetector]): a PLY is streamed through [PlyReader] with the ADR 0002
  * SH memory cap [shCapBytes], so a 1M-splat SH3 file keeps degree 0 instead of running out of memory; anything else
  * is read whole (at most [maxRawBytes]) and decoded as `.splat` when its size fits. SPZ is recognised but not read yet.
+ * A decoded cloud must pass [SplatSanity] (finite, in bounds) or it is refused like an unreadable file.
  * Pure Kotlin; blocking; the stream is not closed.
  */
 class SplatFileDecoder(
     private val shCapBytes: Long = PlyReader.SH_CAP_BYTES,
     private val maxRawBytes: Long = MAX_RAW_BYTES,
 ) {
-    fun decode(input: InputStream): DecodedSplats {
+    fun decode(input: InputStream): DecodedSplats =
+        decodeUnchecked(input).also { SplatSanity.requireUsable(it.cloud) }
+
+    private fun decodeUnchecked(input: InputStream): DecodedSplats {
         val stream = BufferedInputStream(input, BUFFER_BYTES)
         stream.mark(HEADER_BYTES)
         val header = ByteArray(HEADER_BYTES)

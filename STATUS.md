@@ -16,7 +16,7 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - Viewer (#38): GLES 3.0 `rendering/gl/SplatRenderer` (RGBA32UI texture, instanced EWA quads, worker-thread
   `DepthSort` into a double-buffered order VBO, 0.5-1.0 render scale, rebuilt on context loss) behind a `Gl` seam;
   `ViewerScreen` opens the `sample:<file>` the Library passed, the bundled samples or a picked PLY/.splat
-  (`presentation/load`), fps overlay; scan ids are #18. Shaders are only checked on a device (QA). The viewer's
+  (`presentation/load`; `SplatSanity` refuses non-finite or out-of-bounds clouds before framing), fps overlay; scan ids are #18. Shaders are only checked on a device (QA). The viewer's
   CameraX preview is gone (capture owns the camera).
 - GPU packer (#35): `viewer-feature/rendering/pack/SplatPacker` packs a `SplatCloud` into the ADR 0006 RGBA32UI layout
   (1M splats in ~0.4 s on the JVM); drawn by #38.
