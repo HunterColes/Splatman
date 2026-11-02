@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import com.huntercoles.splatman.capture.preview.PreviewTarget
+import com.huntercoles.splatman.capture.recording.CaptureRecorder
+import com.huntercoles.splatman.capture.recording.JpegEncoder
+import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.CameraImage
 import com.huntercoles.splatman.capture.tracking.FeaturePoints
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -33,6 +37,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CaptureViewModelTest {
@@ -84,12 +90,26 @@ class CaptureViewModelTest {
 
     private val tracker = FakeTracker()
     private val store = ViewModelStore()
+    private val background = StandardTestDispatcher()
+
+    @TempDir
+    lateinit var dir: File
+
+    private val recorder by lazy {
+        CaptureRecorder(
+            scansRoot = File(dir, "scans"),
+            stagingRoot = File(dir, "recording"),
+            encoder = JpegEncoder { _, _ -> ByteArray(4) },
+            worker = background,
+            io = background,
+        )
+    }
 
     private fun viewModel(): CaptureViewModel = ViewModelProvider(
         store,
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = CaptureViewModel(tracker) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = CaptureViewModel(tracker, recorder) as T
         },
     )[CaptureViewModel::class.java]
 
@@ -219,6 +239,40 @@ class CaptureViewModelTest {
         val vm = viewModel()
         vm.setPreview(null)
         assertEquals(listOf<PreviewTarget?>(null), tracker.previews)
+    }
+
+    @Test
+    fun `record and cancel drive the recorder and show its state`() {
+        val vm = viewModel()
+        assertEquals(RecorderState.Idle, vm.uiState.value.recorder)
+        vm.onIntent(CaptureIntent.Record)
+        assertEquals(RecorderState.Recording(0, 0f, 0, 0), vm.uiState.value.recorder)
+        vm.onIntent(CaptureIntent.Cancel)
+        background.scheduler.advanceUntilIdle()
+        assertEquals(RecorderState.Idle, vm.uiState.value.recorder)
+    }
+
+    @Test
+    fun `stop with nothing kept says so`() {
+        val vm = viewModel()
+        vm.onIntent(CaptureIntent.Record)
+        background.scheduler.advanceUntilIdle()
+        vm.onIntent(CaptureIntent.Stop)
+        background.scheduler.advanceUntilIdle()
+        assertEquals(RecorderState.NothingRecorded, vm.uiState.value.recorder)
+    }
+
+    @Test
+    fun `frames go to the recorder while recording, which closes them`() {
+        val vm = viewModel()
+        vm.onIntent(CaptureIntent.Record)
+        background.scheduler.advanceUntilIdle()
+        val image = FakeImage()
+        tracker.channel.trySend(frame(TrackingState.PAUSED, TrackingFailure.NONE, image))
+        assertEquals(0, image.closes)
+        background.scheduler.advanceUntilIdle()
+        assertEquals(1, image.closes)
+        assertTrue(vm.uiState.value.recorder is RecorderState.Recording)
     }
 
     @Test

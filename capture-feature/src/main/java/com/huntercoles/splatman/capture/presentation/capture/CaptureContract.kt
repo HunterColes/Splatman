@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.capture.presentation.capture
 
+import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import com.huntercoles.splatman.capture.tracking.TrackingFailure
@@ -18,6 +19,15 @@ sealed interface CaptureIntent {
 
     /** Try to open the tracker again (after a failure or a refused permission). */
     data object Retry : CaptureIntent
+
+    /** Start recording a scan. */
+    data object Record : CaptureIntent
+
+    /** Stop recording and save the scan. */
+    data object Stop : CaptureIntent
+
+    /** Stop recording (or saving) and keep nothing. */
+    data object Cancel : CaptureIntent
 }
 
 /** The one line telling the user how tracking goes. */
@@ -68,10 +78,14 @@ sealed interface CapturePhase {
     data class Failed(val reason: String) : CapturePhase
 }
 
-/** The capture screen's state. [installPending]: an ARCore install was started; check again on resume. */
+/**
+ * The capture screen's state. [installPending]: an ARCore install was started; check again on resume. [recorder]:
+ * the recording, with its live keyframe count and coverage.
+ */
 data class CaptureUiState(
     val phase: CapturePhase = CapturePhase.Checking,
     val installPending: Boolean = false,
+    val recorder: RecorderState = RecorderState.Idle,
 )
 
 /** The hint for one frame's tracking [state] and [failure]. */

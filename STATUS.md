@@ -6,6 +6,7 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - The gate counts the unit tests (`unit tests: N`) and goes red at 0 or under the floor in `tools/test-count.min` (69; raise it on purpose) (#59).
 - Poker-app leftovers (blinds, chips, odds, bank, tournament, timer) are deleted (#6); the Library nav route renders `LibraryScreen`.
 - Library (#46): scans are Room `ScanEntity` rows (DB `splat_database` v2) over folders `filesDir/scans/<id>/` (ADR 0007); `ScanRepository` syncs, renames, deletes (cancelling processing via `ProcessingCanceller`, a no-op until #43); samples open the Viewer as `sample:<file>`. The old point-cloud path is gone.
+- Recording (#41): Capture has Record/Stop/Cancel; `capture/recording/CaptureRecorder` takes keyframes (luma sharpness + `KeyframeSelector`), 640x480 JPEG q90, seeds from points and depth, and on Stop writes the bundle to `filesDir/recording/<id>/` then renames it to `filesDir/scans/<id>/` (the library adopts it); Cancel keeps nothing.
 - Design tokens (#12): `core/design` holds the v1 violet dark/light M3 schemes, overlay tokens, full type scale plus
   `numeral`, trimmed `SplatDimens`, `SplatMotion`, and one `SplatTheme(forceDark, darkTheme)`.
 - App shell (#13): no bottom nav; typed routes in `core/navigation/NavigationDestination` (`onboarding`, `library`,

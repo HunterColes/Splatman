@@ -39,6 +39,48 @@ interface CameraImage : AutoCloseable {
 
     /** Converts to RGBA8888 (BT.601 full range); the image stays open. */
     fun toRgb(): RgbImage
+
+    /**
+     * A copy of the luma (Y) plane; the image stays open. The default derives BT.601 luma from [toRgb]; a YUV image
+     * overrides it with a plain copy of its Y plane.
+     */
+    fun luma(): LumaPlane {
+        val rgb = toRgb()
+        val out = ByteArray(rgb.width * rgb.height)
+        val px = rgb.rgba
+        for (i in out.indices) {
+            val r = px[4 * i].toInt() and 0xFF
+            val g = px[4 * i + 1].toInt() and 0xFF
+            val b = px[4 * i + 2].toInt() and 0xFF
+            out[i] = ((LUMA_R * r + LUMA_G * g + LUMA_B * b + LUMA_HALF) shr LUMA_SHIFT).toByte()
+        }
+        return LumaPlane(rgb.width, rgb.height, rgb.width, out)
+    }
+}
+
+// BT.601 luma weights, fixed point * 2^8 (they sum to 256).
+private const val LUMA_R = 77
+private const val LUMA_G = 150
+private const val LUMA_B = 29
+private const val LUMA_SHIFT = 8
+private const val LUMA_HALF = 1 shl (LUMA_SHIFT - 1)
+
+/** An 8-bit luma plane, sensor orientation: pixel (x, y) is `bytes[y * rowStride + x]`, read as unsigned. */
+class LumaPlane(
+    /** Width, pixels. */
+    val width: Int,
+    /** Height, pixels. */
+    val height: Int,
+    /** Bytes between the starts of two rows, >= [width]. */
+    val rowStride: Int,
+    /** The plane; not copied, immutable by contract. */
+    val bytes: ByteArray,
+) {
+    init {
+        require(width > 0 && height > 0) { "plane size must be positive, got ${width}x$height" }
+        require(rowStride >= width) { "rowStride $rowStride is less than width $width" }
+        require(bytes.size >= (height - 1) * rowStride + width) { "luma plane too small: ${bytes.size} bytes" }
+    }
 }
 
 /** ARCore feature points of one frame. Arrays are not copied: immutable by contract. */

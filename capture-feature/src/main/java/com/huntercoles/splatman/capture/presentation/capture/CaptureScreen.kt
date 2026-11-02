@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.capture.R
 import com.huntercoles.splatman.capture.preview.CameraPreview
 import com.huntercoles.splatman.capture.preview.PreviewTarget
+import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.arcore.ArCoreAvailability
 import com.huntercoles.splatman.capture.tracking.rememberCameraPermissionRequest
 import kotlinx.coroutines.runBlocking
@@ -119,13 +122,21 @@ private fun CaptureContent(
                     onTarget = { target -> attachPreview(viewModel, target) },
                     modifier = Modifier.fillMaxSize(),
                 )
-                TrackingHintChip(
-                    hint = phase.hint,
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(24.dp),
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TrackingHintChip(hint = phase.hint)
+                    RecordControls(
+                        recorder = state.recorder,
+                        canRecord = !phase.paused,
+                        onIntent = viewModel::onIntent,
+                    )
+                }
             }
             CapturePhase.Checking -> Message(R.string.capture_checking) {
                 CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
@@ -165,6 +176,64 @@ private fun CaptureContent(
 private fun attachPreview(viewModel: CaptureViewModel, target: PreviewTarget?) {
     val job = viewModel.setPreview(target)
     if (target == null) runBlocking { withTimeoutOrNull(PREVIEW_DETACH_TIMEOUT_MS) { job.join() } }
+}
+
+/** Record, then the live keyframe count and coverage with Stop and Cancel, then how the save went. */
+@Composable
+private fun RecordControls(recorder: RecorderState, canRecord: Boolean, onIntent: (CaptureIntent) -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when (recorder) {
+            is RecorderState.Recording -> {
+                StatusText(
+                    stringResource(
+                        R.string.capture_recording_progress,
+                        recorder.keyframes,
+                        (recorder.coverage * 100).toInt(),
+                    ),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { onIntent(CaptureIntent.Cancel) }) {
+                        Text(stringResource(R.string.capture_cancel))
+                    }
+                    Button(onClick = { onIntent(CaptureIntent.Stop) }) {
+                        Text(stringResource(R.string.capture_stop))
+                    }
+                }
+            }
+            is RecorderState.Saving -> {
+                StatusText(stringResource(R.string.capture_saving, recorder.keyframes))
+                OutlinedButton(onClick = { onIntent(CaptureIntent.Cancel) }) {
+                    Text(stringResource(R.string.capture_cancel))
+                }
+            }
+            else -> {
+                when (recorder) {
+                    is RecorderState.Saved -> StatusText(stringResource(R.string.capture_saved, recorder.keyframes))
+                    RecorderState.NothingRecorded -> StatusText(stringResource(R.string.capture_nothing_recorded))
+                    is RecorderState.Failed -> StatusText(stringResource(R.string.capture_save_failed, recorder.reason))
+                    else -> Unit
+                }
+                Button(onClick = { onIntent(CaptureIntent.Record) }, enabled = canRecord) {
+                    Text(stringResource(R.string.capture_record))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusText(text: String) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
 }
 
 @Composable

@@ -29,6 +29,12 @@ class MediaCameraImage(private val image: Image) : CameraImage {
         return RgbImage(image.width, image.height, rgba)
     }
 
+    override fun luma(): LumaPlane {
+        check(!closed) { "camera image already closed" }
+        val y = image.planes[0]
+        return LumaPlane(image.width, image.height, y.rowStride, y.bytes())
+    }
+
     override fun close() {
         if (closed) return
         closed = true

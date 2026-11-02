@@ -18,4 +18,12 @@
     <string name="capture_hint_more_detail">Aim at something with more detail</string>
     <string name="capture_hint_camera_in_use">Another app is using the camera</string>
     <string name="capture_hint_lost">Tracking lost</string>
+    <string name="capture_record">Record</string>
+    <string name="capture_stop">Stop</string>
+    <string name="capture_cancel">Cancel</string>
+    <string name="capture_recording_progress">%1$d keyframes · %2$d%% around</string>
+    <string name="capture_saving">Saving %1$d keyframes…</string>
+    <string name="capture_saved">Saved %1$d keyframes to your library</string>
+    <string name="capture_nothing_recorded">No keyframes yet: move slowly around the object while recording</string>
+    <string name="capture_save_failed">The scan could not be saved: %1$s</string>
 </resources>
