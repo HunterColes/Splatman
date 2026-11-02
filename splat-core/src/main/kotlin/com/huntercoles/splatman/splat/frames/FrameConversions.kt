@@ -121,6 +121,17 @@ object FrameConversions {
         )
     }
 
+    /**
+     * Inverse pinhole I -> Ccv: the point at depth [depthM] (along +Z, metres) seen at pixel ([u], [v]):
+     * `X = (u - cx) Z / fx`, `Y = (v - cy) Z / fy`, `Z = depthM`. `project(intrinsics, unproject(...))` gives
+     * back (u, v) for any `depthM > 0`.
+     */
+    fun unproject(intrinsics: CameraIntrinsics, u: Float, v: Float, depthM: Float): Vec3 = Vec3(
+        (u - intrinsics.cx) * depthM / intrinsics.fx,
+        (v - intrinsics.cy) * depthM / intrinsics.fy,
+        depthM,
+    )
+
     // ---- W <-> F (G = diag(1, -1, -1), rule 5); every map is its own inverse ----
 
     /** The W <-> F signs of `sh1..shK` at [shDegree] (K = 0, 3, 8 or 15), as a new array. */

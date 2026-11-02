@@ -57,6 +57,22 @@ class FrameConversionsTest {
     }
 
     @Test
+    fun `unproject is the inverse of project`() {
+        assertVec(Vec3(0f, 0f, 2.5f), fc.unproject(phone, phone.cx, phone.cy, 2.5f), 1e-6f)
+        val rnd = Random(29)
+        repeat(100) {
+            val u = rnd.nextFloat() * phone.width
+            val v = rnd.nextFloat() * phone.height
+            val d = 0.1f + rnd.nextFloat() * 10f
+            val p = fc.unproject(phone, u, v, d)
+            assertEquals(d, p.z, 0f)
+            val px = fc.project(phone, p)!!
+            assertEquals(u, px.u, 2e-3f)
+            assertEquals(v, px.v, 2e-3f)
+        }
+    }
+
+    @Test
     fun `ARCore xyzw becomes wxyz and the pose is T_W_Cgl`() {
         // Camera at (1, 0, 0) turned +90 degrees about +Y: it looks down world -X.
         val h = (0.5 * kotlin.math.sqrt(2.0)).toFloat()
