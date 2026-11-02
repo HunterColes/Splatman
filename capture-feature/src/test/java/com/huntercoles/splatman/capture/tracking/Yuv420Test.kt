@@ -1,8 +1,9 @@
 package com.huntercoles.splatman.capture.tracking
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import kotlin.math.abs
 
 /**
@@ -22,8 +23,8 @@ class Yuv420Test {
                 val want = if (col < width / 2) intArrayOf(128, 128, 128, 255) else intArrayOf(255, 0, 0, 255)
                 for (c in 0 until 4) {
                     assertTrue(
-                        "pixel ($col, $row) channel $c: got ${px[c]}, want ${want[c]}",
                         abs(px[c] - want[c]) <= 2,
+                        "pixel ($col, $row) channel $c: got ${px[c]}, want ${want[c]}",
                     )
                 }
             }
@@ -74,8 +75,10 @@ class Yuv420Test {
         assertEquals(listOf(0, 0, 0, 255, 255, 255, 255, 255), rgba)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun shortChromaPlaneIsRejected() {
-        Yuv420.toRgba(ByteArray(32), ByteArray(3), ByteArray(8), Yuv420Strides(8, 4, 1), width, height)
+        assertThrows(IllegalArgumentException::class.java) {
+            Yuv420.toRgba(ByteArray(32), ByteArray(3), ByteArray(8), Yuv420Strides(8, 4, 1), width, height)
+        }
     }
 }

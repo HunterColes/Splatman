@@ -1,7 +1,7 @@
 package com.huntercoles.splatman.library.data.ply
 
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 
 /**
@@ -42,11 +42,11 @@ class PlyParserTest {
             "test.ply"
         )
         
-        assertTrue("Parse should succeed", result.isSuccess)
+        assertTrue(result.isSuccess, "Parse should succeed")
         val scene = result.getOrThrow()
         
-        assertEquals("Should have 3 Gaussians", 3, scene.gaussians.size)
-        assertEquals("Scene name should match filename", "test", scene.name)
+        assertEquals(3, scene.gaussians.size, "Should have 3 Gaussians")
+        assertEquals("test", scene.name, "Scene name should match filename")
         
         // Check first Gaussian
         val g1 = scene.gaussians[0]
@@ -80,7 +80,7 @@ class PlyParserTest {
             "empty.ply"
         )
         
-        assertTrue("Empty PLY should fail", result.isFailure)
+        assertTrue(result.isFailure, "Empty PLY should fail")
     }
     
     @Test
@@ -102,10 +102,10 @@ class PlyParserTest {
             "minimal.ply"
         )
         
-        assertTrue("Parse should succeed", result.isSuccess)
+        assertTrue(result.isSuccess, "Parse should succeed")
         val scene = result.getOrThrow()
         
-        assertEquals("Should have 2 Gaussians", 2, scene.gaussians.size)
+        assertEquals(2, scene.gaussians.size, "Should have 2 Gaussians")
         
         // Should have default colors (0, 0, 0) and opacity 1.0
         val g1 = scene.gaussians[0]
@@ -174,6 +174,6 @@ class PlyParserTest {
             "invalid.ply"
         )
         
-        assertTrue("Malformed PLY should fail", result.isFailure)
+        assertTrue(result.isFailure, "Malformed PLY should fail")
     }
 }

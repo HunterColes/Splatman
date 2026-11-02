@@ -3,12 +3,12 @@ package com.huntercoles.splatman.viewer.presentation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ViewerViewModelTest {
@@ -16,12 +16,12 @@ class ViewerViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var viewModel: ViewerViewModel
 
-    @Before
+    @BeforeEach
     fun setUp() {
         viewModel = ViewerViewModel()
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         // Clean up if needed
     }
