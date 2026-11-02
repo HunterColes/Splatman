@@ -20,3 +20,16 @@ SHA-256: cactus original `95ba6aeb2825674814543d930c1a7e1c65bbabd57a735a669ae71c
 `fa4380c380daee622514e9e1a2b1515ec8a3d41505e96c52162bf032ec7de155`, `measuring-tape.ply`
 `1f6323c7ac68c8a4076789fdf0d67d6a7459412de4971c2f1e6a4b7470feff10`, `cactus.spz`
 `ddf7b1f8a2e9b9f2edf5fdafc8d9fc77ddd96fde87cf5695f490076039e3d974`.
+
+## Test fixtures made from them (card #143)
+
+Not shipped in the app: unit-test resources under `splat-train/src/test/resources/frames/`, CC0 like their sources.
+Regenerate with `python3 -I docs/samples/make_frame_fixtures.py` (no download, byte-identical on every run).
+
+| File | Made from | Splats | Change |
+|---|---|---|---|
+| `cactus-up.ply` | `cactus-sh1.ply` | 11,618 | every 12th splat, all properties kept (SH degree 1) |
+| `tape-hand.ply` | `measuring-tape.ply` | 9,735 | every 2nd splat, `nx,ny,nz` dropped |
+
+SHA-256: `cactus-up.ply` `07df5dafc6a88ff6c7814a4a7e14e315c30e9181c85014301d3bd9bba9df3593`, `tape-hand.ply`
+`840fd1d132de255ee98d2d38983522abc8c2f830f69eb1b6de19b3b72150fd35`.

@@ -20,6 +20,8 @@ dependencies {
     // Trainer.train returns a Flow (ADR 0005): the JVM core artifact, same version as the app's coroutines.
     api(libs.kotlin.coroutines.core)
     testImplementation(libs.test.junit)
+    // The frame suite (#143) loads its fixtures through the app's PLY reader.
+    testImplementation(project(":splat-io"))
 }
 
 tasks.test {

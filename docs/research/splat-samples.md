@@ -33,3 +33,21 @@ Total of 1 (trimmed) + 2 + 3 stays well under 40 MB.
 ## Recommendation
 
 Bundle samples 1 (trimmed to band 1, about 12.8 MB, or decimated), 2 and 3 under `app/src/main/assets/samples/`, with `ASSETS-LICENSES.md` giving for each the source URL, author (steam studio / 3D SCAN STUDIO iris; DX.GL from Poly Haven models; SPZ converted by Innerscene), and "CC0 1.0". Add the `.splat` pair only if the importer supports that format. The builder must download the 1.45 GB Box zip once (stream it to a temp dir, extract only the one PLY with `python3 -I`) to produce sample 1; if that is too heavy, use sample 2 plus 3 as the minimum and note that sample 1 is missing. For the unit-test fixture, generate a handful of splats with known values by a script in the repo, as the card says. The "small scene" part of the card cannot be met with verified licences today; ship objects only and open a follow-up to capture one with the app.
+
+## Default sample and orientation fixtures (card #143, 2026-11-02)
+
+- **What the Library shows first:** `AssetSampleRepository.sampleFiles` sorts the asset names, so `cactus-sh1.ply`
+  comes first (then `cactus.spz`, `measuring-tape.ply`). It is a good up fixture: a cactus in a pot on a stand, wide
+  base, tapering top, so upside down is plain to the eye and to a test. It is no help for handedness (a cactus in a
+  round pot looks the same mirrored). The order stays as it is.
+- **Up fixture** `splat-train/src/test/resources/frames/cactus-up.ply`: every 12th splat of `cactus-sh1.ply`
+  (11,618, SH degree 1, `f_rest` kept so the reader's SH frame path runs). Known-down part: the 20 % of splats with
+  the highest *file* y (file y points down, ADR 0003), picked from the raw file, not from the reader's W.
+- **Handedness fixture** `.../frames/tape-hand.ply`: every 2nd splat of `measuring-tape.ply` (9,735, normals
+  dropped). Its canonical render differs from its own left-right flip (about 23 dB PSNR, under the 25 dB the test
+  asks), so no marker splats were needed. Known-left part: the 20 % with the lowest file x (file x is world x).
+- **Not usable for handedness:** Hunter's armchair idea (`gsplat-armchair.splat`). An armchair is left-right
+  mirror-symmetric, so its render equals its mirror's and a mirrored frame passes unnoticed.
+- Both are written by `python3 -I docs/samples/make_frame_fixtures.py` from the bundled samples, no download, same
+  bytes on every run; together 1.6 MB. The tests (`splat-train/.../frames/UpAndHandednessTest.kt`, helpers in
+  `FrameFixtures.kt`) render them on the CPU from a canonical camera (looking down W -Z, W +Y up).
