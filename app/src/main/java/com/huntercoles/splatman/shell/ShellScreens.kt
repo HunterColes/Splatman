@@ -96,10 +96,15 @@ internal fun OnboardingPlaceholder(onDone: () -> Unit) {
     }
 }
 
-/** Home. The existing library content, with the two ways out (scan, settings) until #15 redraws it. */
+/** Home. The library's scans and samples, with the two ways out (scan, settings) until #15 redraws it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun LibraryHome(onScan: () -> Unit, onSettings: () -> Unit) {
+internal fun LibraryHome(
+    onScan: () -> Unit,
+    onSettings: () -> Unit,
+    onOpenViewer: (String) -> Unit,
+    onOpenProcessing: (String) -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -120,7 +125,11 @@ internal fun LibraryHome(onScan: () -> Unit, onSettings: () -> Unit) {
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            LibraryFeature(modifier = Modifier.fillMaxSize())
+            LibraryFeature(
+                onOpenViewer = onOpenViewer,
+                onOpenProcessing = onOpenProcessing,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lib_your_scans">Your scans</string>
+    <string name="lib_samples">Samples</string>
+    <string name="lib_empty_title">No scans yet</string>
+    <string name="lib_empty_body">Walk around something you like and it\'ll show up here as a 3D splat.</string>
+    <string name="lib_status_captured">Waiting to build</string>
+    <string name="lib_status_processing">Building…</string>
+    <string name="lib_failed">Couldn\'t build</string>
+    <plurals name="lib_splats">
+        <item quantity="one">%1$d splat</item>
+        <item quantity="other">%1$d splats</item>
+    </plurals>
+    <string name="lib_rename">Rename</string>
+    <string name="lib_name">Name</string>
+    <string name="lib_delete">Delete</string>
+    <string name="lib_cancel">Cancel</string>
+</resources>

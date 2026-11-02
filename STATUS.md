@@ -5,6 +5,7 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - Every unit test is JUnit 5 (Jupiter) and runs in the gate: the JUnit 4 ones were ported, capture-feature applies the android-junit5 plugin (#54).
 - The gate counts the unit tests (`unit tests: N`) and goes red at 0 or under the floor in `tools/test-count.min` (69; raise it on purpose) (#59).
 - Poker-app leftovers (blinds, chips, odds, bank, tournament, timer) are deleted (#6); the Library nav route renders `LibraryScreen`.
+- Library (#46): scans are Room `ScanEntity` rows (DB `splat_database` v2) over folders `filesDir/scans/<id>/` (ADR 0007); `ScanRepository` syncs, renames, deletes (cancelling processing via `ProcessingCanceller`, a no-op until #43); samples open the Viewer as `sample:<file>`. The old point-cloud path is gone.
 - Design tokens (#12): `core/design` holds the v1 violet dark/light M3 schemes, overlay tokens, full type scale plus
   `numeral`, trimmed `SplatDimens`, `SplatMotion`, and one `SplatTheme(forceDark, darkTheme)`.
 - App shell (#13): no bottom nav; typed routes in `core/navigation/NavigationDestination` (`onboarding`, `library`,

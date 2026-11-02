@@ -60,7 +60,6 @@ android {
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":viewer-feature")) // For camera controller and OpenGL ES
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

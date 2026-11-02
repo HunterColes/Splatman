@@ -103,6 +103,8 @@ fun SplatmanShell(
                         LibraryHome(
                             onScan = { navController.navigate(Capture) },
                             onSettings = { navController.navigate(Settings) },
+                            onOpenViewer = { scanId -> navController.navigate(Viewer(scanId)) },
+                            onOpenProcessing = { scanId -> navController.navigate(Processing(scanId)) },
                         )
                     }
                 }
