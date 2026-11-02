@@ -2,6 +2,7 @@
 
 Now (2026-11-01): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
+- UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
 - Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`); camera capture works.
 - No real splat pipeline yet: nothing turns frames plus ARCore poses into Gaussians, and there is no export.
 - The sample asset `app/src/main/assets/models/Goat skull.ply` is a plain point cloud, not a 3D Gaussian splat
