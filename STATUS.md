@@ -10,6 +10,9 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
 - `splat-core` `frames/FrameConversions` (#28, ADR 0003): ARCore pose, xyzw order, Cgl/Ccv, view and
   intrinsics projection, pinhole, W <-> PLY file frame (positions, quaternions, SH signs, whole cloud), Nerfstudio.
+- Tracking (#36, ADR 0004): `capture-feature/tracking/` has the `PoseSource` seam, `TrackedFrame`, `TrackerDriver`
+  (availability and permission before any session call, lifecycle pause/resume, dropped frames closed), `Yuv420`;
+  `tracking/arcore/` holds ARCore 1.57.0 (optional at install) and `ArCorePoseSource`; no screen uses it yet (#39).
 - Splat pipeline: `splat-train` has the `Trainer` interface and `SeedTrainer` (seed points -> 3DGS seed splat, #30);
   nothing yet turns frames plus ARCore poses into seed points, and there is no export.
 - Real CC0 splat samples live in `app/src/main/assets/samples/` (cactus PLY SH1, measuring-tape PLY SH0, cactus

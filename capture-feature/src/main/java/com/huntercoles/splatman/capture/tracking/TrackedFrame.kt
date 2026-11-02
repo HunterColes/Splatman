@@ -1,0 +1,75 @@
+package com.huntercoles.splatman.capture.tracking
+
+import com.huntercoles.splatman.splat.model.CameraIntrinsics
+import com.huntercoles.splatman.splat.model.CameraPose
+import com.huntercoles.splatman.splat.model.DepthImage
+import com.huntercoles.splatman.splat.model.RgbImage
+
+/** Tracking state of one frame, mirroring ARCore's `TrackingState` in our own type. */
+enum class TrackingState { TRACKING, PAUSED, STOPPED }
+
+/** The CPU camera image of one frame (YUV_420_888, sensor orientation). Must be closed exactly once. */
+interface CameraImage : AutoCloseable {
+    /** Width, pixels. */
+    val width: Int
+
+    /** Height, pixels. */
+    val height: Int
+
+    /** Converts to RGBA8888 (BT.601 full range); the image stays open. */
+    fun toRgb(): RgbImage
+}
+
+/** ARCore feature points of one frame. Arrays are not copied: immutable by contract. */
+class FeaturePoints(
+    /** Number of points N, >= 0. */
+    val count: Int,
+    /** 3N floats, x, y, z per point, world frame W, metres. */
+    val positions: FloatArray,
+    /** N floats, confidence 0..1 per point. */
+    val confidence: FloatArray,
+) {
+    init {
+        require(count >= 0) { "count must be >= 0, got $count" }
+        require(positions.size == 3 * count) { "positions must hold ${3 * count} floats, got ${positions.size}" }
+        require(confidence.size == count) { "confidence must hold $count floats, got ${confidence.size}" }
+    }
+
+    companion object {
+        /** No points. */
+        val EMPTY = FeaturePoints(0, FloatArray(0), FloatArray(0))
+    }
+}
+
+/**
+ * One tracked camera frame (ADR 0002 packet `tracking -> recorder`), in our types. It holds the platform CPU image,
+ * so the consumer must [close] it (the recorder converts the frames it keeps to `Keyframe`s first).
+ */
+class TrackedFrame(
+    /** Exposure time, nanoseconds on the ARCore `Frame.getTimestamp()` clock. */
+    val timestampNs: Long,
+    /** Tracking state of the camera at this frame. */
+    val trackingState: TrackingState,
+    /** `T_world_camera` (Cgl -> W, metres), from `FrameConversions.poseFromArCore`; last known when not tracking. */
+    val pose: CameraPose,
+    /** Intrinsics of [image] (`Camera.getImageIntrinsics()`), pixels of the CPU image. */
+    val intrinsics: CameraIntrinsics,
+    /** The CPU image, or null when the camera had none ready for this frame. Closed by [close]. */
+    val image: CameraImage?,
+    /** Feature points seen this frame, world frame W. */
+    val points: FeaturePoints,
+    /** Depth with its own intrinsics, or null when the phone gives none. */
+    val depth: DepthImage?,
+    /** Packet version (ADR 0002). */
+    val version: Int = VERSION,
+) : AutoCloseable {
+    /** Releases the CPU image; safe to call more than once only if the image's own close is. */
+    override fun close() {
+        image?.close()
+    }
+
+    companion object {
+        /** Current packet version. */
+        const val VERSION = 1
+    }
+}

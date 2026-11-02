@@ -44,6 +44,10 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":viewer-feature"))
+    // TrackedFrame carries splat-core model types (ADR 0002).
+    api(project(":splat-core"))
+    // ARCore behind the PoseSource seam, optional at install (ADR 0004); only tracking/arcore/ imports it.
+    implementation(libs.arcore)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
