@@ -58,6 +58,13 @@ RUN curl -fsSL -o /tmp/cmdline-tools.zip \
  && "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --list_installed \
  && rm -rf /root/.android /tmp/*
 
+# python3 (Ubuntu's, from the signed archive) for tools/check.sh's unit-test count (#59), which the CI gate runs (#61).
+# Its own layer, so the SDK layers above stay cached.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -I -c 'import xml.etree.ElementTree'
+
 # One unprivileged user. /data (registration file + job workdirs) and /cache/gradle are named volumes in compose.yaml;
 # creating them here owned by that user gives fresh volumes the same ownership.
 RUN useradd --uid 1001 --user-group --home-dir /home/runner --no-create-home --shell /bin/bash runner \

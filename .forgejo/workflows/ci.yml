@@ -1,0 +1,123 @@
+name: ci
+# The forge gate (#61): every PR, every push to master and a manual dispatch get one `gate` job on the `splatman`
+# runner (deploy/forgejo-runner/, #60), which runs what tools/check.sh runs: assembleDebug, testDebugUnitTest with the
+# unit-test floor (tools/test-count.min, #59) and lintDebug, plus detekt last and non-blocking.
+# Supply chain: no `uses:` at all, so no action is fetched at job time from GitHub, code.forgejo.org or any
+# marketplace. Checkout is plain git with the job token; there is no upload action (failed test and lint reports are
+# printed to the job log instead). No `container:` or `services:`: the job runs in the runner image itself (host mode).
+# Secrets: this workflow uses none, so a PR from a branch that edits this file has no secret to read. Do not add one:
+# a pull_request run executes the PR's own copy of this file and its own Gradle build. The job token is read-only
+# (permissions below), sits only in the checkout step's environment and is never echoed (no `set -x` anywhere).
+# Gate files (tools/gate-files.sh): this file, tools/check.sh, tools/test-count.min and the build files steer the run,
+# so a PR that changes one merges only when its reviewer named it. tools/docs-only.sh is run from the base commit.
+# Public repo (CLAUDE.md): this file names no host; the private-host step takes it from the job's server URL.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  gate:
+    name: gate
+    runs-on: splatman
+    timeout-minutes: 60
+    steps:
+      - name: checkout
+        # Plain git from the job's own server with the job's own token, in the environment only (never argv or
+        # .git/config). The header is scoped to that server's URL and redirects are refused, so the token goes nowhere
+        # else; a server, repo or sha of any other shape is refused before git runs. Full history: docs-only diffs
+        # against the merge-base and the private-host step reads every new commit.
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          [[ "$SERVER" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ &&
+             "$REPO" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9_-][A-Za-z0-9._-]*$ && "$SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            { echo "checkout: unexpected server, repo or sha"; exit 1; }
+          git init -q .
+          git remote add origin "$SERVER/$REPO.git"
+          GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0="http.$SERVER/.extraHeader" GIT_CONFIG_VALUE_0="Authorization: token $TOKEN" \
+            GIT_CONFIG_KEY_1="http.$SERVER/.followRedirects" GIT_CONFIG_VALUE_1=false GIT_TERMINAL_PROMPT=0 \
+            git fetch -q --no-tags origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*/head:refs/remotes/origin/pr/*'
+          git checkout -q --detach "$SHA"
+          echo "checkout: $(git rev-parse HEAD)"
+      - name: private host
+        # The repo is public (master is mirrored to GitHub): no tracked file, and no new commit's message, author or
+        # committer, may name the forge. The host comes from the job's server URL at run time; a host of three or more
+        # labels is checked by its parent domain (CLAUDE.md: any host under it). Runs before the docs-only skip, so a
+        # docs PR is held to it too. Hits print paths and commit ids only.
+        env:
+          SERVER: ${{ github.server_url }}
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          host="${SERVER#https://}"; host="${host%%/*}"; host="${host%:*}"
+          [[ -n "$host" ]] || { echo "private host: no host in the server URL"; exit 1; }
+          name="$host"
+          if [[ ! "$host" =~ ^[0-9.]+$ ]] && (( $(tr -cd . <<<"$host" | wc -c) >= 2 )); then name="${host#*.}"; fi
+          if [[ "$EVENT" == pull_request && "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            range=("$BASE_SHA..$HEAD_SHA")
+          elif [[ "$EVENT" == push && "$BEFORE" =~ ^[0-9a-f]{40}$ && "$BEFORE" != 0000000000000000000000000000000000000000 ]] &&
+               git merge-base --is-ancestor "$BEFORE" HEAD 2>/dev/null; then
+            range=("$BEFORE..HEAD")
+          else
+            range=(HEAD)
+          fi
+          fail=0
+          files="$(git grep -lIiF -e "$name" -- . || true)"
+          if [[ -n "$files" ]]; then sed 's/^/tracked file: /' <<<"$files"; fail=1; fi
+          while IFS= read -r c; do
+            git log -1 --format='%an%n%ae%n%cn%n%ce%n%B' "$c" > "$RUNNER_TEMP/commit-meta"
+            if grep -qiF -e "$name" "$RUNNER_TEMP/commit-meta"; then echo "commit (message, author or committer): $c"; fail=1; fi
+          done < <(git rev-list "${range[@]}")
+          if (( fail )); then echo "private host: the change names the forge's host; remove it"; exit 1; fi
+          echo "private host: none in $(git ls-files | wc -l) tracked files or $(git rev-list --count "${range[@]}") commits"
+      - name: docs only
+        # tools/docs-only.sh decides whether to build. A PR into master is judged by master's copy (the base commit's),
+        # so a PR that edits the classifier cannot wave itself through; a push, a dispatch, a PR into another branch,
+        # a base without the classifier or a classifier error all run the full gate.
+        id: kind
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          kind=code
+          if [[ "$EVENT" == pull_request && "$BASE_REF" == master && "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git show "$BASE_SHA:tools/docs-only.sh" > "$RUNNER_TEMP/docs-only.sh" 2>/dev/null; then
+            if bash "$RUNNER_TEMP/docs-only.sh" "$BASE_SHA" "$HEAD_SHA"; then kind=docs; fi
+          else
+            echo "docs-only: no: a $EVENT run, not a PR into master, or no classifier on the base; the full gate runs"
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          if [[ $kind == docs ]]; then echo "gate: green (docs only, nothing to build)"; fi
+      - name: gate
+        # tools/check.sh's own run: assembleDebug testDebugUnitTest lintDebug under its lock and memory caps, then the
+        # `unit tests: N` line and the floor. Its last line is `gate: green` or `gate: RED: <why>`.
+        if: steps.kind.outputs.kind != 'docs'
+        run: bash tools/check.sh
+      - name: reports on failure
+        # No upload action: each failed unit-test report and the lint text reports go to this log.
+        if: failure() && steps.kind.outputs.kind != 'docs'
+        run: |
+          shopt -s globstar nullglob
+          for f in **/build/test-results/testDebugUnitTest/*.xml; do
+            if grep -qE '<(failure|error)[ >]' "$f"; then echo "::group::$f"; head -c 200000 "$f"; echo; echo "::endgroup::"; fi
+          done
+          for f in **/build/reports/lint-results-debug.txt; do echo "::group::$f"; head -c 200000 "$f"; echo "::endgroup::"; done
+      - name: detekt (non-blocking)
+        # Last, and never fails the job: it has open findings until they are paid down; then drop continue-on-error
+        # and add it to tools/check.sh.
+        if: steps.kind.outputs.kind != 'docs'
+        continue-on-error: true
+        run: bash tools/check.sh detekt
