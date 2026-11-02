@@ -31,7 +31,7 @@ sealed interface ViewerLoad {
 data class ViewerUiState(
     val samples: List<SplatSource.Sample> = SplatSamples.ALL,
     val load: ViewerLoad = ViewerLoad.Idle,
-    val showStats: Boolean = true,
+    val showStats: Boolean = false,
 )
 
 sealed interface ViewerIntent {

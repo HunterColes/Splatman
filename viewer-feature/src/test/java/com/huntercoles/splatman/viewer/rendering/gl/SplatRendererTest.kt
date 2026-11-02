@@ -227,4 +227,15 @@ class SplatRendererTest {
         assertEquals(8, s.splats)
         assertTrue(s.fps in 55f..70f, "fps ${s.fps}")
     }
+
+    @Test
+    @Timeout(5)
+    fun `the stats flow holds the latest stats for the screen`() {
+        start()
+        renderer.setScene(scene())
+        assertEquals(null, renderer.stats.value)
+        repeat(40) { frame(stepMs = 16) }
+        assertEquals(stats.last(), renderer.stats.value)
+        assertEquals(8, renderer.stats.value?.splats)
+    }
 }

@@ -73,8 +73,8 @@ fun ViewerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val camera = remember { GaussianCameraController() }
-    var stats by remember { mutableStateOf<RenderStats?>(null) }
-    val renderer = remember { SplatRenderer(camera, onStats = { stats = it }) }
+    val renderer = remember { SplatRenderer(camera) }
+    val stats by renderer.stats.collectAsStateWithLifecycle()
     DisposableEffect(renderer) { onDispose { renderer.dispose() } }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->

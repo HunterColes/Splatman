@@ -8,6 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -49,6 +52,13 @@ class SplatRenderer(
 
     private val sortScope = CoroutineScope(SupervisorJob() + sortDispatcher)
     private val pending = AtomicReference<SceneUpdate?>(null)
+    private val _stats = MutableStateFlow<RenderStats?>(null)
+
+    /**
+     * The latest [RenderStats], about twice a second, null until the first interval ends. Written on the GL thread;
+     * a [StateFlow] so the UI collects it on its own thread instead of a Compose state written from the GL thread.
+     */
+    val stats: StateFlow<RenderStats?> = _stats.asStateFlow()
 
     // GL-thread state from here on.
     private var scene: RenderScene? = null
@@ -330,15 +340,15 @@ class SplatRenderer(
         statsMs += frameMs
         val elapsed = now - statsStartNs
         if (elapsed < STATS_INTERVAL_NS) return
-        onStats(
-            RenderStats(
-                fps = (statsFrames * 1e9 / elapsed).toFloat(),
-                frameMs = (statsMs / statsFrames).toFloat(),
-                scale = scale,
-                splats = splats,
-                sorts = sorter?.sorts ?: 0,
-            ),
+        val next = RenderStats(
+            fps = (statsFrames * 1e9 / elapsed).toFloat(),
+            frameMs = (statsMs / statsFrames).toFloat(),
+            scale = scale,
+            splats = splats,
+            sorts = sorter?.sorts ?: 0,
         )
+        _stats.value = next
+        onStats(next)
         statsStartNs = now
         statsFrames = 0
         statsMs = 0.0

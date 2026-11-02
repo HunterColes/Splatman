@@ -226,8 +226,10 @@ class ViewerViewModelTest {
     }
 
     @Test
-    fun `the stats overlay toggles`() = test {
+    fun `the stats overlay starts hidden and the first tap shows it`() = test {
         val vm = viewModel(FakeLoader(emptyMap()))
+        assertFalse(vm.uiState.value.showStats)
+        vm.onIntent(ViewerIntent.ToggleStats)
         assertTrue(vm.uiState.value.showStats)
         vm.onIntent(ViewerIntent.ToggleStats)
         assertFalse(vm.uiState.value.showStats)
