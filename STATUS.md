@@ -4,6 +4,8 @@ Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
 - UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
 - Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`); camera capture works.
+- `splat-core` kernels (#27): `sh/ShEval` (3DGS SH to degree 3), `projection/Covariance` (world + EWA project),
+  `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
 - No real splat pipeline yet: nothing turns frames plus ARCore poses into Gaussians, and there is no export.
 - Real CC0 splat samples live in `app/src/main/assets/samples/` (cactus PLY SH1, measuring-tape PLY SH0, cactus
   SPZ; see its ASSETS-LICENSES.md); the old goat point cloud is gone. Nothing loads them in the app yet.
