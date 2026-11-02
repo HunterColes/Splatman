@@ -37,7 +37,6 @@ android {
     }
 
     kotlin {
-        jvmToolchain(17)
 
         compilerOptions {
             freeCompilerArgs.addAll(

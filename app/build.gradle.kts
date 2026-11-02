@@ -89,7 +89,6 @@ android {
     }
 
     kotlin {
-        jvmToolchain(17)
     }
 
     packaging {
