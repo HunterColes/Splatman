@@ -1,7 +1,9 @@
 package com.huntercoles.splatman.splat.train.frames
 
+import com.huntercoles.splatman.splat.frames.FrameConversions
 import com.huntercoles.splatman.splat.io.ply.PlyFormatException
 import com.huntercoles.splatman.splat.io.ply.PlyReader
+import com.huntercoles.splatman.splat.math.Mat4
 import com.huntercoles.splatman.splat.math.Quat
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
@@ -14,6 +16,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.sqrt
 import kotlin.math.tan
 
 /**
@@ -226,6 +229,93 @@ object FrameFixtures {
 
     private fun resource(fixture: Fixture): InputStream? =
         FrameFixtures::class.java.classLoader.getResourceAsStream(fixture.resource)
+
+    // ---- Frame suite 2 (card #144): rotations ----
+
+    /** The centre of [cloud]'s 2nd-98th percentile box, the point [canonicalView] looks at. */
+    fun boxCentre(cloud: SplatCloud): Vec3 {
+        val c = FloatArray(3)
+        for (a in 0 until 3) {
+            val v = FloatArray(cloud.count) { cloud.positions[3 * it + a] }.also { it.sort() }
+            c[a] = (v[(v.size * 0.02).toInt()] + v[(v.size * 0.98).toInt()]) / 2
+        }
+        return Vec3(c[0], c[1], c[2])
+    }
+
+    /** [view] orbited by the unit rotation [r] about the W point [centre]: `T' = Rot_centre(r) T`. */
+    fun orbit(view: View, r: Quat, centre: Vec3): View = View(
+        view.intrinsics,
+        CameraPose(r * view.pose.rotation, centre + r.rotate(view.pose.translationM - centre)),
+    )
+
+    /** [cloud] with its view-dependent colour dropped: SH degree 0, the same DC (a rotation leaves DC alone). */
+    fun dcOnly(cloud: SplatCloud): SplatCloud = SplatCloud(
+        cloud.count, 0, cloud.positions.copyOf(), cloud.logScales.copyOf(), cloud.rotations.copyOf(),
+        cloud.opacityLogits.copyOf(), cloud.shDc.copyOf(), FloatArray(0),
+    )
+
+    /**
+     * [cloud] (SH degree 0) moved by the rigid W -> W map [m]: positions `m p`, rotations `q(m) q` with `q(m)` the
+     * quaternion of m's rotation block ([quatFromMatrix]). Arrays new.
+     */
+    fun transform(cloud: SplatCloud, m: Mat4): SplatCloud {
+        require(cloud.shDegree == 0) { "transform handles SH degree 0 only, got ${cloud.shDegree}" }
+        val qm = quatFromMatrix(m)
+        val pos = FloatArray(3 * cloud.count)
+        val rot = FloatArray(4 * cloud.count)
+        for (i in 0 until cloud.count) {
+            val at = 3 * i
+            val p = m.transformPoint(Vec3(cloud.positions[at], cloud.positions[at + 1], cloud.positions[at + 2]))
+            pos[3 * i] = p.x; pos[3 * i + 1] = p.y; pos[3 * i + 2] = p.z
+            val q = qm * Quat(cloud.rotations[4 * i], cloud.rotations[4 * i + 1], cloud.rotations[4 * i + 2],
+                cloud.rotations[4 * i + 3])
+            rot[4 * i] = q.w; rot[4 * i + 1] = q.x; rot[4 * i + 2] = q.y; rot[4 * i + 3] = q.z
+        }
+        return SplatCloud(
+            cloud.count, 0, pos, cloud.logScales.copyOf(), rot, cloud.opacityLogits.copyOf(), cloud.shDc.copyOf(),
+            FloatArray(0),
+        )
+    }
+
+    /**
+     * The scene map equal to moving the camera from [from] to [to]: `T_from * inverse(T_to)`, built only through
+     * [FrameConversions.poseMatrix] and [FrameConversions.viewMatrix], so a break in either moves the scene wrong.
+     */
+    fun sceneMapFor(from: CameraPose, to: CameraPose): Mat4 =
+        FrameConversions.poseMatrix(from) * FrameConversions.viewMatrix(to)
+
+    /** The unit quaternion of the rotation block of [m] (Shepperd's method, largest diagonal term first). */
+    fun quatFromMatrix(m: Mat4): Quat {
+        val trace = m[0, 0] + m[1, 1] + m[2, 2]
+        val q = when {
+            trace > 0f -> {
+                val s = sqrt(trace + 1f) * 2f
+                Quat(s / 4, (m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s)
+            }
+            m[0, 0] > m[1, 1] && m[0, 0] > m[2, 2] -> {
+                val s = sqrt(1f + m[0, 0] - m[1, 1] - m[2, 2]) * 2f
+                Quat((m[2, 1] - m[1, 2]) / s, s / 4, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s)
+            }
+            m[1, 1] > m[2, 2] -> {
+                val s = sqrt(1f + m[1, 1] - m[0, 0] - m[2, 2]) * 2f
+                Quat((m[0, 2] - m[2, 0]) / s, (m[0, 1] + m[1, 0]) / s, s / 4, (m[1, 2] + m[2, 1]) / s)
+            }
+            else -> {
+                val s = sqrt(1f + m[2, 2] - m[0, 0] - m[1, 1]) * 2f
+                Quat((m[1, 0] - m[0, 1]) / s, (m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, s / 4)
+            }
+        }
+        return q.normalized()
+    }
+
+    /** Summed render alpha of [buffers]: zero means nothing reached the image. */
+    fun mass(buffers: RenderBuffers): Double = buffers.alpha.sumOf { it.toDouble() }
+
+    /** [q] as ARCore hands it over, `Pose.getRotationQuaternion()` order x, y, z, w. */
+    fun arCoreXyzw(q: Quat): FloatArray = floatArrayOf(q.x, q.y, q.z, q.w)
+
+    /** [t] as ARCore hands it over, `Pose.getTranslation()`. */
+    fun arCoreTranslation(t: Vec3): FloatArray = floatArrayOf(t.x, t.y, t.z)
 
     private const val FIT_MARGIN = 1.15f
 }
