@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No <uses-feature android:glEsVersion>: a device without GLES 3.1 still installs and trains on the CPU (ADR 0010). -->
+<manifest />

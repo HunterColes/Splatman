@@ -9,6 +9,7 @@ include(":core")
 include(":splat-core")
 include(":splat-io")
 include(":splat-train")
+include(":splat-gpu")
 
 pluginManagement {
     repositories {

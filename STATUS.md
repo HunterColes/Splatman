@@ -2,6 +2,7 @@
 
 Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
+- `splat-gpu` (#101): GLES 3.1 compute plumbing (`GlesCompute` on one GL thread, `Ssbo`, `ComputeProgram`, `Dispatch`, `Std430`) and `GpuSupport.probe()`; JVM tests in the gate, the on-device smoke test is `./gradlew :splat-gpu:connectedDebugAndroidTest`.
 - Every unit test is JUnit 5 (Jupiter) and runs in the gate: the JUnit 4 ones were ported, capture-feature applies the android-junit5 plugin (#54).
 - The gate counts the unit tests (`unit tests: N`) and goes red at 0 or under the floor in `tools/test-count.min` (69; raise it on purpose) (#59).
 - Mutation testing (#66): `tools/check.sh :splat-core:pitest` (pitest 1.17.1, Gradle plugin 1.15.0, JUnit 5 engine
