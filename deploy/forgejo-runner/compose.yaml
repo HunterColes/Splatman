@@ -1,4 +1,4 @@
-# The Splatman runner: one service, label `splatman`, one job at a time (capacity 1 in the image's config).
+# The Splatman runner: one service, label `splatman`, one job per container start (entrypoint.sh; Docker restarts it).
 # See README.md in this folder.
 # Limits: 4 CPUs and 5 GB of memory, no swap beyond it, 2048 processes. The gate (tools/check.sh) needs about 3 GB:
 # Gradle at -Xmx2g plus the Kotlin daemon at -Xmx1g; the rest is headroom for lint, git, node and the runner.
@@ -15,7 +15,10 @@ services:
     memswap_limit: 5g
     pids_limit: 2048
     read_only: true
+    # The entrypoint starts as root with these two capabilities only, to drop to the runner user (uid 1001) after it
+    # has read the credentials; every job step then runs as that user with none (no-new-privileges keeps it so).
     cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
     security_opt: [no-new-privileges:true]
     # Default bridge network, outbound only (the forge, Maven Central, Google's Maven). No host network, no ports.
     tmpfs:
@@ -25,7 +28,10 @@ services:
       # Only this project's own named volumes: no docker socket, no host paths, no other project's volumes.
       - runner-data:/data
       - gradle-cache:/cache/gradle
+      # The registration file (the runner's credentials), root's alone: no job step can read it.
+      - runner-secret:/secret
 
 volumes:
   runner-data:
   gradle-cache:
+  runner-secret:

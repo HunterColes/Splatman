@@ -65,19 +65,23 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && python3 -I -c 'import xml.etree.ElementTree'
 
-# One unprivileged user. /data (registration file + job workdirs) and /cache/gradle are named volumes in compose.yaml;
-# creating them here owned by that user gives fresh volumes the same ownership.
+# One unprivileged user runs the runner and every job step. /data (job workdirs), /cache/gradle and /secret (the
+# registration file) are named volumes in compose.yaml; creating them here gives fresh volumes the same ownership:
+# /data and /cache/gradle the runner user's, /secret root's alone (0700), so no job step can read the credentials.
 RUN useradd --uid 1001 --user-group --home-dir /home/runner --no-create-home --shell /bin/bash runner \
- && mkdir -p /home/runner /data/work /cache/gradle /etc/forgejo-runner \
- && chown -R runner:runner /home/runner /data /cache
+ && mkdir -p /home/runner /data/work /cache/gradle /etc/forgejo-runner /secret \
+ && chown -R runner:runner /home/runner /data /cache \
+ && chmod 0700 /secret
 
 # The runner's config: one job at a time, label splatman in host mode (steps run inside this container), no docker,
-# no actions cache server (it would listen on a port).
+# no actions cache server (it would listen on a port). `register` writes the credentials to /secret (as root).
+# job.yml is the same config for `one-job` (entrypoint.sh), which gets the token from the entrypoint instead: it
+# points at a registration file that never exists (read-only root filesystem), so the runner never opens /secret.
 RUN printf '%s\n' \
       'log:' \
       '  level: info' \
       'runner:' \
-      '  file: /data/.runner' \
+      '  file: /secret/.runner' \
       '  capacity: 1' \
       '  timeout: 2h' \
       '  labels:' \
@@ -88,10 +92,17 @@ RUN printf '%s\n' \
       '  docker_host: "-"' \
       'host:' \
       '  workdir_parent: /data/work' \
-      > /etc/forgejo-runner/config.yml
+      > /etc/forgejo-runner/config.yml \
+ && sed 's#^  file: /secret/.runner$#  file: /etc/forgejo-runner/no-registration-file#' /etc/forgejo-runner/config.yml \
+      > /etc/forgejo-runner/job.yml \
+ && grep -q 'no-registration-file' /etc/forgejo-runner/job.yml
+
+# One job per container start (#74): the entrypoint starts as root, hands the runner its token without letting job
+# steps read it, drops to the runner user and runs `forgejo-runner one-job`. See entrypoint.sh and README.md.
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/splatman-runner-entrypoint
 
 ENV HOME=/home/runner \
     PATH=/opt/android-sdk/cmdline-tools/latest/bin:${PATH}
-USER runner
 WORKDIR /data
-CMD ["forgejo-runner", "daemon", "--config", "/etc/forgejo-runner/config.yml"]
+ENTRYPOINT ["/usr/local/bin/splatman-runner-entrypoint"]
+CMD []

@@ -101,6 +101,15 @@ jobs:
           fi
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           if [[ $kind == docs ]]; then echo "gate: green (docs only, nothing to build)"; fi
+      - name: gradle hooks
+        # #74: a job on any branch can write the shared Gradle cache. Files Gradle runs or reads on every build (init
+        # scripts, the user gradle.properties) are removed before this job's build. The runner's entrypoint already does
+        # this before every job (deploy/forgejo-runner/entrypoint.sh); this repeats it on a runner started without it.
+        if: steps.kind.outputs.kind != 'docs'
+        run: |
+          home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          rm -rf -- "$home/init.d" "$home/init.gradle" "$home/init.gradle.kts" "$home/gradle.properties"
+          echo "gradle hooks: none left in $home"
       - name: gate
         # tools/check.sh's own run: assembleDebug testDebugUnitTest lintDebug under its lock and memory caps, then the
         # `unit tests: N` line and the floor. Its last line is `gate: green` or `gate: RED: <why>`.
