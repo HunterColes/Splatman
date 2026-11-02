@@ -19,6 +19,10 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   `ViewerScreen` opens the `sample:<file>` the Library passed, the bundled samples or a picked PLY/.splat
   (`presentation/load`; `SplatSanity` refuses non-finite or out-of-bounds clouds before framing), fps overlay; scan ids are #18. Shaders are only checked on a device (QA). The viewer's
   CameraX preview is gone (capture owns the camera).
+- Export (#45): the viewer's Export chip opens `viewer/export/ExportSheet`: PLY (default) or .splat (SPZ once #34 adds
+  a writer), Save via SAF `CreateDocument`, Share via `ACTION_SEND` and the app's FileProvider (`<applicationId>.exports`,
+  only `cache/exports/`), MIME `application/octet-stream`, file `<scan name>.<ext>` sanitised; `ExportUseCase` writes
+  off the main thread with progress and error states.
 - GPU packer (#35): `viewer-feature/rendering/pack/SplatPacker` packs a `SplatCloud` into the ADR 0006 RGBA32UI layout
   (1M splats in ~0.4 s on the JVM); drawn by #38.
 - `splat-core` kernels (#27): `sh/ShEval` (3DGS SH to degree 3), `projection/Covariance` (world + EWA project),

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -49,6 +50,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.viewer.R
+import com.huntercoles.splatman.viewer.export.ExportIntent
+import com.huntercoles.splatman.viewer.export.ExportSheet
+import com.huntercoles.splatman.viewer.export.ExportViewModel
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.gl.RenderStats
@@ -65,6 +69,7 @@ import kotlin.math.max
 fun ViewerScreen(
     modifier: Modifier = Modifier,
     viewModel: ViewerViewModel = hiltViewModel(),
+    exportViewModel: ExportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val camera = remember { GaussianCameraController() }
@@ -79,6 +84,7 @@ fun ViewerScreen(
     val load = state.load
     val loaded = (load as? ViewerLoad.Loaded)?.scene
     LaunchedEffect(loaded) {
+        exportViewModel.setScene(loaded?.name, loaded?.cloud)
         if (loaded != null) {
             val framing = loaded.framing
             synchronized(camera) {
@@ -166,11 +172,19 @@ fun ViewerScreen(
                 label = { Text(stringResource(R.string.viewer_open_file)) },
                 leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
             )
+            if (loaded != null) {
+                AssistChip(
+                    onClick = { exportViewModel.onIntent(ExportIntent.Show) },
+                    label = { Text(stringResource(R.string.viewer_export)) },
+                    leadingIcon = { Icon(Icons.Default.IosShare, contentDescription = null) },
+                )
+            }
             TextButton(onClick = { viewModel.onIntent(ViewerIntent.ToggleStats) }) {
                 Text(stringResource(R.string.viewer_toggle_stats))
             }
         }
     }
+    ExportSheet(exportViewModel)
 }
 
 @Composable

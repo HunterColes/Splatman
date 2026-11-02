@@ -15,4 +15,10 @@
     <string name="viewer_retry">Try again</string>
     <string name="viewer_open_file">Open file</string>
     <string name="viewer_toggle_stats">Stats</string>
+    <!-- Export -->
+    <string name="viewer_export">Export</string>
+    <string name="export_title">Export splat</string>
+    <string name="export_save">Save</string>
+    <string name="export_share">Share</string>
+    <string name="export_saved">Saved %1$s</string>
 </resources>
