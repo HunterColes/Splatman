@@ -36,6 +36,21 @@ fi
 setpriv --reuid=1001 --regid=1001 --clear-groups bash -c 'mkdir -p /cache/gradle/init.d /data/work/oldjob
   for f in init.d/evil.gradle init.gradle init.gradle.kts gradle.properties; do echo x >/cache/gradle/$f; done
   echo old-credentials >/data/.runner'
+# #133: a pull request's job poisons the Gradle distribution its wrapper extracted (the wrapper checks
+# distributionSha256Sum only when it downloads, not on a dist already in place) and a cached jar. The wrapper runs
+# once with no network: the download fails but leaves the dist's directory; a launcher jar whose GradleMain prints
+# POISONED goes into it with the wrapper's `.ok` marker. plant_loads shows the planted dist does run.
+if [[ "$1" == registered ]]; then
+  setpriv --reuid=1001 --regid=1001 --clear-groups bash -c 'cd /t/proj && ./gradlew --version >/dev/null 2>&1
+  d=$(echo /cache/gradle/wrapper/dists/gradle-8.11.1-bin/*)
+  mkdir -p /tmp/gm/classes "$d/gradle-8.11.1/lib" /cache/gradle/caches/modules-2/files-2.1/org.example/lib/1.0/00
+  printf "package org.gradle.launcher; public class GradleMain { public static void main(String[] a) { System.out.println(\"POISONED\"); } }" >/tmp/gm/GradleMain.java
+  javac -d /tmp/gm/classes /tmp/gm/GradleMain.java && jar cf "$d/gradle-8.11.1/lib/gradle-launcher-8.11.1.jar" -C /tmp/gm/classes .
+  touch "$d/gradle-8.11.1-bin.zip.ok"
+  echo planted >/cache/gradle/caches/modules-2/files-2.1/org.example/lib/1.0/00/lib-1.0.jar
+  mkdir -p /cache/gradle/caches/locked && echo x >/cache/gradle/caches/locked/f && chmod 000 /cache/gradle/caches/locked
+  echo "plant_loads=$(timeout 60 ./gradlew --version 2>&1 | grep -c POISONED)"'
+fi
 if [[ "${2:-}" == symlinked ]]; then
   setpriv --reuid=1001 --regid=1001 --clear-groups bash -c 'mkdir -p /data/stash/oldjob && rm -rf /data/work && ln -s /data/stash /data/work'
 fi
@@ -54,8 +69,12 @@ setpriv --reuid=1001 --regid=1001 --clear-groups bash -c '
     echo "runner_env_cmdline_token=$(cat /proc/$p/environ /proc/$p/cmdline | tr "\0" " " | grep -c s3cr3t)"
   fi
   echo "work=$([[ -L /data/work ]] && echo link || echo dir):$(ls -A /data/work | tr "\n" " ")"
-  echo "left=$(cd /cache/gradle && ls -A | tr "\n" " ")|$(ls -A /data/work | tr "\n" " ")|$(ls -A /data | tr "\n" " ")"'
+  echo "left=$(cd /cache/gradle && ls -A | tr "\n" " ")|$(ls -A /data/work | tr "\n" " ")|$(ls -A /data | tr "\n" " ")"
+  [[ -x /t/proj/gradlew ]] && echo "master_build_poisoned=$(cd /t/proj && timeout 60 ./gradlew --version 2>&1 | grep -c POISONED)"'
 EOF
+# The repo's own Gradle wrapper, for the #133 case; readable by the job user.
+mkdir -p "$T/proj/gradle" && cp "$ROOT/gradlew" "$T/proj/" && cp -r "$ROOT/gradle/wrapper" "$T/proj/gradle/"
+chmod -R a+rX "$T"
 
 # run <registered|unregistered>: one container with compose.yaml's flags; prints the probe's lines.
 run() {
@@ -78,8 +97,10 @@ expect "a job step cannot read the credentials" "$out" "job_reads_secret=no"
 expect "a job step gets nothing from the token FIFO" "$out" "job_reads_fifo=[]"
 expect "the runner runs as uid 1001 with no capabilities" "$out" "runner_uid=1001 runner_CapEff:0000000000000000"
 expect "the token is in neither the runner's environment nor its argv" "$out" "runner_env_cmdline_token=0"
-expect "the last job's Gradle hooks, workdirs and old credentials are gone" "$out" "left=||work "
+expect "the last job's Gradle home (hooks, dist, jars, an unreadable dir), workdirs and old credentials are gone" "$out" "left=||work "
 expect "the old /data/.runner removal is logged" "$out" "entrypoint: removed the old /data/.runner"
+expect "a pull request job's poisoned Gradle dist runs where it was planted" "$out" "plant_loads=1"
+expect "the next (master) build does not load the dist or jars a pull request job planted" "$out" "master_build_poisoned=0"
 
 out="$(run registered symlinked)"
 expect "a job that swapped /data/work for a symlink -> a fresh, empty directory" "$out" "work=dir:"

@@ -88,8 +88,13 @@ What one job can and cannot leave for a later one (#74):
 | `/tmp`, `$HOME` | no | tmpfs, discarded when the container stops (`.gitconfig`, Kotlin daemon files and the like go with it) |
 | `/data/work` | no | the entrypoint empties it before every job |
 | `/secret/.runner` (credentials) | not readable | root's, 0700/0600; the token reaches the runner through a one-shot FIFO, read once at start; job steps run as uid 1001 with no capabilities |
-| Gradle hooks in `/cache/gradle` (`init.d/`, `init.gradle`, `init.gradle.kts`, `gradle.properties`) | no | the entrypoint deletes them before every job; the workflow's `gradle hooks` step again |
-| The rest of `/cache/gradle` (downloaded jars, the Gradle distribution under `wrapper/dists`, transforms) | **yes** | none: a job can still replace a cached jar that a later build loads. Trusted while only trusted people can push; the moment branches from someone else run here, drop the cache before a master build (`docker compose down`, `docker volume rm splatman-runner_gradle-cache`, `docker compose up -d`) or give their jobs a separate runner |
+| `/cache/gradle` (the Gradle user home: init scripts, `gradle.properties`, the distribution under `wrapper/dists`, the jars under `caches/`, transforms) | no | the entrypoint empties it before every job (#133); the workflow's `gradle hooks` step deletes the hooks again |
+
+Why the Gradle home is not kept between jobs: a job on any ref can write all of it, Gradle trusts what is already
+there (the wrapper checks `distributionSha256Sum` only when it downloads, a cached jar is not checked again), and the
+runner cannot tell a master job from a pull request's before the job runs. So every job, master's included, downloads
+the Gradle distribution (checked against `distributionSha256Sum`) and its dependencies again: slower builds and more
+traffic, the price of a master build that never loads what a pull request left.
 
 The token stays in the runner's memory. A job step is a child of the runner and cannot read its parent's memory while
 the host keeps `kernel.yama.ptrace_scope` at 1 or more (Ubuntu's default); check with `sysctl kernel.yama.ptrace_scope`.

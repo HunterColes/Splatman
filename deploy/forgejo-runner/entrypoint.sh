@@ -7,7 +7,7 @@
 #   fresh /tmp, then drops to the runner user for good. The runner reads the token once, at start; after that the
 #   FIFO has no writer and the file stays unreadable to every job step, which all run as the runner user.
 # Stage 2 (`--job`), as the runner user: removes what the last job left where the next one would run it (old job
-#   workdirs, Gradle's init scripts and user gradle.properties), then runs exactly one job. When it exits the
+#   workdirs, the whole Gradle user home), then runs exactly one job. When it exits the
 #   container stops, which ends every process the job left behind and drops /tmp and $HOME (tmpfs), and Docker starts
 #   a fresh one (restart: unless-stopped).
 # Any other arguments run as given, as root without capabilities: `forgejo-runner register ...` (README step 3).
@@ -26,9 +26,16 @@ job() {
   rm -rf -- /data/work && mkdir -- /data/work
   # Registered before #74, the credentials sat in the jobs' own volume; they must not stay there.
   if [[ -e /data/.runner ]]; then rm -f -- /data/.runner; echo "entrypoint: removed the old /data/.runner"; fi
-  # Files Gradle runs or reads from GRADLE_USER_HOME on every build: a job must not leave one for the next.
-  rm -rf -- "${GRADLE_USER_HOME:?}/init.d" "$GRADLE_USER_HOME/init.gradle" "$GRADLE_USER_HOME/init.gradle.kts" \
-    "$GRADLE_USER_HOME/gradle.properties"
+  # A fresh Gradle user home for every job (#133). A job on any ref can write all of it: the extracted distribution
+  # under wrapper/dists (distributionSha256Sum is checked only at download), the jars under caches/, init scripts,
+  # gradle.properties. The runner cannot tell a master job from a pull request's before it runs, so no job reads
+  # anything an earlier one left. chmod first, each directory before find reads it, so one the last job made
+  # unreadable cannot stop the wipe; find never follows a symlink, and no process of the last job is still alive (the
+  # container restarted).
+  local home="${GRADLE_USER_HOME:?}"
+  find "$home" -mindepth 1 -type d ! -perm -u=rwx -exec chmod u+rwx -- {} \;
+  find "$home" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  [[ -z "$(ls -A -- "$home")" ]] || { echo "entrypoint: could not empty $home"; exit 1; }
   exec forgejo-runner one-job --wait --config "$CONFIG" --url "$url" --uuid "$uuid" \
     --token-url "file:$TOKEN_FIFO" --label "$LABEL"
 }
