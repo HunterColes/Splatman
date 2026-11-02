@@ -121,7 +121,7 @@ fun SplatmanShell(
                     screen(Capture) {
                         CaptureScreen(
                             onBack = { navController.popBackStack() },
-                            onScanSaved = { scanId -> navController.navigate(ScanFlow.afterCapture(scanId)) },
+                            onScanSaved = { scanId -> navController.navigateStep(ScanFlow.afterCapture(scanId)) },
                         )
                     }
                 }
@@ -130,7 +130,7 @@ fun SplatmanShell(
                     screen(route) {
                         ProcessingScreen(
                             onBack = { navController.popBackStack() },
-                            onOpenViewer = { scanId -> navController.navigate(ScanFlow.afterProcessing(scanId)) },
+                            onOpenViewer = { scanId -> navController.navigateStep(ScanFlow.afterProcessing(scanId)) },
                         )
                     }
                 }
@@ -160,8 +160,12 @@ fun SplatmanShell(
     }
 }
 
-/** Moves on to [step]'s destination, first taking the screen it leaves off the back stack (Back skips it). */
-private fun NavHostController.navigate(step: ScanFlow.Step) {
+/**
+ * Moves on to [step]'s destination, first taking the screen it leaves off the back stack (Back skips it).
+ * Not named `navigate`: NavController's member `navigate<T : Any>(route: T)` wins over an extension and throws
+ * for a Step (no serializer).
+ */
+private fun NavHostController.navigateStep(step: ScanFlow.Step) {
     navigate(step.destination) { popUpToReplaced(step) }
 }
 
