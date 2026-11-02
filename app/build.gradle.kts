@@ -5,7 +5,17 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.tasks.Input
+import org.gradle.maven.MavenModule
+import org.gradle.maven.MavenPomArtifact
+import org.w3c.dom.Element
+import java.io.File
 import java.util.Locale
+import javax.xml.parsers.DocumentBuilderFactory
 
 plugins {
     alias(libs.plugins.android.application)
@@ -134,6 +144,14 @@ androidComponents {
                 StripBaselineProfilesTask::outputDir
             )
             .toTransform(SingleArtifact.ASSETS)
+
+        // About > Open-source licences reads this list of the variant's dependencies (no runtime dependency).
+        val capitalised = variant.name.replaceFirstChar { it.titlecase(Locale.US) }
+        val runtime = configurations.named("${variant.name}RuntimeClasspath")
+        val licences = tasks.register("generate${capitalised}Licences", GenerateLicencesTask::class.java) {
+            rows.set(provider { licenceRows(runtime.get()) })
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(licences, GenerateLicencesTask::outputDir)
     }
 }
 
@@ -184,4 +202,70 @@ abstract class StripBaselineProfilesTask : DefaultTask() {
             exclude("**/dexopt/baseline.prof", "**/dexopt/baseline.profm")
         }
     }
+}
+
+/** Writes `licences.tsv` (module, version, licence, licence URL; one dependency a line) into generated assets. */
+abstract class GenerateLicencesTask : DefaultTask() {
+    @get:Input
+    abstract val rows: ListProperty<String>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun write() {
+        val dir = outputDir.asFile.get()
+        dir.mkdirs()
+        File(dir, "licences.tsv").writeText(rows.get().joinToString(separator = "\n", postfix = "\n"))
+    }
+}
+
+/** The licence of every external module on [runtime], read from its POM or, failing that, its parents' POMs. */
+fun licenceRows(runtime: Configuration): List<String> {
+    val ids = runtime.incoming.resolutionResult.allComponents
+        .mapNotNull { it.id as? ModuleComponentIdentifier }
+    val poms = dependencies.createArtifactResolutionQuery()
+        .forComponents(ids)
+        .withArtifacts(MavenModule::class.java, MavenPomArtifact::class.java)
+        .execute()
+        .resolvedComponents
+        .associate { component ->
+            component.id to component.getArtifacts(MavenPomArtifact::class.java)
+                .filterIsInstance<ResolvedArtifactResult>()
+                .firstOrNull()?.file
+        }
+    val parents = mutableMapOf<String, File?>()
+    return ids.map { id ->
+        val (name, url) = poms[id]?.let { licenceOf(it, parents, depth = 0) } ?: ("Not stated" to "")
+        listOf("${id.group}:${id.module}", id.version, name, url).joinToString("\t") { it.replace('\t', ' ').trim() }
+    }.distinct().sorted()
+}
+
+val maxParentDepth = 4
+
+/** The first licence (name, URL) in [pom], else in its parent POM, up to [maxParentDepth] parents up. */
+fun licenceOf(pom: File, parents: MutableMap<String, File?>, depth: Int): Pair<String, String>? {
+    val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom).documentElement
+    fun Element.child(tag: String): Element? = (0 until childNodes.length)
+        .map { childNodes.item(it) }
+        .filterIsInstance<Element>()
+        .firstOrNull { it.tagName == tag }
+    val licence = root.child("licenses")?.child("license")
+    if (licence != null) {
+        val name = licence.child("name")?.textContent?.trim().orEmpty()
+        val url = licence.child("url")?.textContent?.trim().orEmpty()
+        if (name.isNotEmpty() || url.isNotEmpty()) return name.ifEmpty { url } to url
+    }
+    val parent = root.child("parent") ?: return null
+    if (depth >= maxParentDepth) return null
+    val coordinates = listOf("groupId", "artifactId", "version").map { parent.child(it)?.textContent?.trim() }
+    if (coordinates.any { it.isNullOrEmpty() }) return null
+    val key = coordinates.joinToString(":")
+    val parentPom = parents.getOrPut(key) {
+        runCatching {
+            configurations.detachedConfiguration(dependencies.create("$key@pom")).apply { isTransitive = false }
+                .singleFile
+        }.getOrNull()
+    }
+    return parentPom?.let { licenceOf(it, parents, depth + 1) }
 }

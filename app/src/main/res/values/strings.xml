@@ -2,12 +2,8 @@
 <resources>
     <string name="shell_back">Back</string>
     <string name="shell_scan">Scan</string>
-    <string name="shell_coming_soon">Coming soon.</string>
     <string name="shell_library_title">Library</string>
     <string name="shell_processing_title">Processing</string>
     <string name="shell_scan_id">Scan %1$s</string>
     <string name="shell_settings_title">Settings</string>
-    <string name="shell_about_title">About</string>
-    <string name="shell_version">Version %1$s</string>
-    <string name="set_tips">Show scanning tips again</string>
 </resources>

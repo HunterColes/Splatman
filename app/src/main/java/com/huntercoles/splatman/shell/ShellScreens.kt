@@ -17,14 +17,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import com.huntercoles.splatman.BuildConfig
 import com.huntercoles.splatman.R
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.LibraryFeature
@@ -134,24 +132,4 @@ internal fun ProcessingPlaceholder(scanId: String, onBack: () -> Unit) {
 @Composable
 internal fun ViewerRoute() {
     ViewerFeature(modifier = Modifier.fillMaxSize())
-}
-
-@Composable
-internal fun SettingsPlaceholder(onBack: () -> Unit, onTips: () -> Unit, onAbout: () -> Unit) {
-    ShellScaffold(title = stringResource(R.string.shell_settings_title), onBack = onBack) {
-        PlaceholderText(stringResource(R.string.shell_coming_soon))
-        TextButton(onClick = onTips, modifier = Modifier.padding(top = SplatDimens.SpacingLarge)) {
-            Text(stringResource(R.string.set_tips))
-        }
-        TextButton(onClick = onAbout, modifier = Modifier.padding(top = SplatDimens.SpacingLarge)) {
-            Text(stringResource(R.string.shell_about_title))
-        }
-    }
-}
-
-@Composable
-internal fun AboutPlaceholder(onBack: () -> Unit) {
-    ShellScaffold(title = stringResource(R.string.shell_about_title), onBack = onBack) {
-        PlaceholderText(stringResource(R.string.shell_version, BuildConfig.VERSION_NAME))
-    }
 }

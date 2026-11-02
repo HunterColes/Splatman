@@ -7,6 +7,7 @@ import com.huntercoles.splatman.library.data.local.LibraryDatabase
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.repository.ScanRepositoryImpl
 import com.huntercoles.splatman.library.data.sample.AssetSampleRepository
+import com.huntercoles.splatman.library.data.storage.ScanStorage
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import com.huntercoles.splatman.library.domain.repository.SampleRepository
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
@@ -56,4 +57,9 @@ object LibraryModule {
         @ApplicationContext context: Context,
         @IoDispatcher io: CoroutineDispatcher,
     ): SampleRepository = AssetSampleRepository(context.assets, io)
+
+    @Provides
+    @Singleton
+    fun provideScanStorage(@ApplicationContext context: Context): ScanStorage =
+        ScanStorage(File(context.filesDir, SCANS_DIR))
 }

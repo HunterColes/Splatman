@@ -28,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.huntercoles.splatman.BuildConfig
 import com.huntercoles.splatman.capture.presentation.capture.CaptureScreen
 import com.huntercoles.splatman.capture.presentation.onboarding.OnboardingScreen
 import com.huntercoles.splatman.core.design.SplatMotion
@@ -43,6 +44,8 @@ import com.huntercoles.splatman.core.navigation.NavigationDestination.Settings
 import com.huntercoles.splatman.core.navigation.NavigationDestination.Viewer
 import com.huntercoles.splatman.core.navigation.ShellRoutes
 import com.huntercoles.splatman.core.preferences.ThemeMode
+import com.huntercoles.splatman.library.settings.AboutFeature
+import com.huntercoles.splatman.library.settings.SettingsFeature
 
 /** Pixels a screen slides by on a transition: a tenth of the width (shared axis X). */
 private const val SLIDE_FRACTION = 10
@@ -126,7 +129,7 @@ fun SplatmanShell(
                 }
                 composable<Settings> {
                     screen(Settings) {
-                        SettingsPlaceholder(
+                        SettingsFeature(
                             onBack = { navController.popBackStack() },
                             onTips = { navController.navigate(Onboarding(page = 1)) },
                             onAbout = { navController.navigate(About) },
@@ -134,7 +137,12 @@ fun SplatmanShell(
                     }
                 }
                 composable<About> {
-                    screen(About) { AboutPlaceholder(onBack = { navController.popBackStack() }) }
+                    screen(About) {
+                        AboutFeature(
+                            versionName = BuildConfig.VERSION_NAME,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
                 }
             }
         }
