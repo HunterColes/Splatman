@@ -16,17 +16,18 @@ class GpuSupportTest {
 
     @Test
     fun `3_1 with the limits is supported`() {
-        assertEquals(GpuSupport.Supported, GpuSupport.evaluate("OpenGL ES 3.1", 256, 8))
-        assertEquals(GpuSupport.Supported, GpuSupport.evaluate("OpenGL ES 3.2", 1024, 24))
+        assertEquals(GpuSupport.Supported, GpuSupport.evaluate("OpenGL ES 3.1", 256, 8, 8))
+        assertEquals(GpuSupport.Supported, GpuSupport.evaluate("OpenGL ES 3.2", 1024, 24, 8))
     }
 
     @Test
     fun `old versions and small limits are unsupported with a reason`() {
-        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.0", 1024, 24), "3.0")
-        assertUnsupported(GpuSupport.evaluate("OpenGL ES 2.0", 1024, 24), "2.0")
-        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.1", 128, 24), "invocations 128")
-        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.1", 256, 4), "bindings 4")
-        assertUnsupported(GpuSupport.evaluate(null, 256, 8), "GL_VERSION")
+        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.0", 1024, 24, 8), "3.0")
+        assertUnsupported(GpuSupport.evaluate("OpenGL ES 2.0", 1024, 24, 8), "2.0")
+        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.1", 128, 24, 8), "invocations 128")
+        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.1", 256, 4, 8), "bindings 4")
+        assertUnsupported(GpuSupport.evaluate("OpenGL ES 3.1", 256, 24, 4), "compute SSBO blocks 4")
+        assertUnsupported(GpuSupport.evaluate(null, 256, 8, 8), "GL_VERSION")
     }
 
     @Test

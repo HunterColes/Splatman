@@ -27,6 +27,7 @@ sealed interface GpuSupport {
                         GLES20.glGetString(GLES20.GL_VERSION),
                         getInt(GLES31.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS),
                         getInt(GLES31.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS),
+                        getInt(GLES31.GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS),
                     )
                 }
             }
@@ -34,14 +35,16 @@ sealed interface GpuSupport {
             Unsupported("no GLES 3 context: ${t.message ?: t.javaClass.simpleName}")
         }
 
-        /** The pure decision behind [probe], from the GL_VERSION string and the two limits. */
-        fun evaluate(glVersion: String?, workgroupInvocations: Int, ssboBindings: Int): GpuSupport {
+        /** The pure decision behind [probe], from the GL_VERSION string and the limits. */
+        fun evaluate(glVersion: String?, workgroupInvocations: Int, ssboBindings: Int, computeSsboBlocks: Int): GpuSupport {
             val (major, minor) = parseVersion(glVersion) ?: return Unsupported("unreadable GL_VERSION: $glVersion")
             return when {
                 major < 3 || (major == 3 && minor < 1) -> Unsupported("GLES $major.$minor is below 3.1")
                 workgroupInvocations < MIN_WORKGROUP_INVOCATIONS ->
                     Unsupported("max compute workgroup invocations $workgroupInvocations < $MIN_WORKGROUP_INVOCATIONS")
                 ssboBindings < MIN_SSBO_BINDINGS -> Unsupported("max SSBO bindings $ssboBindings < $MIN_SSBO_BINDINGS")
+                computeSsboBlocks < MIN_SSBO_BINDINGS ->
+                    Unsupported("max compute SSBO blocks $computeSsboBlocks < $MIN_SSBO_BINDINGS")
                 else -> Supported
             }
         }
