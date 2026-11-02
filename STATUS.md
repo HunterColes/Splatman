@@ -8,6 +8,8 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   (1M splats in ~0.4 s on the JVM); not yet drawn (#38).
 - `splat-core` kernels (#27): `sh/ShEval` (3DGS SH to degree 3), `projection/Covariance` (world + EWA project),
   `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
+- `splat-core` `frames/FrameConversions` (#28, ADR 0003): ARCore pose, xyzw order, Cgl/Ccv, view and
+  intrinsics projection, pinhole, W <-> PLY file frame (positions, quaternions, SH signs, whole cloud), Nerfstudio.
 - Splat pipeline: `splat-train` has the `Trainer` interface and `SeedTrainer` (seed points -> 3DGS seed splat, #30);
   nothing yet turns frames plus ARCore poses into seed points, and there is no export.
 - Real CC0 splat samples live in `app/src/main/assets/samples/` (cactus PLY SH1, measuring-tape PLY SH0, cactus
