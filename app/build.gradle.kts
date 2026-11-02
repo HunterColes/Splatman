@@ -39,7 +39,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.1"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.huntercoles.splatman.HiltTestRunner"
     }
 
     dependenciesInfo {
@@ -181,7 +181,10 @@ dependencies {
     ksp(libs.hilt.compiler)
     ksp(libs.room.compiler)
 
-    // tools/e2e.sh: the device smoke test (app/src/androidTest)
+    // tools/e2e.sh: the device tests (app/src/androidTest), on Hilt's test application (#120: fake tracker)
+    androidTestImplementation(project(":splat-io"))
+    androidTestImplementation(libs.hilt.testing)
+    kspAndroidTest(libs.hilt.compiler)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.test.android.compose)
     androidTestImplementation(libs.test.android.junit)

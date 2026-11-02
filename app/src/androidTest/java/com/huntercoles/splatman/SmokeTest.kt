@@ -10,6 +10,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -23,10 +25,14 @@ import org.junit.runner.RunWith
  * to build/e2e/.
  */
 @OptIn(ExperimentalTestApi::class)
+@HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 class SmokeTest {
 
-    @get:Rule
+    @get:Rule(order = 0)
+    val hilt = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
     val compose = createAndroidComposeRule<MainActivity>()
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()

@@ -69,6 +69,7 @@ compose-material3                   = { group = "androidx.compose.material3", na
 compose-rules                       = { group = "io.nlopez.compose.rules", name = "ktlint", version.ref = "compose-rules" }
 hilt                                = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler                       = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
+hilt-testing                        = { group = "com.google.dagger", name = "hilt-android-testing", version.ref = "hilt" }
 kotlin-coroutines                   = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlin-coroutines" }
 kotlin-coroutines-core              = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
 kotlin-serialization                = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlin-serialization" }
