@@ -1,0 +1,46 @@
+name: mutation
+# Mutation testing (#66): how many of splat-core's mutants its JUnit 5 tests kill (pitest), so the maths tests are
+# known to bite. Manual only (workflow_dispatch): it is slow and not part of the gate (tools/check.sh, ci.yml).
+# Same rules as ci.yml: the `splatman` runner in host mode, no `uses:`, no `container:` or `services:`, no secrets,
+# a read-only job token that lives only in the checkout step's environment. The pitest plugin and its engine are
+# pinned in gradle/libs.versions.toml and resolved from the Gradle plugin portal and Maven Central like every other
+# build dependency. Public repo (CLAUDE.md): this file names no host.
+on:
+  workflow_dispatch:
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  pitest:
+    name: pitest
+    runs-on: splatman
+    timeout-minutes: 90
+    steps:
+      - name: checkout
+        # As in ci.yml: plain git from the job's own server with the job's token in the environment only, redirects
+        # refused, and any server, repo or sha of an unexpected shape refused before git runs.
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          [[ "$SERVER" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ &&
+             "$REPO" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9_-][A-Za-z0-9._-]*$ && "$SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            { echo "checkout: unexpected server, repo or sha"; exit 1; }
+          git init -q .
+          git remote add origin "$SERVER/$REPO.git"
+          GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0="http.$SERVER/.extraHeader" GIT_CONFIG_VALUE_0="Authorization: token $TOKEN" \
+            GIT_CONFIG_KEY_1="http.$SERVER/.followRedirects" GIT_CONFIG_VALUE_1=false GIT_TERMINAL_PROMPT=0 \
+            git fetch -q --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -q --detach "$SHA"
+          echo "checkout: $(git rev-parse HEAD)"
+      - name: pitest
+        # Under tools/check.sh's lock and memory caps; pitest prints its summary (per mutator, then the totals:
+        # line coverage, `Generated N mutations Killed M (S%)`, test strength) to this log.
+        run: bash tools/check.sh :splat-core:pitest
+      - name: score
+        # The score again, last in the log, read from the XML report.
+        run: python3 -I tools/mutation-score.py splat-core/build/reports/pitest/mutations.xml

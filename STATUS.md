@@ -4,6 +4,9 @@ Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
 - Every unit test is JUnit 5 (Jupiter) and runs in the gate: the JUnit 4 ones were ported, capture-feature applies the android-junit5 plugin (#54).
 - The gate counts the unit tests (`unit tests: N`) and goes red at 0 or under the floor in `tools/test-count.min` (69; raise it on purpose) (#59).
+- Mutation testing (#66): `tools/check.sh :splat-core:pitest` (pitest 1.17.1, Gradle plugin 1.15.0, JUnit 5 engine
+  1.2.1; not in the gate), manual forge workflow `mutation`. First score (2026-11-02, desktop): 1356/1577 mutants
+  killed (86 %), test strength 89 %, line coverage 92 %; reports in `splat-core/build/reports/pitest/`.
 - Poker-app leftovers (blinds, chips, odds, bank, tournament, timer) are deleted (#6); the Library nav route renders `LibraryScreen`.
 - Library (#46): scans are Room `ScanEntity` rows (DB `splat_database` v2) over folders `filesDir/scans/<id>/` (ADR 0007); `ScanRepository` syncs, renames, deletes (cancelling processing via `ProcessingCanceller`, a no-op until #43); samples open the Viewer as `sample:<file>`. The old point-cloud path is gone.
 - Recording (#41): Capture has Record/Stop/Cancel; `capture/recording/CaptureRecorder` takes keyframes (luma sharpness + `KeyframeSelector`), 640x480 JPEG q90, seeds from points and depth, and on Stop writes the bundle to `filesDir/recording/<id>/` then renames it to `filesDir/scans/<id>/` (the library adopts it); Cancel keeps nothing.
