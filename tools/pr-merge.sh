@@ -13,7 +13,8 @@
 # last 40 lines, each indented two spaces, so nothing a PR's tests print can pass for one of those lines (or for
 # `MERGED`). Success's last line is exactly `MERGED #<n> -> <base> <short sha>`.
 # Tests stub the forge and the gate: FORGE_SH (default tools/forge.sh) and GATE_CMD (default tools/check.sh, run inside
-# the PR head's worktree).
+# the PR head's worktree). The gate runs without FORGE_MERGE_HEADER and FORGE_HEADER in its environment, so the PR's
+# code is not handed either token file's path; tools/test/pr-merge.sh proves it.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 n="${1:-}"; shift || true
@@ -63,7 +64,8 @@ trap 'git worktree remove --force "$wt" >/dev/null 2>&1 || true; rm -rf "$wt" "$
 git worktree add -q --detach "$wt" "$sha"
 # In a `||` list a red gate trips neither errexit nor the ERR trap.
 rc=0
-( cd "$wt" && "$GATE" ) >"$log" 2>&1 || rc=$?
+# The PR's own code runs here as this uid: it gets neither token header path (#73); only the final merge sees them.
+( cd "$wt" && exec env -u FORGE_MERGE_HEADER -u FORGE_HEADER "$GATE" ) >"$log" 2>&1 || rc=$?
 echo "gate on ${sha:0:10}, last 40 lines:"
 tail -n 40 "$log" | sed 's/^/  /'
 ((rc == 0)) || { echo "RED: PR #$n: gate red on ${sha:0:10}: $(grep -v '^[[:space:]]*$' "$log" | tail -1 | cut -c1-300)"; exit 1; }
