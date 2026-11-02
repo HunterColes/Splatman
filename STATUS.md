@@ -19,6 +19,9 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
 - `splat-core` `frames/FrameConversions` (#28, ADR 0003): ARCore pose, xyzw order, Cgl/Ccv, view and
   intrinsics projection, pinhole, W <-> PLY file frame (positions, quaternions, SH signs, whole cloud), Nerfstudio.
+- Capture bundle (#33, ADR 0007): `splat-io/bundle` `CaptureBundleWriter`/`CaptureBundleReader` write and read
+  `transforms.json` (Nerfstudio + `splatman_version`), JPEGs, f32 depth and `seed.ply`, each file temp + rename and
+  `transforms.json` last; nothing records a capture into it yet (#41).
 - CPU rasteriser forward (#37): `splat-train/raster/Rasterizer.forward` (16x16 tiles, front-to-back, deterministic
   over threads; 50k splats at 320x240 in ~19 ms on the desktop) is the golden renderer. Backward (#40):
   `Rasterizer.backward` fills `SplatGrads` (positions, log-scales, raw quaternions, opacity logits, SH dc, NDC view
