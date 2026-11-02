@@ -33,7 +33,11 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   gradient norm), proven by finite differences in Double (`RasterizerGradientTest`); no optimiser yet (#42).
 - Tracking (#36, ADR 0004): `capture-feature/tracking/` has the `PoseSource` seam, `TrackedFrame`, `TrackerDriver`
   (availability and permission before any session call, lifecycle pause/resume, dropped frames closed), `Yuv420`;
-  `tracking/arcore/` holds ARCore 1.57.0 (optional at install) and `ArCorePoseSource`; no screen uses it yet (#39).
+  `tracking/arcore/` holds ARCore 1.57.0 (optional at install) and `ArCorePoseSource`.
+- Capture screen (#39): `presentation/capture/` (`CaptureScreen`, `CaptureViewModel`, `CaptureTracker` seam) on the
+  Capture route, portrait-locked; the tracking thread draws the camera texture into a `SurfaceView`
+  (`preview/CameraBackgroundRenderer`, `transformCoordinates2d`) and the hint follows the frame's `TrackingFailure`.
+  Plain Material 3 until #4 restyles it; no recording yet (#41).
 - Splat pipeline: `splat-train` has the `Trainer` interface and `SeedTrainer` (seed points -> 3DGS seed splat, #30);
   nothing yet turns frames plus ARCore poses into seed points, and there is no export.
 - Real CC0 splat samples live in `app/src/main/assets/samples/` (cactus PLY SH1, measuring-tape PLY SH0, cactus

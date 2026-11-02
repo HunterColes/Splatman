@@ -135,13 +135,6 @@ internal fun LibraryHome(
 }
 
 @Composable
-internal fun CapturePlaceholder(onBack: () -> Unit) {
-    ShellScaffold(title = stringResource(R.string.shell_capture_title), onBack = onBack) {
-        PlaceholderText(stringResource(R.string.shell_coming_soon))
-    }
-}
-
-@Composable
 internal fun ProcessingPlaceholder(scanId: String, onBack: () -> Unit) {
     ShellScaffold(title = stringResource(R.string.shell_processing_title), onBack = onBack) {
         PlaceholderText(stringResource(R.string.shell_scan_id, scanId))

@@ -8,6 +8,27 @@ import com.huntercoles.splatman.splat.model.RgbImage
 /** Tracking state of one frame, mirroring ARCore's `TrackingState` in our own type. */
 enum class TrackingState { TRACKING, PAUSED, STOPPED }
 
+/** Why tracking is not [TrackingState.TRACKING], mirroring ARCore's `TrackingFailureReason` in our own type. */
+enum class TrackingFailure {
+    /** No failure (tracking, or still starting up). */
+    NONE,
+
+    /** The tracker is in a bad internal state. */
+    BAD_STATE,
+
+    /** Too dark. */
+    INSUFFICIENT_LIGHT,
+
+    /** The phone moves too fast. */
+    EXCESSIVE_MOTION,
+
+    /** Too little texture in view. */
+    INSUFFICIENT_FEATURES,
+
+    /** Another app holds the camera. */
+    CAMERA_UNAVAILABLE,
+}
+
 /** The CPU camera image of one frame (YUV_420_888, sensor orientation). Must be closed exactly once. */
 interface CameraImage : AutoCloseable {
     /** Width, pixels. */
@@ -60,6 +81,8 @@ class TrackedFrame(
     val points: FeaturePoints,
     /** Depth with its own intrinsics, or null when the phone gives none. */
     val depth: DepthImage?,
+    /** Why tracking failed this frame; [TrackingFailure.NONE] when tracking. */
+    val trackingFailure: TrackingFailure = TrackingFailure.NONE,
     /** Packet version (ADR 0002). */
     val version: Int = VERSION,
 ) : AutoCloseable {

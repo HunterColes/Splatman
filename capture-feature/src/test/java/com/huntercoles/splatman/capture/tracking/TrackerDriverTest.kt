@@ -1,10 +1,13 @@
 package com.huntercoles.splatman.capture.tracking
 
+import android.view.Surface
+import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.splat.math.Quat
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.CameraPose
 import com.huntercoles.splatman.splat.model.RgbImage
+import io.mockk.mockk
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -33,7 +36,15 @@ class TrackerDriverTest {
         var pauses = 0
         var closes = 0
         var updateError: Exception? = null
+        var previewError: Exception? = null
+        val previews = mutableListOf<PreviewTarget?>()
         val calls = mutableListOf<String>()
+
+        override fun setPreview(target: PreviewTarget?) {
+            previewError?.let { throw it }
+            calls += if (target == null) "preview-off" else "preview-on"
+            previews += target
+        }
 
         override fun resume() {
             calls += "resume"
@@ -238,5 +249,55 @@ class TrackerDriverTest {
         assertEquals(TrackingAvailability.UNSUPPORTED, TrackingAvailability.classify(false, false, false))
         assertEquals(TrackingAvailability.UNSUPPORTED, TrackingAvailability.classify(false, false, true))
         assertFalse(TrackingAvailability.classify(true, true, true) == TrackingAvailability.SUPPORTED)
+    }
+
+    private val target = PreviewTarget(mockk<Surface>(), 1080, 2340, 0)
+
+    @Test
+    fun aPreviewSetBeforeStartIsAppliedBeforeResumeAndToEveryNewSession() = runTest {
+        val sessions = mutableListOf<FakeSession>()
+        val driver = driver { FakeSession().also { sessions += it } }
+        driver.setPreview(target)
+        runCurrent()
+        driver.start()
+        runCurrent()
+        assertEquals(listOf("preview-on", "resume"), sessions[0].calls.take(2))
+        driver.stop()
+        runCurrent()
+        driver.start()
+        runCurrent()
+        assertEquals(listOf<PreviewTarget?>(target), sessions[1].previews)
+        driver.dispose()
+        runCurrent()
+    }
+
+    @Test
+    fun aPreviewSetOrClearedWhileRunningReachesTheOpenSession() = runTest {
+        val session = FakeSession()
+        val driver = driver { session }
+        driver.start()
+        runCurrent()
+        driver.setPreview(target)
+        runCurrent()
+        val detach = driver.setPreview(null)
+        runCurrent()
+        assertTrue(detach.isCompleted)
+        assertEquals(listOf(target, null), session.previews)
+        driver.dispose()
+        runCurrent()
+    }
+
+    @Test
+    fun aFailingPreviewDoesNotFailTracking() = runTest {
+        val session = FakeSession().apply { previewError = IllegalStateException("no window") }
+        val driver = driver { session }
+        driver.start()
+        runCurrent()
+        driver.setPreview(target)
+        runCurrent()
+        assertEquals(PoseSourceStatus.Running, driver.status.value)
+        assertEquals(0, session.closes)
+        driver.dispose()
+        runCurrent()
     }
 }

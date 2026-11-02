@@ -3,24 +3,30 @@ package com.huntercoles.splatman.capture.tracking.arcore
 import android.content.Context
 import com.google.ar.core.Camera
 import com.google.ar.core.Config
+import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.NotYetAvailableException
+import com.huntercoles.splatman.capture.preview.CameraBackgroundRenderer
+import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.capture.tracking.FeaturePoints
 import com.huntercoles.splatman.capture.tracking.FrameParts
 import com.huntercoles.splatman.capture.tracking.MediaCameraImage
 import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackerSession
+import com.huntercoles.splatman.capture.tracking.TrackingFailure
 import com.huntercoles.splatman.capture.tracking.TrackingState
 import com.huntercoles.splatman.splat.frames.FrameConversions
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.DepthImage
 import com.google.ar.core.CameraIntrinsics as ArIntrinsics
+import com.google.ar.core.TrackingFailureReason as ArFailure
 import com.google.ar.core.TrackingState as ArTrackingState
 
 /**
  * One ARCore session (ADR 0004) as a [TrackerSession]: depth when supported, focus auto, latest-camera-image update
- * mode, an offscreen GL context for `update()`. Build, use and close it on one thread (the driver's). Only build it
+ * mode, an offscreen GL context for `update()`; with a [PreviewTarget] it also draws the camera texture into the
+ * preview window after each new frame. Build, use and close it on one thread (the driver's). Only build it
  * after [ArCoreAvailability.check] said supported and CAMERA is granted.
  */
 internal class ArCoreTrackerSession(context: Context) : TrackerSession {
@@ -28,6 +34,10 @@ internal class ArCoreTrackerSession(context: Context) : TrackerSession {
     private val session: Session
     private val depthEnabled: Boolean
     private var lastTimestampNs = 0L
+    private var preview: PreviewTarget? = null
+    private var background: CameraBackgroundRenderer? = null
+    private val quadTexCoords = FloatArray(CameraBackgroundRenderer.QUAD_NDC.size)
+    private var texCoordsValid = false
 
     init {
         var opened: Session? = null
@@ -58,6 +68,12 @@ internal class ArCoreTrackerSession(context: Context) : TrackerSession {
         val timestampNs = frame.timestamp
         if (timestampNs == 0L || timestampNs == lastTimestampNs) return null
         lastTimestampNs = timestampNs
+        try {
+            drawPreview(frame)
+        } catch (e: Exception) {
+            // A broken preview must not stop tracking: drop the window and keep the frames coming.
+            setPreview(null)
+        }
         val camera = frame.camera
         val image = try {
             MediaCameraImage(frame.acquireCameraImage())
@@ -74,16 +90,51 @@ internal class ArCoreTrackerSession(context: Context) : TrackerSession {
                 image = image,
                 points = points(frame),
                 depth = if (depthEnabled) depth(frame, camera) else null,
+                trackingFailure = failure(camera.trackingFailureReason),
             )
         }
     }
 
+    override fun setPreview(target: PreviewTarget?) {
+        if (target == null) {
+            preview = null
+            gl.detachWindow()
+            return
+        }
+        if (!gl.attachWindow(target.surface)) {
+            preview = null
+            return
+        }
+        preview = target
+        session.setDisplayGeometry(target.rotation, target.width, target.height)
+        texCoordsValid = false
+    }
+
     override fun close() {
         try {
+            background?.release()
+            background = null
             session.close()
         } finally {
             gl.release()
         }
+    }
+
+    /** Draws the camera texture full screen, rotated for the display by `transformCoordinates2d`. */
+    private fun drawPreview(frame: Frame) {
+        val target = preview ?: return
+        if (!texCoordsValid || frame.hasDisplayGeometryChanged()) {
+            frame.transformCoordinates2d(
+                Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
+                CameraBackgroundRenderer.QUAD_NDC,
+                Coordinates2d.TEXTURE_NORMALIZED,
+                quadTexCoords,
+            )
+            texCoordsValid = true
+        }
+        val renderer = background ?: CameraBackgroundRenderer().also { background = it }
+        renderer.draw(gl.cameraTexture, quadTexCoords, target.width, target.height)
+        gl.swapWindow()
     }
 
     private fun points(frame: Frame): FeaturePoints =
@@ -115,6 +166,15 @@ internal class ArCoreTrackerSession(context: Context) : TrackerSession {
             width = size[0],
             height = size[1],
         )
+    }
+
+    private fun failure(reason: ArFailure): TrackingFailure = when (reason) {
+        ArFailure.NONE -> TrackingFailure.NONE
+        ArFailure.BAD_STATE -> TrackingFailure.BAD_STATE
+        ArFailure.INSUFFICIENT_LIGHT -> TrackingFailure.INSUFFICIENT_LIGHT
+        ArFailure.EXCESSIVE_MOTION -> TrackingFailure.EXCESSIVE_MOTION
+        ArFailure.INSUFFICIENT_FEATURES -> TrackingFailure.INSUFFICIENT_FEATURES
+        ArFailure.CAMERA_UNAVAILABLE -> TrackingFailure.CAMERA_UNAVAILABLE
     }
 
     private fun trackingState(state: ArTrackingState): TrackingState = when (state) {

@@ -28,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.huntercoles.splatman.capture.presentation.capture.CaptureScreen
 import com.huntercoles.splatman.core.design.SplatMotion
 import com.huntercoles.splatman.core.design.SplatTheme
 import com.huntercoles.splatman.core.design.rememberAnimatorScale
@@ -109,7 +110,7 @@ fun SplatmanShell(
                     }
                 }
                 composable<Capture> {
-                    screen(Capture) { CapturePlaceholder(onBack = { navController.popBackStack() }) }
+                    screen(Capture) { CaptureScreen(onBack = { navController.popBackStack() }) }
                 }
                 composable<Processing> { backStackEntry ->
                     val route = backStackEntry.toRoute<Processing>()

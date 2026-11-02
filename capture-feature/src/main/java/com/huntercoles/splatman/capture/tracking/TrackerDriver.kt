@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.capture.tracking
 
+import com.huntercoles.splatman.capture.preview.PreviewTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,9 @@ interface TrackerSession : AutoCloseable {
 
     /** The newest frame not yet returned (the caller owns it), or null when there is none yet. */
     fun update(): TrackedFrame?
+
+    /** Draws the camera into [target] after each update from now on, or stops drawing when null. */
+    fun setPreview(target: PreviewTarget?) {}
 }
 
 /**
@@ -60,6 +64,7 @@ class TrackerDriver(
     private var session: TrackerSession? = null
     private var pump: Job? = null
     private var foreground = true
+    private var preview: PreviewTarget? = null
 
     /** What the source is doing now. */
     val status: StateFlow<PoseSourceStatus> = mutableStatus.asStateFlow()
@@ -93,6 +98,7 @@ class TrackerDriver(
                 return@withContext
             }
             session = opened
+            preview?.let { applyPreview(opened, it) }
             if (foreground) resumeSession(opened) else mutableStatus.value = PoseSourceStatus.Paused
         }
     }
@@ -115,6 +121,15 @@ class TrackerDriver(
                 pauseSession(open)
             }
         }
+    }
+
+    /**
+     * The surface the camera is drawn into, or null to stop drawing (call with null before the surface is destroyed
+     * and wait for the returned job). Kept across sessions; a preview failure never fails tracking.
+     */
+    fun setPreview(target: PreviewTarget?): Job = scope.launch {
+        preview = target
+        session?.let { applyPreview(it, target) }
     }
 
     /** Closes the session and stops the driver for good; the returned job completes once the session is closed. */
@@ -183,6 +198,14 @@ class TrackerDriver(
         while (true) {
             val pending = channel.tryReceive().getOrNull() ?: break
             pending.close()
+        }
+    }
+
+    private fun applyPreview(open: TrackerSession, target: PreviewTarget?) {
+        try {
+            open.setPreview(target)
+        } catch (e: Exception) {
+            // No preview is better than no tracking: the frames keep flowing.
         }
     }
 

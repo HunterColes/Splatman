@@ -3,11 +3,13 @@ package com.huntercoles.splatman.capture.tracking.arcore
 import android.content.Context
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.capture.tracking.CameraPermission
 import com.huntercoles.splatman.capture.tracking.PoseSource
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackerDriver
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,12 +40,23 @@ class ArCorePoseSource(context: Context) : PoseSource, DefaultLifecycleObserver 
 
     override fun stop() = driver.stop()
 
-    override fun onResume(owner: LifecycleOwner) = driver.setForeground(true)
+    /** Resumes the session in the foreground, pauses it otherwise (what ON_RESUME and ON_PAUSE do). */
+    fun setForeground(inForeground: Boolean) = driver.setForeground(inForeground)
 
-    override fun onPause(owner: LifecycleOwner) = driver.setForeground(false)
+    /** Draws the camera into [target], or stops when null; the job completes once the session took it. */
+    fun setPreview(target: PreviewTarget?): Job = driver.setPreview(target)
+
+    /** Closes the session and the tracking thread for good (what ON_DESTROY does). */
+    fun release() {
+        driver.dispose().invokeOnCompletion { executor.shutdown() }
+    }
+
+    override fun onResume(owner: LifecycleOwner) = setForeground(true)
+
+    override fun onPause(owner: LifecycleOwner) = setForeground(false)
 
     override fun onDestroy(owner: LifecycleOwner) {
         owner.lifecycle.removeObserver(this)
-        driver.dispose().invokeOnCompletion { executor.shutdown() }
+        release()
     }
 }

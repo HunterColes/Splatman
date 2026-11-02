@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_back">Back</string>
+    <string name="capture_checking">Starting the camera…</string>
+    <string name="capture_unsupported">This phone does not support ARCore, so it cannot scan. You can still view, import and export splats.</string>
+    <string name="capture_install_needed">Scanning needs Google Play Services for AR.</string>
+    <string name="capture_install">Install</string>
+    <string name="capture_permission_needed">Scanning needs the camera.</string>
+    <string name="capture_permission_denied">Camera access was refused. Allow it to scan.</string>
+    <string name="capture_permission_allow">Allow camera</string>
+    <string name="capture_permission_settings">Open settings</string>
+    <string name="capture_failed">The camera could not start: %1$s</string>
+    <string name="capture_retry">Try again</string>
+    <string name="capture_hint_tracking">Tracking</string>
+    <string name="capture_hint_looking">Looking for surfaces</string>
+    <string name="capture_hint_move_slower">Move slower</string>
+    <string name="capture_hint_more_light">More light</string>
+    <string name="capture_hint_more_detail">Aim at something with more detail</string>
+    <string name="capture_hint_camera_in_use">Another app is using the camera</string>
+    <string name="capture_hint_lost">Tracking lost</string>
+</resources>

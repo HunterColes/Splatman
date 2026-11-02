@@ -7,7 +7,6 @@
     <string name="shell_onboarding_body">Walk around something with your phone and Splatman turns it into a 3D scene you can orbit and export.</string>
     <string name="shell_onboarding_start">Get started</string>
     <string name="shell_library_title">Library</string>
-    <string name="shell_capture_title">Capture</string>
     <string name="shell_processing_title">Processing</string>
     <string name="shell_scan_id">Scan %1$s</string>
     <string name="shell_settings_title">Settings</string>
