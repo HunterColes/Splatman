@@ -8,4 +8,11 @@
     <string name="settings_dark_mode_desc">Use dark theme</string>
     <string name="settings_about">About Splatman</string>
     <string name="settings_about_desc">Splatman is a free and open-source Gaussian splatting 3D scanner for Android. Capture, optimize, and view 3D models entirely offline. Version 1.0\n\nMIT Licensed - No ads, no tracking, no data collection.</string>
+    <!-- Viewer -->
+    <string name="viewer_pick_hint">Pick a sample or open a .ply or .splat file.</string>
+    <string name="viewer_loading">Opening %1$s…</string>
+    <string name="viewer_error_title">Could not open %1$s</string>
+    <string name="viewer_retry">Try again</string>
+    <string name="viewer_open_file">Open file</string>
+    <string name="viewer_toggle_stats">Stats</string>
 </resources>

@@ -13,9 +13,13 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   `app/shell/SplatmanShell.kt` (edge-to-edge, Capture/Processing/Viewer dark, others follow `ThemePreferences.themeMode`).
   Onboarding on first run (`OnboardingPreferences`), else Library. Every route but Library and Viewer is a placeholder.
 - UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
-- Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`, now on `splat-core` math); camera capture works.
+- Viewer (#38): GLES 3.0 `rendering/gl/SplatRenderer` (RGBA32UI texture, instanced EWA quads, worker-thread
+  `DepthSort` into a double-buffered order VBO, 0.5-1.0 render scale, rebuilt on context loss) behind a `Gl` seam;
+  `ViewerScreen` opens the `sample:<file>` the Library passed, the bundled samples or a picked PLY/.splat
+  (`presentation/load`), fps overlay; scan ids are #18. Shaders are only checked on a device (QA). The viewer's
+  CameraX preview is gone (capture owns the camera).
 - GPU packer (#35): `viewer-feature/rendering/pack/SplatPacker` packs a `SplatCloud` into the ADR 0006 RGBA32UI layout
-  (1M splats in ~0.4 s on the JVM); not yet drawn (#38).
+  (1M splats in ~0.4 s on the JVM); drawn by #38.
 - `splat-core` kernels (#27): `sh/ShEval` (3DGS SH to degree 3), `projection/Covariance` (world + EWA project),
   `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
 - `splat-core` `frames/FrameConversions` (#28, ADR 0003): ARCore pose, xyzw order, Cgl/Ccv, view and

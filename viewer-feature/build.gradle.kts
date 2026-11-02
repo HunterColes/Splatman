@@ -62,6 +62,8 @@ dependencies {
     implementation(project(":core"))
     // The controller's public API returns splat-core math types (ADR 0006).
     api(project(":splat-core"))
+    // The viewer opens PLY and .splat files (ADR 0007).
+    implementation(project(":splat-io"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
