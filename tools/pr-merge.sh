@@ -13,9 +13,17 @@
 # last 40 lines, each indented two spaces, so nothing a PR's tests print can pass for one of those lines (or for
 # `MERGED`). Success's last line is exactly `MERGED #<n> -> <base> <short sha>`.
 # Tests stub the forge and the gate: FORGE_SH (default tools/forge.sh) and GATE_CMD (default tools/check.sh, run inside
-# the PR head's worktree). The gate runs without FORGE_MERGE_HEADER and FORGE_HEADER in its environment, so the PR's
-# code is not handed either token file's path; tools/test/pr-merge.sh proves it.
+# a throwaway clone of the PR head). The PR's code runs as this uid, so it is kept away from the merge token (#73, #86):
+# FORGE_MERGE_HEADER is read into a local and unset first, and only the final `forge.sh merge` gets it back; the gate
+# runs without FORGE_HEADER too, in a clone that shares no .git with this checkout (no hooks, config or forge.sh of
+# ours to rewrite); every git here runs with core.hooksPath=/dev/null, so a hook a gate planted anyway never fires; and
+# $F is copied to a temp file before the gate, so a rewritten checkout copy is never run. tools/test/pr-merge.sh proves
+# it. Same-uid code can still find this checkout and the token file by itself: the root fix (the gate as another uid,
+# or the token file unreadable while PR code runs) is Bombadil's.
 set -euo pipefail
+merge_hdr_set="${FORGE_MERGE_HEADER+1}"; merge_hdr="${FORGE_MERGE_HEADER-}"; unset FORGE_MERGE_HEADER
+# Read by every git below, forge.sh's included (it sets its own GIT_CONFIG_COUNT, which this does not touch).
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.hooksPath'='/dev/null'"
 cd "$(git rev-parse --show-toplevel)"
 n="${1:-}"; shift || true
 [[ $n =~ ^[1-9][0-9]{0,6}$ ]] || { echo "refusing: not a PR number: ${n:-none}"; exit 2; }
@@ -29,7 +37,7 @@ enforce=0; [[ -z ${FORGE_BASE:-} ]] || enforce=1
 BASE="${FORGE_BASE:-master}"
 [[ $BASE == master || $BASE =~ ^day/[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]{1,2})?$ ]] ||
   { echo "refusing: bad FORGE_BASE '$BASE' (master or day/YYYY-MM-DD[-N])"; exit 2; }
-F="${FORGE_SH:-$PWD/tools/forge.sh}"; GATE="${GATE_CMD:-tools/check.sh}"
+F="${FORGE_SH:-$PWD/tools/forge.sh}"; [[ $F == /* ]] || F="$PWD/$F"; GATE="${GATE_CMD:-tools/check.sh}"
 trap 'echo "refusing: PR #$n: unexpected failure at tools/pr-merge.sh line $LINENO"' ERR
 
 info="$("$F" pr "$n")" || { echo "refusing: PR #$n: forge.sh pr failed"; exit 1; }
@@ -59,9 +67,21 @@ if [[ -n $touched ]]; then
   echo "gate files changed: $(tr '\n' ' ' <<<"$touched")"
 fi
 
-wt="$(mktemp -d)"; log="$(mktemp)"
-trap 'git worktree remove --force "$wt" >/dev/null 2>&1 || true; rm -rf "$wt" "$log"' EXIT
-git worktree add -q --detach "$wt" "$sha"
+wt="$(mktemp -d)"; log="$(mktemp)"; fsnap="$(mktemp)"
+trap 'rm -rf "$wt" "$log" "$fsnap"' EXIT
+# The forge.sh the post-gate calls run: this copy, taken before any PR code runs.
+cp "$F" "$fsnap"; chmod 700 "$fsnap"; F="$fsnap"
+# A throwaway clone of exactly the head (its own .git, nothing shared with this checkout's), with the local config
+# check.sh reads (company.private*, the private-host check) and a link to the build cache a worktree would get.
+git init -q "$wt"
+git -C "$wt" fetch -q --no-tags --depth 1 "file://$PWD" "refs/forge-pr/$n"
+git -C "$wt" checkout -q --detach FETCH_HEAD
+[[ "$(git -C "$wt" rev-parse HEAD)" == "$sha" ]] || { echo "refusing: PR #$n: the gate clone is not at $sha"; exit 1; }
+for k in company.private company.private-allow; do
+  if v="$(git config --get "$k")"; then git -C "$wt" config "$k" "$v"; fi
+done
+cache="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/build-cache"
+[[ ! -d $cache ]] || ln -s "$cache" "$wt/build-cache"
 # In a `||` list a red gate trips neither errexit nor the ERR trap.
 rc=0
 # The PR's own code runs here as this uid: it gets neither token header path (#73); only the final merge sees them.
@@ -72,7 +92,8 @@ tail -n 40 "$log" | sed 's/^/  /'
 
 "$F" git fetch -q --no-tags forge "+refs/heads/$BASE:refs/remotes/forge/$BASE"
 behind
-mout="$("$F" merge "$n" "$sha" 2>&1)" || { echo "NOT MERGED: PR #$n: $(tr '\n' ' ' <<<"$mout" | cut -c1-400)"; exit 1; }
+if [[ -n $merge_hdr_set ]]; then mout="$(FORGE_MERGE_HEADER="$merge_hdr" "$F" merge "$n" "$sha" 2>&1)"
+else mout="$("$F" merge "$n" "$sha" 2>&1)"; fi || { echo "NOT MERGED: PR #$n: $(tr '\n' ' ' <<<"$mout" | cut -c1-400)"; exit 1; }
 echo "$mout"
 "$F" git fetch -q --no-tags forge "+refs/heads/$BASE:refs/remotes/forge/$BASE"
 echo "MERGED #$n -> $BASE $(git rev-parse --short "forge/$BASE")"

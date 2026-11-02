@@ -2,12 +2,14 @@
 # tools/pr-merge.sh keeps both token header paths out of the PR-head gate while the merge still gets them (#73).
 # No network and no real token: a throwaway repo with a local bare "forge", a stub FORGE_SH (pr, pr-body, git, merge)
 # that logs which headers the merge saw, and a stub GATE_CMD that logs `${FORGE_MERGE_HEADER-unset}` and
-# `${FORGE_HEADER-unset}` as the PR's code would see them.
+# `${FORGE_HEADER-unset}` as the PR's code would see them. A second case (#86) has a hostile gate stub that plants a
+# reference-transaction hook (in its own git dir and in the merge checkout's) and rewrites the checkout's forge.sh
+# (the default FORGE_SH); neither may run with the merge header, and the merge must still send it.
 #   bash tools/test/pr-merge.sh     prints one line a case, ends `all pass` (exit 0) or `FAILED: n` (exit 1)
 set -euo pipefail
 TOOLS="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
-export SEEN="$T/seen" MERGES="$T/merges"
+export SEEN="$T/seen" MERGES="$T/merges" HOOKED="$T/hooked" CHECKOUT="$T/repo"
 HUNTER_HDR="$T/hunter.header"; AGENT_HDR="$T/agent.header"
 (umask 077; echo "Authorization: token $(printf 'b%.0s' {1..40})" >"$HUNTER_HDR"
   echo "Authorization: token $(printf 'a%.0s' {1..40})" >"$AGENT_HDR")
@@ -23,7 +25,7 @@ g remote add forge "$T/forge.git"
 g push -q forge master
 g checkout -q -b card/x
 echo card >>"$T/repo/README.md"; g commit -qam card
-SHA="$(g rev-parse HEAD)"
+SHA="$(g rev-parse HEAD)"; BASE_SHA="$(g rev-parse master)"
 g push -q forge "card/x:refs/heads/card/x" "card/x:refs/pull/7/head"
 g checkout -q master
 export SHA
@@ -50,7 +52,21 @@ cat >"$T/gate-stub.sh" <<'EOF'
 echo "FORGE_MERGE_HEADER=${FORGE_MERGE_HEADER-unset} FORGE_HEADER=${FORGE_HEADER-unset}" | tee -a "$SEEN"
 env | grep -c '^FORGE_\(MERGE_\)\?HEADER=' >>"$SEEN" || true
 EOF
-chmod +x "$T/forge-stub.sh" "$T/gate-stub.sh"
+cat >"$T/evil-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+# Hostile PR code: a hook that logs the merge header wherever git runs next, in the git dir it was given and in the
+# merge checkout's (found by path, as same-uid code can), and a rewritten checkout forge.sh that does the same.
+set -euo pipefail
+hook='#!/bin/sh
+echo "hook FORGE_MERGE_HEADER=${FORGE_MERGE_HEADER-unset}" >>"$HOOKED"'
+for d in "$(git rev-parse --path-format=absolute --git-common-dir)/hooks" "$CHECKOUT/.git/hooks"; do
+  mkdir -p "$d"; printf '%s\n' "$hook" >"$d/reference-transaction"; chmod +x "$d/reference-transaction"
+done
+printf '#!/bin/sh\necho "forge.sh rewritten $1 FORGE_MERGE_HEADER=${FORGE_MERGE_HEADER-unset}" >>"$HOOKED"\n' \
+  >"$CHECKOUT/tools/forge.sh"
+echo "gate: green"
+EOF
+chmod +x "$T/forge-stub.sh" "$T/gate-stub.sh" "$T/evil-gate.sh"
 
 fails=0
 check() { # <name> <got> <want>
@@ -67,6 +83,21 @@ check "last line is MERGED" "$(tail -1 "$T/out")" "MERGED #7 -> master $(g rev-p
 check "gate sees neither header" "$(cat "$SEEN")" $'FORGE_MERGE_HEADER=unset FORGE_HEADER=unset\n0'
 check "merge still gets both headers" "$(cat "$MERGES")" "merge 7 FORGE_MERGE_HEADER=$HUNTER_HDR FORGE_HEADER=$AGENT_HDR"
 check "forge master is the PR head" "$(git -C "$T/forge.git" rev-parse master)" "$SHA"
+((rc == 0)) || sed 's/^/  out: /' "$T/out" | tail -5
+
+# #86: the forge stub is the checkout's own (untracked) tools/forge.sh, the default FORGE_SH the gate rewrites.
+git -C "$T/forge.git" update-ref refs/heads/master "$BASE_SHA"
+cp "$T/forge-stub.sh" "$T/repo/tools/forge.sh"
+: >"$MERGES"; : >"$HOOKED"; rc=0
+(cd "$T/repo" && unset FORGE_BASE FORGE_SH &&
+  GATE_CMD="$T/evil-gate.sh" FORGE_MERGE_HEADER="$HUNTER_HDR" FORGE_HEADER="$AGENT_HDR" \
+  bash tools/pr-merge.sh 7) >"$T/out" 2>&1 || rc=$?
+check "hostile gate: merge exits 0" "$rc" 0
+check "hostile gate: last line is MERGED" "$(tail -1 "$T/out")" "MERGED #7 -> master $(g rev-parse --short "$SHA")"
+check "hostile gate: planted hook and rewritten forge.sh never run" "$(cat "$HOOKED")" ""
+check "hostile gate: merge still gets both headers" "$(cat "$MERGES")" \
+  "merge 7 FORGE_MERGE_HEADER=$HUNTER_HDR FORGE_HEADER=$AGENT_HDR"
+check "hostile gate: forge master is the PR head" "$(git -C "$T/forge.git" rev-parse master)" "$SHA"
 ((rc == 0)) || sed 's/^/  out: /' "$T/out" | tail -5
 
 if ((fails)); then echo "FAILED: $fails"; exit 1; fi
