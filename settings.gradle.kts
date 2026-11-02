@@ -6,6 +6,9 @@ include(":capture-feature")
 include(":library-feature")
 include(":viewer-feature")
 include(":core")
+include(":splat-core")
+include(":splat-io")
+include(":splat-train")
 
 pluginManagement {
     repositories {
