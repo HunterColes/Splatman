@@ -23,7 +23,7 @@ import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.library.domain.model.SplatScene
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.ViewerConstants
-import com.huntercoles.splatman.viewer.rendering.math.Vector3
+import com.huntercoles.splatman.splat.math.Vec3
 import timber.log.Timber
 
 /**
@@ -132,7 +132,8 @@ fun GaussianSplatViewer(
                         renderer?.setPendingScene(splatScene)
                         // Position camera to view the scene
                         cameraController.reset()
-                        val center = Vector3.fromFloatArray(splatScene.boundingBox.center)
+                        val c = splatScene.boundingBox.center
+                        val center = Vec3(c[0], c[1], c[2])
                         cameraController.setTarget(center)
                         
                         // Calculate optimal camera distance and far plane to fit the entire scene

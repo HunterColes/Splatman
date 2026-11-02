@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
-import com.huntercoles.splatman.viewer.rendering.math.Vector3
+import com.huntercoles.splatman.splat.math.Vec3
 
 /**
  * 3D Axis widget overlay (top-left corner)
@@ -47,12 +47,12 @@ fun AxisWidget(
         val strokeWidth = 2.5f.dp.toPx() // Slightly thicker lines
 
         // Transform world axes by camera rotation
-        val xAxis = rotation.transform(Vector3.right())
-        val yAxis = rotation.transform(Vector3.up())
-        val zAxis = rotation.transform(Vector3.forward())
+        val xAxis = rotation.rotate(Vec3.UNIT_X)
+        val yAxis = rotation.rotate(Vec3.UNIT_Y)
+        val zAxis = rotation.rotate(Vec3.UNIT_Z)
 
         // Project 3D axes to 2D screen space (orthographic projection)
-        fun projectAxis(axis: Vector3): Offset {
+        fun projectAxis(axis: Vec3): Offset {
             return Offset(
                 center.x + axis.x * axisLength,
                 center.y - axis.y * axisLength // Flip Y for screen coordinates

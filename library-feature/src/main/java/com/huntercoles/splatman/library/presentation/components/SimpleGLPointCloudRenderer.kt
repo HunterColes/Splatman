@@ -7,7 +7,6 @@ import android.opengl.Matrix
 import com.huntercoles.splatman.library.domain.model.GaussianSplat
 import com.huntercoles.splatman.library.domain.model.SplatScene
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
-import com.huntercoles.splatman.viewer.rendering.math.Matrix4
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

@@ -1,10 +1,8 @@
 package com.huntercoles.splatman.viewer.rendering
 
-import com.huntercoles.splatman.viewer.rendering.ViewerConstants
-import com.huntercoles.splatman.viewer.rendering.math.Matrix4
-import com.huntercoles.splatman.viewer.rendering.math.Quaternion
-import com.huntercoles.splatman.viewer.rendering.math.Vector3
-import kotlin.math.PI
+import com.huntercoles.splatman.splat.math.Mat4
+import com.huntercoles.splatman.splat.math.Quat
+import com.huntercoles.splatman.splat.math.Vec3
 
 /**
  * Camera controller for interactive 3D Gaussian splat viewing
@@ -18,14 +16,14 @@ import kotlin.math.PI
  * - Rotation uses quaternions for smooth gimbal-lock-free rotation
  * - Pan moves the target point in camera-relative coordinates
  * 
- * Thread-safe: All operations are immutable or use synchronized state
+ * Maths from splat-core (ADR 0006): Hamilton wxyz quaternions, column-major [Mat4].
  */
 class GaussianCameraController {
     
     // Camera state (private, accessed through getters for testing)
     private var distance: Float = ViewerConstants.DEFAULT_DISTANCE
-    private var rotation: Quaternion = Quaternion.identity()
-    private var target: Vector3 = Vector3.zero()
+    private var rotation: Quat = Quat.IDENTITY
+    private var target: Vec3 = Vec3.ZERO
     private var aspectRatio: Float = 16f / 9f
     
     // Camera parameters
@@ -42,16 +40,16 @@ class GaussianCameraController {
         val sensitivity = ViewerConstants.ROTATION_SENSITIVITY
         
         // Yaw rotation (around world up axis for horizontal movement)
-        val yaw = Quaternion.fromAxisAngle(Vector3.up(), -deltaX * sensitivity)
+        val yaw = Quat.fromAxisAngle(Vec3.UNIT_Y, -deltaX * sensitivity)
         
         // Apply yaw first (this rotates the camera around world up)
         rotation = yaw * rotation
         
         // Get the camera's current right vector after yaw rotation
-        val right = rotation.transform(Vector3.right())
+        val right = rotation.rotate(Vec3.UNIT_X)
         
         // Pitch rotation (around camera's right axis for vertical movement)
-        val pitch = Quaternion.fromAxisAngle(right, -deltaY * sensitivity)
+        val pitch = Quat.fromAxisAngle(right, -deltaY * sensitivity)
         
         // Apply pitch
         rotation = pitch * rotation
@@ -77,8 +75,8 @@ class GaussianCameraController {
         val sensitivity = ViewerConstants.PAN_SENSITIVITY * distance
         
         // Get camera's right and up vectors
-        val right = rotation.transform(Vector3.right())
-        val up = rotation.transform(Vector3.up())
+        val right = rotation.rotate(Vec3.UNIT_X)
+        val up = rotation.rotate(Vec3.UNIT_Y)
         
         // Move target in camera-relative coordinates
         target = target + (right * deltaX + up * deltaY) * sensitivity
@@ -89,14 +87,14 @@ class GaussianCameraController {
      */
     fun reset() {
         distance = ViewerConstants.DEFAULT_DISTANCE
-        rotation = Quaternion.identity()
-        target = Vector3.zero()
+        rotation = Quat.IDENTITY
+        target = Vec3.ZERO
     }
     
     /**
      * Set camera target position
      */
-    fun setTarget(newTarget: Vector3) {
+    fun setTarget(newTarget: Vec3) {
         target = newTarget
     }
     
@@ -125,29 +123,29 @@ class GaussianCameraController {
      * Get current view matrix (camera transformation)
      * Converts camera state to matrix for OpenGL
      */
-    fun getViewMatrix(): Matrix4 {
+    fun getViewMatrix(): Mat4 {
         // Calculate camera position
-        val forward = rotation.transform(Vector3.forward())
+        val forward = rotation.rotate(Vec3.UNIT_Z)
         val eye = target + forward * distance
         
         // Get camera's current up direction (transformed by rotation)
-        val up = rotation.transform(Vector3.up())
+        val up = rotation.rotate(Vec3.UNIT_Y)
         
         // Create look-at matrix
-        return Matrix4.lookAt(eye, target, up)
+        return Mat4.lookAt(eye, target, up)
     }
     
     /**
      * Get current projection matrix
      */
-    fun getProjectionMatrix(): Matrix4 {
-        return Matrix4.perspective(fov, aspectRatio, nearPlane, farPlane)
+    fun getProjectionMatrix(): Mat4 {
+        return Mat4.perspective(Math.toRadians(fov.toDouble()).toFloat(), aspectRatio, nearPlane, farPlane)
     }
     
     // Testable getters
     fun getDistance(): Float = distance
-    fun getRotation(): Quaternion = rotation
-    fun getTarget(): Vector3 = target
+    fun getRotation(): Quat = rotation
+    fun getTarget(): Vec3 = target
     fun getNearPlane(): Float = nearPlane
     fun getFarPlane(): Float = farPlane
 }

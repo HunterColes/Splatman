@@ -3,7 +3,9 @@
 Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
 - UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
-- Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`); camera capture works.
+- Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`, now on `splat-core` math); camera capture works.
+- GPU packer (#35): `viewer-feature/rendering/pack/SplatPacker` packs a `SplatCloud` into the ADR 0006 RGBA32UI layout
+  (1M splats in ~0.4 s on the JVM); not yet drawn (#38).
 - `splat-core` kernels (#27): `sh/ShEval` (3DGS SH to degree 3), `projection/Covariance` (world + EWA project),
   `sort/DepthSort` (16-bit counting sort, back to front); not yet wired into the renderer or trainer.
 - Splat pipeline: `splat-train` has the `Trainer` interface and `SeedTrainer` (seed points -> 3DGS seed splat, #30);

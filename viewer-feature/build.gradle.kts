@@ -60,6 +60,8 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    // The controller's public API returns splat-core math types (ADR 0006).
+    api(project(":splat-core"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

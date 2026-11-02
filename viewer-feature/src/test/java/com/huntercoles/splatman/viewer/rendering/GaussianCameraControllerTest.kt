@@ -1,24 +1,22 @@
 package com.huntercoles.splatman.viewer.rendering
 
-import com.huntercoles.splatman.viewer.rendering.math.Matrix4
-import com.huntercoles.splatman.viewer.rendering.math.Quaternion
-import com.huntercoles.splatman.viewer.rendering.math.Vector3
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import com.huntercoles.splatman.splat.math.Vec3
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import kotlin.math.abs
 
 /**
  * Unit tests for GaussianCameraController
- * TDD: Tests written before implementation
+ * JUnit 5 (the module has no vintage engine), against splat-core math.
  */
 class GaussianCameraControllerTest {
     
     private lateinit var controller: GaussianCameraController
     private val epsilon = 0.001f
     
-    @Before
+    @BeforeEach
     fun setup() {
         controller = GaussianCameraController()
     }
@@ -56,13 +54,13 @@ class GaussianCameraControllerTest {
         // Zoom way in
         repeat(100) { controller.onZoom(0.1f) }
         val minDistance = controller.getDistance()
-        assertTrue(minDistance >= 0.5f) // Min clamp
+        assertEquals(ViewerConstants.MIN_DISTANCE, minDistance, epsilon) // Min clamp
         
         // Reset and zoom way out
         controller.reset()
         repeat(100) { controller.onZoom(10f) }
         val maxDistance = controller.getDistance()
-        assertTrue(maxDistance <= 50f) // Max clamp
+        assertEquals(ViewerConstants.MAX_DISTANCE, maxDistance, epsilon) // Max clamp (1000; the old 50 never ran)
     }
     
     @Test
@@ -103,12 +101,12 @@ class GaussianCameraControllerTest {
         
         // Should be back to defaults
         assertEquals(5.0f, controller.getDistance(), epsilon)
-        assertEquals(Vector3.zero(), controller.getTarget())
+        assertEquals(Vec3.ZERO, controller.getTarget())
     }
     
     @Test
     fun `setTarget changes camera target position`() {
-        val newTarget = Vector3(1.0f, 2.0f, 3.0f)
+        val newTarget = Vec3(1.0f, 2.0f, 3.0f)
         
         controller.setTarget(newTarget)
         
