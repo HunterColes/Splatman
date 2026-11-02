@@ -42,7 +42,7 @@ sealed interface ViewerIntent {
 
 /**
  * Opens a sample or a picked file through [SplatLoader] (off the main thread) and holds the result. The route's
- * `scanId` ([ARG_SCAN_ID]) opens at once when it names a bundled sample (`sample:<file>`); scan ids wait for #18.
+ * `scanId` ([ARG_SCAN_ID]) opens at once: a bundled sample (`sample:<file>`) or a scan's `splat.ply`.
  * A new open cancels the one in flight; leaving the screen clears the ViewModel, which cancels any load still running.
  */
 @HiltViewModel
@@ -58,7 +58,8 @@ class ViewerViewModel @Inject constructor(
     private var lastSource: SplatSource? = null
 
     init {
-        SplatSamples.fromScanId(savedStateHandle.get<String>(ARG_SCAN_ID))?.let(::open)
+        val scanId = savedStateHandle.get<String>(ARG_SCAN_ID)
+        (SplatSamples.fromScanId(scanId) ?: SplatSource.Scan.fromScanId(scanId))?.let(::open)
     }
 
     fun onIntent(intent: ViewerIntent) {

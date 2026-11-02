@@ -23,6 +23,7 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -31,6 +32,7 @@ import androidx.navigation.toRoute
 import com.huntercoles.splatman.BuildConfig
 import com.huntercoles.splatman.capture.presentation.capture.CaptureScreen
 import com.huntercoles.splatman.capture.presentation.onboarding.OnboardingScreen
+import com.huntercoles.splatman.capture.presentation.processing.ProcessingScreen
 import com.huntercoles.splatman.core.design.SplatMotion
 import com.huntercoles.splatman.core.design.SplatTheme
 import com.huntercoles.splatman.core.design.rememberAnimatorScale
@@ -42,6 +44,7 @@ import com.huntercoles.splatman.core.navigation.NavigationDestination.Onboarding
 import com.huntercoles.splatman.core.navigation.NavigationDestination.Processing
 import com.huntercoles.splatman.core.navigation.NavigationDestination.Settings
 import com.huntercoles.splatman.core.navigation.NavigationDestination.Viewer
+import com.huntercoles.splatman.core.navigation.ScanFlow
 import com.huntercoles.splatman.core.navigation.ShellRoutes
 import com.huntercoles.splatman.core.preferences.ThemeMode
 import com.huntercoles.splatman.library.settings.AboutFeature
@@ -115,12 +118,20 @@ fun SplatmanShell(
                     }
                 }
                 composable<Capture> {
-                    screen(Capture) { CaptureScreen(onBack = { navController.popBackStack() }) }
+                    screen(Capture) {
+                        CaptureScreen(
+                            onBack = { navController.popBackStack() },
+                            onScanSaved = { scanId -> navController.navigate(ScanFlow.afterCapture(scanId)) },
+                        )
+                    }
                 }
                 composable<Processing> { backStackEntry ->
                     val route = backStackEntry.toRoute<Processing>()
                     screen(route) {
-                        ProcessingPlaceholder(scanId = route.scanId, onBack = { navController.popBackStack() })
+                        ProcessingScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenViewer = { scanId -> navController.navigate(ScanFlow.afterProcessing(scanId)) },
+                        )
                     }
                 }
                 composable<Viewer> { backStackEntry ->
@@ -147,6 +158,20 @@ fun SplatmanShell(
             }
         }
     }
+}
+
+/** Moves on to [step]'s destination, first taking the screen it leaves off the back stack (Back skips it). */
+private fun NavHostController.navigate(step: ScanFlow.Step) {
+    navigate(step.destination) { popUpToReplaced(step) }
+}
+
+private fun NavOptionsBuilder.popUpToReplaced(step: ScanFlow.Step) {
+    when (val replaced = step.replaces) {
+        Capture -> popUpTo<Capture> { inclusive = true }
+        is Processing -> popUpTo<Processing> { inclusive = true }
+        else -> Unit
+    }
+    launchSingleTop = true
 }
 
 private fun NavDestination.isForcedDark(): Boolean =

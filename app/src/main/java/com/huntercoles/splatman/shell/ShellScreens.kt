@@ -121,13 +121,6 @@ internal fun LibraryHome(
     }
 }
 
-@Composable
-internal fun ProcessingPlaceholder(scanId: String, onBack: () -> Unit) {
-    ShellScaffold(title = stringResource(R.string.shell_processing_title), onBack = onBack) {
-        PlaceholderText(stringResource(R.string.shell_scan_id, scanId))
-    }
-}
-
 /** Full screen, always dark: the existing viewer until #18 takes the scan id. */
 @Composable
 internal fun ViewerRoute() {

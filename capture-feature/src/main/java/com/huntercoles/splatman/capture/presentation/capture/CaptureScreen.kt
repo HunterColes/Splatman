@@ -60,10 +60,17 @@ private const val PREVIEW_DETACH_TIMEOUT_MS = 1_000L
 /**
  * The capture route: live ARCore camera full screen with a tracking hint, or the reason it cannot run (unsupported,
  * install needed, permission, failure). Portrait-locked while shown. Plain Material 3; #4's design restyles it.
+ * A saved scan goes to [onScanSaved] (its id), which opens Processing.
  */
 @Composable
-fun CaptureScreen(onBack: () -> Unit, viewModel: CaptureViewModel = hiltViewModel()) {
+fun CaptureScreen(
+    onBack: () -> Unit,
+    onScanSaved: (String) -> Unit,
+    viewModel: CaptureViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentOnScanSaved by rememberUpdatedState(onScanSaved)
+    LaunchedEffect(viewModel) { viewModel.openProcessing.collect { currentOnScanSaved(it) } }
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val availability = remember(context) { ArCoreAvailability(context) }

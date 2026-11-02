@@ -4,14 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.capture.recording.CaptureRecorder
+import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -19,7 +23,8 @@ import javax.inject.Inject
 /**
  * The capture screen: opens the tracker, turns its status and each frame's tracking state into [uiState], hands
  * every frame to the [recorder] (Record, Stop, Cancel), pauses the tracker when the screen leaves the foreground and
- * releases both when the screen is gone.
+ * releases both when the screen is gone. Once a scan is saved, [openProcessing] names it, once, so the screen hands it
+ * to Processing.
  */
 @HiltViewModel
 class CaptureViewModel @Inject constructor(
@@ -41,6 +46,11 @@ class CaptureViewModel @Inject constructor(
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, CaptureUiState())
 
+    private val savedScans = Channel<String>(Channel.BUFFERED)
+
+    /** The id of each scan as it is saved: the hand-off to the Processing route. */
+    val openProcessing: Flow<String> = savedScans.receiveAsFlow()
+
     init {
         addCloseable { tracker.release() }
         addCloseable { recorder.release() }
@@ -49,6 +59,9 @@ class CaptureViewModel @Inject constructor(
                 hint.value = trackingHint(frame.trackingState, frame.trackingFailure)
                 recorder.submit(frame) // it closes the frame, now or once recorded
             }
+        }
+        viewModelScope.launch {
+            recorder.state.collect { state -> if (state is RecorderState.Saved) savedScans.send(state.scanId) }
         }
         start()
     }

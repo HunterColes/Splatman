@@ -79,6 +79,19 @@ class ScanRepositoryImpl(
         folders.values.filter { it.name !in known }.forEach { dao.insert(withContext(io) { adopt(it) }) }
     }
 
+    override suspend fun refresh(id: String) {
+        val row = dao.byId(id)
+        val folder = folderOf(row?.folder ?: id)
+        val found = withContext(io) { if (folder.isDirectory) adopt(folder) else null } ?: return
+        if (row == null) {
+            dao.insert(found.copy(id = id))
+        } else {
+            dao.update(
+                row.copy(status = found.status, splatCount = found.splatCount, keyframeCount = found.keyframeCount),
+            )
+        }
+    }
+
     /** A row for a folder found on disk: READY when its `splat.ply` reads, CAPTURED with only a bundle, else FAILED. */
     private fun adopt(folder: File): ScanEntity {
         val splat = File(folder, SPLAT_FILE)

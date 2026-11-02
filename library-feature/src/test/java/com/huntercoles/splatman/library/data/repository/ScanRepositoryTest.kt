@@ -170,11 +170,44 @@ class ScanRepositoryTest {
         assertEquals("Desk plant", repository.get(kept.id)!!.name)
     }
 
+    @Test
+    fun `refresh reads the folder again and keeps name and date`() = runTest {
+        val scan = repository.create("s", createdAtMs = 7)
+        repository.rename(scan.id, "Desk plant")
+        repository.updateStatus(scan.id, ScanStatus.PROCESSING)
+        val folder = File(root, scan.folder)
+        File(folder, "transforms.json").writeText("{}")
+        File(folder, "splat.ply").writeBytes(fixture())
+        File(folder, "images").mkdirs()
+        repeat(2) { File(folder, "images/frame_0000$it.jpg").writeBytes(ByteArray(4)) }
+
+        repository.refresh(scan.id)
+
+        repository.get(scan.id)!!.let {
+            assertEquals(ScanStatus.READY, it.status)
+            assertEquals(4, it.splatCount)
+            assertEquals(2, it.keyframeCount)
+            assertEquals("Desk plant", it.name)
+            assertEquals(7, it.createdAtMs)
+        }
+    }
+
+    @Test
+    fun `refresh adopts a new folder and ignores a missing one`() = runTest {
+        File(root, "fresh").apply { mkdirs() }.resolve("transforms.json").writeText("{}")
+
+        repository.refresh("fresh")
+        repository.refresh("nowhere")
+
+        assertEquals(ScanStatus.CAPTURED, repository.get("fresh")!!.status)
+        assertNull(repository.get("nowhere"))
+    }
+
     private fun fixture(): ByteArray = javaClass.getResourceAsStream("/splats/tiny-sh1.ply")!!.use { it.readBytes() }
 }
 
 /** In-memory [ScanDao] with Room's semantics: insert ignores an existing id, observeAll is newest first. */
-private class FakeScanDao : ScanDao {
+internal class FakeScanDao : ScanDao {
     private val rows = MutableStateFlow<Map<String, ScanEntity>>(emptyMap())
 
     override fun observeAll(): Flow<List<ScanEntity>> =

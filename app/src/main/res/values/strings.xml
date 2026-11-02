@@ -3,7 +3,5 @@
     <string name="shell_back">Back</string>
     <string name="shell_scan">Scan</string>
     <string name="shell_library_title">Library</string>
-    <string name="shell_processing_title">Processing</string>
-    <string name="shell_scan_id">Scan %1$s</string>
     <string name="shell_settings_title">Settings</string>
 </resources>

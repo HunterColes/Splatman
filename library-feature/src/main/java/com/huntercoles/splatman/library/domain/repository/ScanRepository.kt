@@ -25,9 +25,15 @@ interface ScanRepository {
 
     /** Adopts scan folders that have no row and drops rows whose folder is gone. */
     suspend fun sync()
+
+    /**
+     * Reads scan [id]'s folder again: READY with its splat count when `splat.ply` reads, CAPTURED with only a bundle,
+     * else FAILED; adopts the folder when it has no row yet. The name and date are kept. No folder: nothing happens.
+     */
+    suspend fun refresh(id: String)
 }
 
-/** Stops the background build of a scan; the processing runner (#43) implements it. */
+/** Stops the background build of a scan; the app binds it to the processing runner. */
 fun interface ProcessingCanceller {
     /** Returns once processing of [scanId] has stopped writing to its folder. */
     suspend fun cancel(scanId: String)

@@ -28,6 +28,9 @@ class ProcessingService : Service() {
     @Inject
     lateinit var repository: ProcessingRepository
 
+    @Inject
+    lateinit var listeners: Set<@JvmSuppressWildcards ProcessingListener>
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val runs = ProcessingRuns(
         scope = scope,
@@ -36,6 +39,7 @@ class ProcessingService : Service() {
             repository.state(scan).collect { notificationManager().notify(NOTIFICATION_ID, notification(scan, it)) }
         },
         onFinished = { scan, result, last ->
+            listeners.forEach { it.onProcessing(scan.name, result) }
             if (last) {
                 stopForeground(STOP_FOREGROUND_DETACH)
                 notificationManager().notify(NOTIFICATION_ID, notification(scan, result))
@@ -65,7 +69,7 @@ class ProcessingService : Service() {
 
     private fun startRun(scan: File) {
         goForeground(notification(scan, ProcessingState.Running(null)))
-        runs.start(scan)
+        if (runs.start(scan)) listeners.forEach { it.onProcessing(scan.name, ProcessingState.Running(null)) }
     }
 
     override fun onDestroy() {

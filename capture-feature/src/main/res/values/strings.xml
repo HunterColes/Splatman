@@ -47,4 +47,17 @@
     <string name="capture_saved">Saved %1$d keyframes to your library</string>
     <string name="capture_nothing_recorded">No keyframes yet: move slowly around the object while recording</string>
     <string name="capture_save_failed">The scan could not be saved: %1$s</string>
+
+    <string name="processing_starting">Getting ready…</string>
+    <string name="processing_running">Building your splat</string>
+    <string name="processing_loading">Loading the keyframes…</string>
+    <string name="processing_progress">Step %1$d of %2$d · %3$d splats</string>
+    <string name="processing_paused">Paused</string>
+    <string name="processing_paused_detail">The phone is too hot; building goes on once it cools down.</string>
+    <string name="processing_done">Splat ready</string>
+    <string name="processing_cancelled">Building was cancelled</string>
+    <string name="processing_failed">The splat could not be built</string>
+    <string name="processing_missing">This scan is no longer on the phone</string>
+    <string name="processing_cancel">Cancel</string>
+    <string name="processing_retry">Try again</string>
 </resources>

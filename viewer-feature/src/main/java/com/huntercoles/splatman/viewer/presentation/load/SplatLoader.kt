@@ -23,6 +23,21 @@ sealed interface SplatSource {
 
     /** [uri] is the `content://` URI from the system picker, as a string. */
     data class Document(val uri: String, override val name: String = "File") : SplatSource
+
+    /** A scan made on this phone: `filesDir/scans/<[scanId]>/splat.ply` (ADR 0007). */
+    data class Scan(val scanId: String, override val name: String = scanId) : SplatSource {
+        companion object {
+            /** The scan's trained splat inside its folder (capture-feature `ProcessingRepository.SPLAT_FILE`). */
+            const val SPLAT_FILE = "splat.ply"
+
+            /** The scan a viewer route's `scanId` names, or null for a sample, a path or a blank id. */
+            fun fromScanId(scanId: String?): Scan? {
+                if (scanId.isNullOrBlank() || scanId.trim() != scanId || scanId.startsWith(".")) return null
+                if (scanId.any { it == '/' || it == '\\' || it == ':' }) return null
+                return Scan(scanId)
+            }
+        }
+    }
 }
 
 /** The samples bundled by #5 (app/src/main/assets/samples/ASSETS-LICENSES.md), smallest first. */

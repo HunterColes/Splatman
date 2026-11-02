@@ -195,12 +195,24 @@ class ViewerViewModelTest {
     }
 
     @Test
-    fun `a scan id waits idle for the scan viewer`() = test {
-        val loader = FakeLoader(emptyMap())
-        val vm = viewModel(loader, scanId = "0b7e-scan")
+    fun `a scan id opens that scan's splat at once`() = test {
+        val loaded = scene("scan")
+        val scan = SplatSource.Scan("0b7e-scan")
+        val vm = viewModel(FakeLoader(mapOf(scan to { loaded })), scanId = "0b7e-scan")
+        assertEquals(ViewerLoad.Loading(scan), vm.uiState.value.load)
         advanceUntilIdle()
-        assertSame(ViewerLoad.Idle, vm.uiState.value.load)
-        assertTrue(loader.started.isEmpty())
+        assertSame(loaded, (vm.uiState.value.load as ViewerLoad.Loaded).scene)
+    }
+
+    @Test
+    fun `scan ids name a plain folder and reject paths, samples and blanks`() {
+        assertEquals(SplatSource.Scan("scan_20261102"), SplatSource.Scan.fromScanId("scan_20261102"))
+        assertEquals(null, SplatSource.Scan.fromScanId("../secret"))
+        assertEquals(null, SplatSource.Scan.fromScanId("a/b"))
+        assertEquals(null, SplatSource.Scan.fromScanId(".hidden"))
+        assertEquals(null, SplatSource.Scan.fromScanId("sample:cactus-sh1.ply"))
+        assertEquals(null, SplatSource.Scan.fromScanId(" "))
+        assertEquals(null, SplatSource.Scan.fromScanId(null))
     }
 
     @Test

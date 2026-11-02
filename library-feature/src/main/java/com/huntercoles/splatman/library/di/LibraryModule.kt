@@ -37,11 +37,7 @@ object LibraryModule {
     @Provides
     fun provideScanDao(database: LibraryDatabase): ScanDao = database.scanDao()
 
-    /** Nothing processes yet; the processing runner (#43) replaces this binding with one that stops its job. */
-    @Provides
-    @Singleton
-    fun provideProcessingCanceller(): ProcessingCanceller = ProcessingCanceller { }
-
+    /** [canceller] is bound by the app (it stops the processing runner's job). */
     @Provides
     @Singleton
     fun provideScanRepository(
