@@ -19,7 +19,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * The CPU tile rasteriser of ADR 0005, forward pass; also the golden renderer of the tests (ADR 0009).
+ * The CPU tile rasteriser of ADR 0005, forward and [backward] passes; also the golden renderer of the tests
+ * (ADR 0009).
  *
  * [forward] projects every splat with [Covariance.project] (EWA, 0.3 px low-pass, 3-sigma radius), culls, bins the
  * visible ones into 16x16 px tiles, orders each tile's list front to back (by depth, ties by index) and composites
@@ -57,6 +58,18 @@ class Rasterizer(val threads: Int = Runtime.getRuntime().availableProcessors()) 
         bin(cloud.count, out)
         parallelFor(out.tileCount) { t -> compositeTile(t, out) }
     }
+
+    /**
+     * Gradients of a loss with respect to every raw parameter of [cloud] into [grads], given [dLdColor] (3 floats per
+     * pixel, dL / d [RenderBuffers.color], row-major like it). [forward] must hold this rasteriser's [forward] pass
+     * of the same cloud, intrinsics and pose, unchanged since: its lists, final transmittance and contributor counts
+     * are replayed back to front (see [RasterizerBackward]). Overwrites [grads]; bit-identical for any thread count.
+     */
+    @Suppress("LongParameterList")
+    fun backward(
+        cloud: SplatCloud, intrinsics: CameraIntrinsics, pose: CameraPose,
+        forward: RenderBuffers, dLdColor: FloatArray, grads: SplatGrads,
+    ) = RasterizerBackward.run(this, cloud, intrinsics, pose, forward, dLdColor, grads)
 
     override fun close() {
         pool?.shutdownNow()
@@ -224,7 +237,7 @@ class Rasterizer(val threads: Int = Runtime.getRuntime().availableProcessors()) 
     }
 
     /** Runs `body` for `0 until count` on the caller and the workers; rethrows the first failure once all are done. */
-    private fun parallelFor(count: Int, body: (Int) -> Unit) {
+    internal fun parallelFor(count: Int, body: (Int) -> Unit) {
         val pool = pool
         if (pool == null || count <= 1) {
             for (i in 0 until count) body(i)

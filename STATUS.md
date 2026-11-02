@@ -16,7 +16,9 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - `splat-core` `frames/FrameConversions` (#28, ADR 0003): ARCore pose, xyzw order, Cgl/Ccv, view and
   intrinsics projection, pinhole, W <-> PLY file frame (positions, quaternions, SH signs, whole cloud), Nerfstudio.
 - CPU rasteriser forward (#37): `splat-train/raster/Rasterizer.forward` (16x16 tiles, front-to-back, deterministic
-  over threads; 50k splats at 320x240 in ~19 ms on the desktop) is the golden renderer; no backward pass yet (#40).
+  over threads; 50k splats at 320x240 in ~19 ms on the desktop) is the golden renderer. Backward (#40):
+  `Rasterizer.backward` fills `SplatGrads` (positions, log-scales, raw quaternions, opacity logits, SH dc, NDC view
+  gradient norm), proven by finite differences in Double (`RasterizerGradientTest`); no optimiser yet (#42).
 - Tracking (#36, ADR 0004): `capture-feature/tracking/` has the `PoseSource` seam, `TrackedFrame`, `TrackerDriver`
   (availability and permission before any session call, lifecycle pause/resume, dropped frames closed), `Yuv420`;
   `tracking/arcore/` holds ARCore 1.57.0 (optional at install) and `ArCorePoseSource`; no screen uses it yet (#39).
