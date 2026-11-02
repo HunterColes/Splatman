@@ -47,6 +47,6 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        const val EXTRA_ROUTE = "com.huntercoles.splatman.ROUTE"
+        const val EXTRA_ROUTE = ShellRoutes.EXTRA_ROUTE
     }
 }

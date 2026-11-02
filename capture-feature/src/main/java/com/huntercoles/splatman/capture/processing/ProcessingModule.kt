@@ -23,6 +23,9 @@ internal abstract class ProcessingModule {
     @Binds
     abstract fun bindThermal(monitor: PowerThermalMonitor): ThermalMonitor
 
+    @Binds
+    abstract fun bindNotificationAsk(ask: PrefsNotificationAsk): NotificationAsk
+
     /** Empty unless the app adds one (it keeps the library's rows in step). */
     @Multibinds
     abstract fun listeners(): Set<ProcessingListener>
@@ -33,6 +36,9 @@ internal abstract class ProcessingModule {
             context.getSharedPreferences(TrainerChoice.PREFS, Context.MODE_PRIVATE)
                 .getBoolean(TrainerChoice.PREF_SEED_TRAINER, false),
         )
+
+        @Provides
+        fun provideFreeSpace(): FreeSpace = FileSystemFreeSpace()
 
         @Provides
         fun provideTrainingConfig(): TrainingConfig = TrainingConfig()

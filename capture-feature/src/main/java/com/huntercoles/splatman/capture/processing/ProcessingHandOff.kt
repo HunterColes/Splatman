@@ -25,3 +25,13 @@ class ScanFolders(val root: File) {
         return if (plain) File(root, scanId) else null
     }
 }
+
+/** The scan's display name for the notification (the library row's name), or null when it has none. */
+fun interface ScanNames {
+    suspend fun name(scanId: String): String?
+}
+
+/** Deletes a scan (its row and folder); the app binds the library's delete, which stops a run first. */
+fun interface ScanDeleter {
+    suspend fun delete(scanId: String)
+}

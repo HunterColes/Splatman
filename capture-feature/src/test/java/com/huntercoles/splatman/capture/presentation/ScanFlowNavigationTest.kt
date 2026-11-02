@@ -7,13 +7,18 @@ import androidx.lifecycle.ViewModelStore
 import com.huntercoles.splatman.capture.presentation.capture.CaptureIntent
 import com.huntercoles.splatman.capture.presentation.capture.CaptureTracker
 import com.huntercoles.splatman.capture.presentation.capture.CaptureViewModel
+import com.huntercoles.splatman.capture.presentation.processing.ProcessingEvent
 import com.huntercoles.splatman.capture.presentation.processing.ProcessingIntent
+import com.huntercoles.splatman.capture.presentation.processing.ProcessingStage
 import com.huntercoles.splatman.capture.presentation.processing.ProcessingViewModel
 import com.huntercoles.splatman.capture.preview.PreviewTarget
+import com.huntercoles.splatman.capture.processing.FreeSpace
 import com.huntercoles.splatman.capture.processing.KeyframeDecoder
+import com.huntercoles.splatman.capture.processing.NotificationAsk
 import com.huntercoles.splatman.capture.processing.ProcessingRepository
 import com.huntercoles.splatman.capture.processing.ProcessingStarter
 import com.huntercoles.splatman.capture.processing.ProcessingState
+import com.huntercoles.splatman.capture.processing.ScanDeleter
 import com.huntercoles.splatman.capture.processing.ScanFolders
 import com.huntercoles.splatman.capture.processing.ThermalMonitor
 import com.huntercoles.splatman.capture.processing.trainingSize
@@ -72,6 +77,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import com.huntercoles.splatman.core.preferences.PreferenceStore
 import com.huntercoles.splatman.core.preferences.SettingsPreferences
+import com.huntercoles.splatman.viewer.export.ExportTarget
+import java.io.IOException
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.cos
@@ -164,7 +171,8 @@ class ScanFlowNavigationTest {
     }
 
     private fun TestScope.repository(trainer: Trainer = SeedStepTrainer()) = ProcessingRepository(
-        trainer, decoder, thermal, TrainingConfig(imageLongSide = 64), StandardTestDispatcher(testScheduler),
+        trainer, decoder, thermal, TrainingConfig(imageLongSide = 64), FreeSpace { Long.MAX_VALUE },
+        StandardTestDispatcher(testScheduler),
     )
 
     /** Starts runs beside the test, as the service would (not in backgroundScope: advanceUntilIdle skips that). */
@@ -185,11 +193,33 @@ class ScanFlowNavigationTest {
             },
         )[key, T::class.java]
 
+    private val deleted = mutableListOf<String>()
+
+    private fun memoryStore() = object : PreferenceStore {
+        override fun getBoolean(key: String, default: Boolean) = default
+        override fun putBoolean(key: String, value: Boolean) = Unit
+        override fun getString(key: String): String? = null
+        override fun putString(key: String, value: String) = Unit
+    }
+
     private fun processingViewModel(scanId: String, repository: ProcessingRepository, starter: ProcessingStarter) =
         viewModel(key = "processing:$scanId") {
             ProcessingViewModel(
                 repository,
                 starter,
+                ScanDeleter { deleted += it },
+                object : NotificationAsk {
+                    override var asked = false
+                    override fun markAsked() {
+                        asked = true
+                    }
+                },
+                object : ExportTarget {
+                    override fun openDocument(uri: String) = throw IOException("not in tests")
+                    override fun openShareFile(fileName: String) = throw IOException("not in tests")
+                    override fun shareUri(fileName: String) = throw IOException("not in tests")
+                },
+                SettingsPreferences(memoryStore()),
                 ScanFolders(scansRoot),
                 SavedStateHandle(mapOf(ProcessingViewModel.ARG_SCAN_ID to scanId)),
             )
@@ -258,7 +288,12 @@ class ScanFlowNavigationTest {
         val starter = Starter(this, repository)
         val processing = processingViewModel("scan_e2e", repository, starter)
         val opened = mutableListOf<String>()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { processing.openViewer.collect { opened += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            processing.effects.collect { if (it is ProcessingEvent.OpenViewer) opened += it.scanId }
+        }
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), opened, "Done waits for View it")
+        processing.onIntent(ProcessingIntent.Open)
         advanceUntilIdle()
 
         assertEquals(listOf(File(scansRoot, "scan_e2e")), starter.started, "an unprocessed scan starts at once")
@@ -301,7 +336,8 @@ class ScanFlowNavigationTest {
         val processing = processingViewModel("long", repository, starter)
         advanceUntilIdle()
 
-        assertEquals(0.1f, processing.uiState.value.fraction)
+        assertEquals(ProcessingStage.BUILD, processing.uiState.value.progress?.stage)
+        assertEquals(0.1f + 0.55f * (0.1f / 0.6f), processing.uiState.value.progress!!.overall, 1e-5f)
         assertTrue(processing.uiState.value.canCancel)
 
         processing.onIntent(ProcessingIntent.Cancel)
@@ -309,7 +345,7 @@ class ScanFlowNavigationTest {
 
         assertEquals(ProcessingState.Cancelled, processing.uiState.value.state)
         assertTrue(processing.uiState.value.canRetry)
-        assertNull(processing.uiState.value.fraction)
+        assertNull(processing.uiState.value.progress)
     }
 
     @Test

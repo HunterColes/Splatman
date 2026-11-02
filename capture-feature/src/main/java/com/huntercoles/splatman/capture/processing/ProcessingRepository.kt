@@ -45,6 +45,7 @@ class ProcessingRepository @Inject constructor(
     private val decoder: KeyframeDecoder,
     private val thermal: ThermalMonitor,
     private val config: TrainingConfig,
+    private val freeSpace: FreeSpace,
     @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
 ) {
     private val states = ConcurrentHashMap<String, MutableStateFlow<ProcessingState>>()
@@ -90,6 +91,8 @@ class ProcessingRepository @Inject constructor(
         try {
             withContext(dispatcher) {
                 temp.delete()
+                val free = freeSpace.bytes(scan)
+                if (free < MIN_FREE_BYTES) throw LowStorageException(MIN_FREE_BYTES - free)
                 marker.writeText("")
                 var last: TrainingProgress? = null
                 train(scan, state) { progress ->
@@ -97,6 +100,7 @@ class ProcessingRepository @Inject constructor(
                     progress.snapshot?.let { latestCloud = it }
                 }
                 val cloud = last?.snapshot ?: throw IOException("the trainer produced no splat")
+                state.value = ProcessingState.Running(last, prepared = 1f, saving = true)
                 writeSplat(cloud, temp, output) { ensureActive() }
                 marker.delete()
             }
@@ -118,7 +122,11 @@ class ProcessingRepository @Inject constructor(
             throw e
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             cleanUp(temp, marker)
-            state.value = ProcessingState.Failed(e.message ?: e.javaClass.simpleName)
+            state.value = FailureReasons.failed(e)
+        } catch (e: OutOfMemoryError) {
+            latestCloud = null
+            cleanUp(temp, marker)
+            state.value = FailureReasons.failed(e)
         } finally {
             jobs.remove(key, job)
         }
@@ -142,9 +150,12 @@ class ProcessingRepository @Inject constructor(
         onProgress: (TrainingProgress) -> Unit,
     ) {
         val bundle = CaptureBundleReader.read(scan)
+        if (bundle.frames.isEmpty()) throw NoFramesException("no keyframes in the bundle")
         val keyframes = bundle.frames.mapIndexed { i, frame ->
             currentCoroutineContext().ensureActive()
-            loadKeyframe(i, frame, decoder, config.imageLongSide)
+            loadKeyframe(i, frame, decoder, config.imageLongSide).also {
+                state.value = ProcessingState.Running(null, prepared = (i + 1).toFloat() / bundle.frames.size)
+            }
         }
         val input = TrainingInput(keyframes, bundle.seed ?: SeedPoints(0, FloatArray(0), ByteArray(0)), config)
         trainer.train(input).collect { progress ->
@@ -154,7 +165,7 @@ class ProcessingRepository @Inject constructor(
                 state.value = ProcessingState.Paused(progress)
                 thermal.severe.first { !it }
             }
-            state.value = ProcessingState.Running(progress)
+            state.value = ProcessingState.Running(progress, prepared = 1f)
         }
     }
 

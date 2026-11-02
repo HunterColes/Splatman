@@ -3,6 +3,8 @@ package com.huntercoles.splatman.pipeline
 import com.huntercoles.splatman.capture.processing.ProcessingListener
 import com.huntercoles.splatman.capture.processing.ProcessingRepository
 import com.huntercoles.splatman.capture.processing.ProcessingState
+import com.huntercoles.splatman.capture.processing.ScanDeleter
+import com.huntercoles.splatman.capture.processing.ScanNames
 import com.huntercoles.splatman.capture.processing.ScanFolders
 import com.huntercoles.splatman.core.coroutines.IoScope
 import com.huntercoles.splatman.library.data.repository.ScanStatusSync
@@ -52,4 +54,10 @@ internal object PipelineModule {
             repository.cancel(folder)
             while (repository.isRunning(folder)) delay(CANCEL_POLL_MS)
         }
+
+    @Provides
+    fun provideScanNames(scans: ScanRepository): ScanNames = ScanNames { scanId -> scans.get(scanId)?.name }
+
+    @Provides
+    fun provideScanDeleter(scans: ScanRepository): ScanDeleter = ScanDeleter { scanId -> scans.delete(scanId) }
 }

@@ -13,6 +13,9 @@ object ShellRoutes {
     const val SETTINGS = "settings"
     const val ABOUT = "about"
 
+    /** The activity intent extra naming a route path to open on top of the start (notification taps). */
+    const val EXTRA_ROUTE = "com.huntercoles.splatman.ROUTE"
+
     /** Onboarding on first run, else the Library (home). */
     fun startDestination(onboardingDone: Boolean): NavigationDestination =
         if (onboardingDone) NavigationDestination.Library else NavigationDestination.Onboarding()

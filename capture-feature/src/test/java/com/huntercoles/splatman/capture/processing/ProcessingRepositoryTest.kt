@@ -57,6 +57,9 @@ class ProcessingRepositoryTest {
         override val severe = MutableStateFlow(false)
     }
 
+    private var free = Long.MAX_VALUE
+    private val freeSpace = FreeSpace { free }
+
     /** Fake trainer: three progress steps, the last carrying the seed splat; records its input. */
     private class StepTrainer : Trainer {
         var input: TrainingInput? = null
@@ -77,7 +80,7 @@ class ProcessingRepositoryTest {
         scan.walkTopDown().filter { it.isFile }.associate { it.relativeTo(scan).path to it.readBytes().toList() }
 
     private fun TestScope.repository(trainer: Trainer, config: TrainingConfig = TrainingConfig(imageLongSide = 320)) =
-        ProcessingRepository(trainer, decoder, thermal, config, StandardTestDispatcher(testScheduler))
+        ProcessingRepository(trainer, decoder, thermal, config, freeSpace, StandardTestDispatcher(testScheduler))
 
     @Test
     fun `forwards progress, downscales keyframes and writes splat ply`() = runTest {
@@ -236,5 +239,54 @@ class ProcessingRepositoryTest {
         repository(failing).process(scan)
 
         assertArrayEquals(earlier, File(scan, ProcessingRepository.SPLAT_FILE).readBytes())
+    }
+
+    @Test
+    fun `low storage before the start fails with the storage reason and the shortfall`() = runTest {
+        writeBundle()
+        free = MIN_FREE_BYTES - 1000
+        val trainer = StepTrainer()
+
+        val result = repository(trainer).process(scan)
+
+        assertTrue(result is ProcessingState.Failed, "was $result")
+        assertEquals(FailureReason.STORAGE, (result as ProcessingState.Failed).reason)
+        assertEquals(1000L, result.needBytes)
+        assertEquals(null, trainer.input)
+        assertFalse(File(scan, ProcessingRepository.RUNNING_MARKER).exists())
+
+        free = Long.MAX_VALUE
+        assertTrue(repository(trainer).process(scan) is ProcessingState.Done)
+    }
+
+    @Test
+    fun `running out of memory fails with the memory reason`() = runTest {
+        writeBundle()
+        val trainer = object : Trainer {
+            override fun train(input: TrainingInput): Flow<TrainingProgress> = flow { throw OutOfMemoryError("heap") }
+        }
+
+        val result = repository(trainer).process(scan)
+
+        assertEquals(FailureReason.MEMORY, (result as ProcessingState.Failed).reason)
+        assertFalse(File(scan, ProcessingRepository.RUNNING_MARKER).exists())
+    }
+
+    @Test
+    fun `reports frame loading, then training, then saving`() = runTest {
+        writeBundle()
+        val repo = repository(StepTrainer())
+        val seen = mutableListOf<ProcessingState>()
+        val watcher = launch(UnconfinedTestDispatcher(testScheduler)) { repo.state(scan).collect { seen += it } }
+
+        repo.process(scan)
+        runCurrent()
+        watcher.cancel()
+
+        val running = seen.filterIsInstance<ProcessingState.Running>()
+        assertEquals(listOf(0f, 0.5f, 1f), running.filter { it.progress == null }.map { it.prepared })
+        assertEquals(listOf(1, 2, 3), running.filter { !it.saving }.mapNotNull { it.progress?.iteration })
+        assertTrue(running.last().saving)
+        assertTrue(seen.last() is ProcessingState.Done)
     }
 }
