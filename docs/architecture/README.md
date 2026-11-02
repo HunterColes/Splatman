@@ -28,6 +28,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | `splat-core` | pure Kotlin/JVM | math, frames, model types, packets, SH, covariance, sort, keyframe policy |
 | `splat-io` | pure Kotlin/JVM | PLY, `.splat`, SPZ codecs; format detection; capture bundle |
 | `splat-train` | pure Kotlin/JVM | `Trainer`, seed initialisation, CPU rasteriser forward/backward, optimiser |
+| `splat-gpu` | Android library | GLES 3.1 compute training on an offscreen EGL context; CPU fallback ([ADR 0010](adr/0010-gpu-training.md)) |
 | `capture-feature` | Android | ARCore `PoseSource`, capture screen, recorder, processing runner |
 | `viewer-feature` | Android | GL renderer, packer, viewer screen, export |
 | `library-feature` | Android | scan records and files, library screen |
@@ -46,6 +47,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0007](adr/0007-formats.md) | 3DGS PLY (default), `.splat`, SPZ; glTF later; capture bundle = Nerfstudio `transforms.json` |
 | [0008](adr/0008-libraries.md) | Write the maths and codecs; adopt ARCore (optional), kotlinx.serialization, java.util.zip; no INRIA code |
 | [0009](adr/0009-testing.md) | JVM unit tests with fixed fixtures and stated tolerances for every conversion, codec, packet and kernel; CPU rasteriser as golden renderer |
+| [0010](adr/0010-gpu-training.md) | GPU training in a new `splat-gpu` module: GLES 3.1 compute, same sort order as the CPU, no gradient atomics, on-device parity tests with fixed tolerances; fills in point 5 of 0005 |
 
 ## Build order (child tickets of #2)
 
@@ -89,3 +91,6 @@ flowchart TD
 The first phone build that captures, shows and exports a real 3DGS file is #47 with the seed splat (#30); #44 then
 switches it to the trained splat. The design cards from #4 (#14-#21) restyle the screens these cards build and are
 ordered after them. The poker cleanup is #6.
+
+The children of #49 (GPU training) share [ADR 0010](adr/0010-gpu-training.md) and are built after #42; each keeps the CPU
+path bit-identical and checks its stage against it with the ADR's tolerances.
