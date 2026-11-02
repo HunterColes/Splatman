@@ -17,10 +17,20 @@
 # FORGE_MERGE_HEADER is read into a local and unset first, and only the final `forge.sh merge` gets it back; the gate
 # runs without FORGE_HEADER too, in a clone that shares no .git with this checkout (no hooks, config or forge.sh of
 # ours to rewrite); every git here runs with core.hooksPath=/dev/null, so a hook a gate planted anyway never fires; and
-# $F is copied to a temp file before the gate, so a rewritten checkout copy is never run. tools/test/pr-merge.sh proves
-# it. Same-uid code can still find this checkout and the token file by itself: the root fix (the gate as another uid,
-# or the token file unreadable while PR code runs) is Bombadil's.
+# $F is copied to a temp file before the gate, so a rewritten checkout copy is never run. This script itself runs from
+# a private copy (re-exec at the top, the copy unlinked at once), so a gate that rewrites tools/pr-merge.sh in place
+# never has its code read by the bash running the merge (#112). The forge config forge.sh reads (the forge remote's
+# URLs, remote.forge.*, url.*, http.*, company.forge) is snapshotted before the gate; if it differs after, or right
+# before the merge, the merge is refused (`refusing: PR #<n>: the forge config changed while the gate ran`), and the
+# post-gate forge.sh calls get FORGE_URL pinned to the forge picked before the gate. tools/test/pr-merge.sh proves it.
+# Same-uid code can still find this checkout and the token file by itself: the root fix (the gate as another uid, or
+# the token file unreadable while PR code runs) is Bombadil's.
 set -euo pipefail
+if [[ ${PR_MERGE_COPY-} != "${BASH_SOURCE[0]}" ]]; then
+  self="$(mktemp)"; cp "${BASH_SOURCE[0]}" "$self"
+  PR_MERGE_COPY="$self" exec "$BASH" "$self" "$@"
+fi
+rm -f "$PR_MERGE_COPY"; unset PR_MERGE_COPY
 merge_hdr_set="${FORGE_MERGE_HEADER+1}"; merge_hdr="${FORGE_MERGE_HEADER-}"; unset FORGE_MERGE_HEADER
 # Read by every git below, forge.sh's included (it sets its own GIT_CONFIG_COUNT, which this does not touch).
 export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.hooksPath'='/dev/null'"
@@ -82,6 +92,16 @@ for k in company.private company.private-allow; do
 done
 cache="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/build-cache"
 [[ ! -d $cache ]] || ln -s "$cache" "$wt/build-cache"
+# What forge.sh reads to pick where the merge header goes; any change while PR code ran refuses the merge.
+forge_cfg() {
+  git remote get-url --all forge; git remote get-url --push --all forge
+  git config --get-regexp '^(remote\.forge\.|url\.|http\.|company\.forge$)' || true
+}
+cfg="$(forge_cfg)"; forge_pin="${FORGE_URL:-$(git config --get company.forge || true)}"
+same_forge() {
+  [[ "$(forge_cfg 2>/dev/null || true)" == "$cfg" && "${FORGE_URL:-$(git config --get company.forge || true)}" == "$forge_pin" ]] ||
+    { echo "refusing: PR #$n: the forge config changed while the gate ran (remote forge, url.*, http.* or company.forge)"; exit 1; }
+}
 # In a `||` list a red gate trips neither errexit nor the ERR trap.
 rc=0
 # The PR's own code runs here as this uid: it gets neither token header path (#73); only the final merge sees them.
@@ -90,8 +110,11 @@ echo "gate on ${sha:0:10}, last 40 lines:"
 tail -n 40 "$log" | sed 's/^/  /'
 ((rc == 0)) || { echo "RED: PR #$n: gate red on ${sha:0:10}: $(grep -v '^[[:space:]]*$' "$log" | tail -1 | cut -c1-300)"; exit 1; }
 
+same_forge
+[[ -z $forge_pin ]] || export FORGE_URL="$forge_pin"
 "$F" git fetch -q --no-tags forge "+refs/heads/$BASE:refs/remotes/forge/$BASE"
 behind
+same_forge
 if [[ -n $merge_hdr_set ]]; then mout="$(FORGE_MERGE_HEADER="$merge_hdr" "$F" merge "$n" "$sha" 2>&1)"
 else mout="$("$F" merge "$n" "$sha" 2>&1)"; fi || { echo "NOT MERGED: PR #$n: $(tr '\n' ' ' <<<"$mout" | cut -c1-400)"; exit 1; }
 echo "$mout"

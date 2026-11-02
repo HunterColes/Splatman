@@ -4,7 +4,9 @@
 # that logs which headers the merge saw, and a stub GATE_CMD that logs `${FORGE_MERGE_HEADER-unset}` and
 # `${FORGE_HEADER-unset}` as the PR's code would see them. A second case (#86) has a hostile gate stub that plants a
 # reference-transaction hook (in its own git dir and in the merge checkout's) and rewrites the checkout's forge.sh
-# (the default FORGE_SH); neither may run with the merge header, and the merge must still send it.
+# (the default FORGE_SH); neither may run with the merge header, and the merge must still send it. The #112 cases have a
+# gate stub that rewrites tools/pr-merge.sh in place (code after the gate line that logs $merge_hdr) and/or the
+# checkout's remote.forge.url: the injected code never runs, and a changed forge remote refuses the merge.
 #   bash tools/test/pr-merge.sh     prints one line a case, ends `all pass` (exit 0) or `FAILED: n` (exit 1)
 set -euo pipefail
 TOOLS="$(cd "$(dirname "$0")/.." && pwd)"
@@ -66,7 +68,20 @@ printf '#!/bin/sh\necho "forge.sh rewritten $1 FORGE_MERGE_HEADER=${FORGE_MERGE_
   >"$CHECKOUT/tools/forge.sh"
 echo "gate: green"
 EOF
-chmod +x "$T/forge-stub.sh" "$T/gate-stub.sh" "$T/evil-gate.sh"
+cat >"$T/rewrite-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+# Hostile PR code (#112): rewrite the checkout's tools/pr-merge.sh in place, byte-identical through the gate line and
+# then code that logs $merge_hdr, which a bash still reading that file would run next; with EVIL_URL set, also point
+# the checkout's forge remote at another repo; with URL_ONLY set, only that.
+set -euo pipefail
+f="$CHECKOUT/tools/pr-merge.sh"
+new="$(awk '{ print } /"\$GATE" \) >"\$log" 2>&1/ { exit }' "$f"
+  printf '%s\n' 'echo "injected merge_hdr=${merge_hdr-unset}" >>"$HOOKED"' 'exit 0')"
+[[ -n ${URL_ONLY:-} ]] || printf '%s\n' "$new" >"$f"
+[[ -z ${EVIL_URL:-} ]] || git -C "$CHECKOUT" config remote.forge.url "$EVIL_URL"
+echo "gate: green"
+EOF
+chmod +x "$T/forge-stub.sh" "$T/gate-stub.sh" "$T/evil-gate.sh" "$T/rewrite-gate.sh"
 
 fails=0
 check() { # <name> <got> <want>
@@ -99,6 +114,53 @@ check "hostile gate: merge still gets both headers" "$(cat "$MERGES")" \
   "merge 7 FORGE_MERGE_HEADER=$HUNTER_HDR FORGE_HEADER=$AGENT_HDR"
 check "hostile gate: forge master is the PR head" "$(git -C "$T/forge.git" rev-parse master)" "$SHA"
 ((rc == 0)) || sed 's/^/  out: /' "$T/out" | tail -5
+
+# #112 (a): the gate rewrites tools/pr-merge.sh in place; the bash running the merge reads a private copy, so the
+# injected code never runs and the merge goes through as before.
+git -C "$T/forge.git" update-ref refs/heads/master "$BASE_SHA"
+g checkout -q -- tools/pr-merge.sh
+: >"$MERGES"; : >"$HOOKED"; rc=0
+(cd "$T/repo" && unset FORGE_BASE EVIL_URL &&
+  FORGE_SH="$T/forge-stub.sh" GATE_CMD="$T/rewrite-gate.sh" FORGE_MERGE_HEADER="$HUNTER_HDR" FORGE_HEADER="$AGENT_HDR" \
+  bash tools/pr-merge.sh 7) >"$T/out" 2>&1 || rc=$?
+check "rewritten pr-merge.sh: the gate did rewrite it" "$(grep -c '^echo "injected' "$T/repo/tools/pr-merge.sh")" 1
+check "rewritten pr-merge.sh: merge exits 0" "$rc" 0
+check "rewritten pr-merge.sh: last line is MERGED" "$(tail -1 "$T/out")" "MERGED #7 -> master $(g rev-parse --short "$SHA")"
+check "rewritten pr-merge.sh: injected code never runs" "$(cat "$HOOKED")" ""
+check "rewritten pr-merge.sh: merge still gets both headers" "$(cat "$MERGES")" \
+  "merge 7 FORGE_MERGE_HEADER=$HUNTER_HDR FORGE_HEADER=$AGENT_HDR"
+((rc == 0)) || sed 's/^/  out: /' "$T/out" | tail -5
+
+# #112 (b): the gate also points remote.forge.url at another repo; the merge is refused before any post-gate forge
+# call, so the header goes nowhere and neither forge moves.
+git -C "$T/forge.git" update-ref refs/heads/master "$BASE_SHA"
+g checkout -q -- tools/pr-merge.sh
+git clone -q --bare "$T/forge.git" "$T/evil.git"
+: >"$MERGES"; : >"$HOOKED"; rc=0
+(cd "$T/repo" && unset FORGE_BASE &&
+  FORGE_SH="$T/forge-stub.sh" GATE_CMD="$T/rewrite-gate.sh" EVIL_URL="$T/evil.git" \
+  FORGE_MERGE_HEADER="$HUNTER_HDR" FORGE_HEADER="$AGENT_HDR" bash tools/pr-merge.sh 7) >"$T/out" 2>&1 || rc=$?
+check "rewritten forge remote: the gate did rewrite it" "$(g remote get-url forge)" "$T/evil.git"
+check "rewritten forge remote: merge exits 1" "$rc" 1
+check "rewritten forge remote: last line refuses" "$(tail -1 "$T/out")" \
+  "refusing: PR #7: the forge config changed while the gate ran (remote forge, url.*, http.* or company.forge)"
+check "rewritten forge remote: injected code never runs" "$(cat "$HOOKED")" ""
+check "rewritten forge remote: no merge call" "$(cat "$MERGES")" ""
+check "rewritten forge remote: forge master unmoved" "$(git -C "$T/forge.git" rev-parse master)" "$BASE_SHA"
+check "rewritten forge remote: other repo unmoved" "$(git -C "$T/evil.git" rev-parse master)" "$BASE_SHA"
+
+# #112 (c): the forge remote alone, so the refusal is proven without the re-exec's help.
+g config remote.forge.url "$T/forge.git"
+g checkout -q -- tools/pr-merge.sh
+: >"$MERGES"; rc=0
+(cd "$T/repo" && unset FORGE_BASE &&
+  FORGE_SH="$T/forge-stub.sh" GATE_CMD="$T/rewrite-gate.sh" EVIL_URL="$T/evil.git" URL_ONLY=1 \
+  FORGE_MERGE_HEADER="$HUNTER_HDR" FORGE_HEADER="$AGENT_HDR" bash tools/pr-merge.sh 7) >"$T/out" 2>&1 || rc=$?
+check "forge remote only: merge exits 1" "$rc" 1
+check "forge remote only: last line refuses" "$(tail -1 "$T/out")" \
+  "refusing: PR #7: the forge config changed while the gate ran (remote forge, url.*, http.* or company.forge)"
+check "forge remote only: no merge call" "$(cat "$MERGES")" ""
+check "forge remote only: other repo unmoved" "$(git -C "$T/evil.git" rev-parse master)" "$BASE_SHA"
 
 if ((fails)); then echo "FAILED: $fails"; exit 1; fi
 echo "all pass"
