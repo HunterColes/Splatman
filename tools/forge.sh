@@ -6,6 +6,11 @@
 # The token is never an argument, a URL or a log line: curl reads its header line (`Authorization: token ...`) from a
 # 0600 file outside the repo, $FORGE_HEADER (default ~/.config/company/forge.header), and git gets the same line in
 # its environment only (GIT_CONFIG_*), scoped to the forge's URL, so it never goes to GitHub (`origin`).
+# $FORGE_MERGE_HEADER (optional; the Company's merge jobs set it when Hunter's token file exists) is a second such file,
+# Hunter's, so a landed PR counts as merged by him on his contribution graph. Only `merge`'s POST .../pulls/<n>/merge
+# sends it; that subcommand's GET, git, comments, reviews and every other call keep the agent's header. Set but empty
+# is unset. merge refuses it unless it is a readable regular file, 0600 (no group or other bits), holding exactly one
+# line `Authorization: token <40 hex>`. tools/test/forge-merge-header.sh proves this with a stubbed curl.
 # Replies are parsed with python3's json (stdlib only).
 #   forge.sh pr-list                         open PRs: #n head -> base, head sha, title
 #   forge.sh pr-find <branch>                the open PR's number from <branch>, or nothing
@@ -47,6 +52,18 @@ body_json() { # file key -> {"key": contents}
   local f="$1" k="$2"
   [[ -f "$f" && $(wc -c <"$f") -le 65536 ]] || { echo "forge.sh: $f missing or over 64 KiB" >&2; exit 2; }
   py 'import json,sys; print(json.dumps({sys.argv[2]: open(sys.argv[1], encoding="utf-8").read()}))' "$f" "$k"
+}
+# hdr_check <file> <name>: exit 2 unless <file> is a readable regular file, no group or other permission bits, holding
+# exactly one line `Authorization: token <40 hex>`. The message names the variable, never the contents.
+hdr_check() {
+  local f="$1" n="$2" mode line
+  [[ -f "$f" && -r "$f" ]] || { echo "forge.sh: $n is not a readable file" >&2; exit 2; }
+  mode="$(stat -c %a "$f")"
+  (((8#$mode & 8#077) == 0)) || { echo "forge.sh: $n is mode $mode; it must be 0600" >&2; exit 2; }
+  [[ $(awk 'END { print NR }' "$f") == 1 ]] || { echo "forge.sh: $n must hold exactly one line" >&2; exit 2; }
+  IFS= read -r line <"$f" || true
+  [[ $line =~ ^Authorization:\ token\ [0-9a-f]{40}$ ]] \
+    || { echo "forge.sh: $n is not one line \`Authorization: token <40 hex>\`" >&2; exit 2; }
 }
 num() { [[ "$1" =~ ^[0-9]+$ ]] || { echo "forge.sh: bad PR number $1" >&2; exit 2; }; }
 # fgit <fetch|push|ls-remote> ARGS...: the header reaches git through its environment only, keyed to the forge's URL,
@@ -101,6 +118,9 @@ p=json.load(sys.stdin); print(p["state"], "merged" if p["merged"] else "unmerged
 import json,sys
 for c in json.load(sys.stdin): print("--- {} {} {}\n{}".format(c["user"]["login"], c["state"], c["submitted_at"], c["body"]))' ;;
   merge) num "$1"; [[ "$2" =~ ^[0-9a-f]{40}$ ]] || { echo "forge.sh: bad sha" >&2; exit 2; }
+    # Only the merge POST goes out as Hunter when FORGE_MERGE_HEADER is set (see the top); the GET stays the agent's.
+    MHDR="$HDR"
+    if [[ -n ${FORGE_MERGE_HEADER:-} ]]; then hdr_check "$FORGE_MERGE_HEADER" FORGE_MERGE_HEADER; MHDR="$FORGE_MERGE_HEADER"; fi
     pr_json="$(api GET "/pulls/$1")"
     read -r head base <<<"$(py 'import json,sys; p=json.loads(sys.argv[1]); print(p["head"]["ref"], p["base"]["ref"])' "$pr_json")"
     [[ ! ($head =~ $TRAIN && $base == master) ]] || { echo "forge.sh: merge #$1: a day PR; Hunter merges those" >&2; exit 1; }
@@ -113,7 +133,7 @@ p=json.loads(sys.argv[1]); base=sys.argv[3]
 body="\n".join(l for l in (p.get("body") or "").splitlines() if base not in l).strip()
 print(json.dumps({"Do":"squash","head_commit_id":sys.argv[2],"delete_branch_after_merge":True,
   "MergeTitleField":"{} (#{})".format(p["title"], p["number"]),"MergeMessageField":body}))' "$pr_json" "$2" "$BASE_URL" \
-      | curl -sS --proto '=https' -H @"$HDR" -H 'Content-Type: application/json' -X POST --data-binary @- \
+      | curl -sS --proto '=https' -H @"$MHDR" -H 'Content-Type: application/json' -X POST --data-binary @- \
           -o "$out" -w '%{http_code}' "$API/pulls/$1/merge")" || code="${code:-000}"
     [[ $code == 2?? ]] || { echo "forge.sh: merge #$1: HTTP $code $(head -c 300 "$out" | tr -d '\000-\037')" >&2; exit 1; }
     echo "merged #$1 at ${2:0:10}" ;;
