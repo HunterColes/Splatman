@@ -59,21 +59,21 @@ layout(std430, binding = 0) readonly buffer Means { float means2d[]; };
 layout(std430, binding = 1) readonly buffer Conics { float conics[]; };
 layout(std430, binding = 2) readonly buffer Colors { float colors[]; };
 layout(std430, binding = 3) readonly buffer Opacities { float opacities[]; };
-layout(std430, binding = 4) writeonly buffer Packed { float packed[]; };
+layout(std430, binding = 4) writeonly buffer Packed { float records[]; };
 uniform uint n;
 void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= n) return;
     uint o = ${Grads2dLayout.SPLAT}u * i;
-    packed[o + ${Grads2dLayout.U}u] = means2d[2u * i];
-    packed[o + ${Grads2dLayout.V}u] = means2d[2u * i + 1u];
-    packed[o + ${Grads2dLayout.CA}u] = conics[3u * i];
-    packed[o + ${Grads2dLayout.CB}u] = conics[3u * i + 1u];
-    packed[o + ${Grads2dLayout.CC}u] = conics[3u * i + 2u];
-    packed[o + ${Grads2dLayout.R}u] = colors[3u * i];
-    packed[o + ${Grads2dLayout.R + 1}u] = colors[3u * i + 1u];
-    packed[o + ${Grads2dLayout.R + 2}u] = colors[3u * i + 2u];
-    packed[o + ${Grads2dLayout.OP}u] = opacities[i];
+    records[o + ${Grads2dLayout.U}u] = means2d[2u * i];
+    records[o + ${Grads2dLayout.V}u] = means2d[2u * i + 1u];
+    records[o + ${Grads2dLayout.CA}u] = conics[3u * i];
+    records[o + ${Grads2dLayout.CB}u] = conics[3u * i + 1u];
+    records[o + ${Grads2dLayout.CC}u] = conics[3u * i + 2u];
+    records[o + ${Grads2dLayout.R}u] = colors[3u * i];
+    records[o + ${Grads2dLayout.R + 1}u] = colors[3u * i + 1u];
+    records[o + ${Grads2dLayout.R + 2}u] = colors[3u * i + 2u];
+    records[o + ${Grads2dLayout.OP}u] = opacities[i];
 }
 """
 
@@ -87,7 +87,7 @@ void main() {
 layout(local_size_x = $TILE, local_size_y = $TILE) in;
 layout(std430, binding = 0) readonly buffer TileStart { int tileStart[]; };
 layout(std430, binding = 1) readonly buffer TileSplats { uint tileSplats[]; };
-layout(std430, binding = 2) readonly buffer Packed { float packed[]; };
+layout(std430, binding = 2) readonly buffer Packed { float records[]; };
 layout(std430, binding = 3) readonly buffer Image { float image[]; };
 layout(std430, binding = 4) readonly buffer Contributors { int contributors[]; };
 layout(std430, binding = 5) readonly buffer DLdColor { float dLdColor[]; };
@@ -144,7 +144,7 @@ void main() {
     vec3 behind = vec3(0.0);
     for (uint li = top; li > 0u; li--) {
         uint e = begin + li - 1u;
-        if (tid < ${Grads2dLayout.SPLAT}u) sSplat[tid] = packed[${Grads2dLayout.SPLAT}u * tileSplats[e] + tid];
+        if (tid < ${Grads2dLayout.SPLAT}u) sSplat[tid] = records[${Grads2dLayout.SPLAT}u * tileSplats[e] + tid];
         memoryBarrierShared();
         barrier();
 
