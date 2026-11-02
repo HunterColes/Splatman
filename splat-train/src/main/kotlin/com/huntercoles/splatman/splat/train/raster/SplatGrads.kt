@@ -65,6 +65,12 @@ class SplatGrads {
     internal var splatGrads2d = DoubleArray(0)
         private set
 
+    /**
+     * A copy of [splatGrads2d] for the last backward call: 9 per splat, dL / d u, v, conic a, b, c, colour r, g, b,
+     * opacity. A test accessor for the GPU parity tests in other modules; training does not use it.
+     */
+    fun screenGrads2d(): DoubleArray = splatGrads2d.copyOf(ENTRY * count)
+
     internal fun ensureSplats(n: Int) {
         count = n
         if (opacityLogits.size < n) {
