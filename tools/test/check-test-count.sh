@@ -9,11 +9,13 @@ source "$TOOLS/check.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fails=0
 
-# result <module> <file> <tests>: a JUnit 4 style report (Gradle writes the same shape for Jupiter).
+# result <module> <file> <tests> [task]: a JUnit 4 style report (Gradle writes the same shape for Jupiter) in
+# build/test-results/<task>, testDebugUnitTest (an Android module) unless task is given (`test`: a pure-JVM module).
 result() {
-  mkdir -p "$T/root/$1/build/test-results/testDebugUnitTest"
+  local d="$T/root/$1/build/test-results/${4:-testDebugUnitTest}"
+  mkdir -p "$d"
   printf '<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="%s" tests="%s" skipped="0" failures="0" errors="0">\n</testsuite>\n' \
-    "$2" "$3" >"$T/root/$1/build/test-results/testDebugUnitTest/TEST-$2.xml"
+    "$2" "$3" >"$d/TEST-$2.xml"
 }
 reset() { rm -rf "$T/root"; mkdir -p "$T/root"; echo "${2:-10}" >"$T/floor"; : "$1"; }
 # expect <name> <pass|fail> <line the output must hold>
@@ -71,6 +73,21 @@ result core Old 50; result app Old 50
 test_results_clear "$T/root"
 result core New 3
 expect "stale results cleared, only this run counted -> fail" fail "3 is under the floor of 10"
+
+reset "a pure-JVM module's results (#92)"
+result app A 4; result splat-core B 6 test
+expect "JVM module build/test-results/test counted -> pass" pass "unit tests: 10"
+
+reset "a pure-JVM module's stale results are cleared (#92)"
+result app A 4; result splat-io Old 50 test
+test_results_clear "$T/root"
+result app A 4
+expect "JVM module results cleared before the run -> fail" fail "4 is under the floor of 10"
+
+reset "other Gradle test-results are not counted"
+result app A 10
+result app R 5 testReleaseUnitTest
+expect "only testDebugUnitTest and test dirs counted" pass "unit tests: 10"
 
 reset "the build cache is not counted"
 result core A 10
