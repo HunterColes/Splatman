@@ -12,6 +12,8 @@ data class TrainingResult(
     val finalLoss: Float,
     /** Wall-clock training time, milliseconds. */
     val elapsedMs: Long,
+    /** The lens learned so far (ticket #10), or null when the trainer does not refine the camera. */
+    val camera: CameraRefinement? = null,
     /** Packet format version. */
     val version: Int = VERSION,
 ) {

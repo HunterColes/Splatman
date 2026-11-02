@@ -16,6 +16,8 @@ data class TrainingProgress(
     val elapsedMs: Long,
     /** A published copy of the current model (world frame W, metres) for the live preview, or null. */
     val snapshot: SplatCloud? = null,
+    /** The lens learned so far (ticket #10), or null when the trainer does not refine the camera. */
+    val camera: CameraRefinement? = null,
     /** Packet format version. */
     val version: Int = VERSION,
 ) {

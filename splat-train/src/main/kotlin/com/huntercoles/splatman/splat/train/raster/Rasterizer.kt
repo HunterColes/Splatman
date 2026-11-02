@@ -47,14 +47,17 @@ class Rasterizer(val threads: Int = Runtime.getRuntime().availableProcessors()) 
 
     /**
      * Renders [cloud] (world frame W) seen by a camera with [intrinsics] at [pose] (`T_W_Cgl`, ADR 0003) into [out],
-     * whose size must match the intrinsics. Overwrites every field of [out].
+     * whose size must match the intrinsics. Overwrites every field of [out]. A [lens] corrects the pinhole (see
+     * [Lens]); null is the plain pinhole, and so is `Lens(1f, 0f)`, bit for bit.
      */
-    fun forward(cloud: SplatCloud, intrinsics: CameraIntrinsics, pose: CameraPose, out: RenderBuffers) {
+    fun forward(
+        cloud: SplatCloud, intrinsics: CameraIntrinsics, pose: CameraPose, out: RenderBuffers, lens: Lens? = null,
+    ) {
         require(out.width == intrinsics.width && out.height == intrinsics.height) {
             "buffers ${out.width}x${out.height} do not match intrinsics ${intrinsics.width}x${intrinsics.height}"
         }
         out.ensureSplats(cloud.count)
-        project(cloud, intrinsics, pose, out)
+        project(cloud, intrinsics, pose, out, lens ?: Lens.PINHOLE)
         bin(cloud.count, out)
         parallelFor(out.tileCount) { t -> compositeTile(t, out) }
     }
@@ -64,18 +67,20 @@ class Rasterizer(val threads: Int = Runtime.getRuntime().availableProcessors()) 
      * pixel, dL / d [RenderBuffers.color], row-major like it). [forward] must hold this rasteriser's [forward] pass
      * of the same cloud, intrinsics and pose, unchanged since: its lists, final transmittance and contributor counts
      * are replayed back to front (see [RasterizerBackward]). Overwrites [grads]; bit-identical for any thread count.
+     * [lens] must be the forward pass's: non-null also fills [SplatGrads.focalScale] and [SplatGrads.k1]; null leaves
+     * them 0 and runs the plain pinhole with exactly the arithmetic it had before lenses existed.
      */
     @Suppress("LongParameterList")
     fun backward(
         cloud: SplatCloud, intrinsics: CameraIntrinsics, pose: CameraPose,
-        forward: RenderBuffers, dLdColor: FloatArray, grads: SplatGrads,
-    ) = RasterizerBackward.run(this, cloud, intrinsics, pose, forward, dLdColor, grads)
+        forward: RenderBuffers, dLdColor: FloatArray, grads: SplatGrads, lens: Lens? = null,
+    ) = RasterizerBackward.run(this, cloud, intrinsics, pose, forward, dLdColor, grads, lens)
 
     override fun close() {
         pool?.shutdownNow()
     }
 
-    private fun project(cloud: SplatCloud, k: CameraIntrinsics, pose: CameraPose, out: RenderBuffers) {
+    private fun project(cloud: SplatCloud, k: CameraIntrinsics, pose: CameraPose, out: RenderBuffers, lens: Lens) {
         val cvPose = FrameConversions.glToCv(pose)
         // R_W_Ccv; world -> Ccv is its transpose applied to (p - t).
         val rotWorldToCv = cvPose.rotation.normalized().toMat3().transpose()
@@ -98,25 +103,33 @@ class Rasterizer(val threads: Int = Runtime.getRuntime().availableProcessors()) 
                 meanCv[2] = r[2] * px + r[5] * py + r[8] * pz
                 out.radii[i] = 0
                 out.depths[i] = meanCv[2]
-                projectOne(cloud, i, k, rotWorldToCv, meanCv, cov3, cov2, out)
+                projectOne(cloud, i, k, lens, rotWorldToCv, meanCv, cov3, cov2, out)
             }
         }
     }
 
     @Suppress("LongParameterList", "ReturnCount")
     private fun projectOne(
-        cloud: SplatCloud, i: Int, k: CameraIntrinsics, rotWorldToCv: Mat3,
+        cloud: SplatCloud, i: Int, k: CameraIntrinsics, lens: Lens, rotWorldToCv: Mat3,
         meanCv: FloatArray, cov3: FloatArray, cov2: FloatArray, out: RenderBuffers,
     ) {
+        // Lens(1, 0): fx * 1 = fx, d = 1 + 0 * r2 = 1 and the products by d are exact, so the pinhole is unchanged.
+        if (!(meanCv[2] > Covariance.NEAR_Z)) return
+        val fx = k.fx * lens.focalScale
+        val fy = k.fy * lens.focalScale
+        val xn = meanCv[0] / meanCv[2]
+        val yn = meanCv[1] / meanCv[2]
+        val d = 1f + lens.k1 * (xn * xn + yn * yn)
+        if (!(d > 0f)) return
         Covariance.world(cloud.logScales, 3 * i, cloud.rotations, 4 * i, cov3, 0)
-        Covariance.project(meanCv, 0, cov3, 0, rotWorldToCv, k.fx, k.fy, cov2, 0) ?: return
+        Covariance.project(meanCv, 0, cov3, 0, rotWorldToCv, fx * d, fy * d, cov2, 0) ?: return
         val a = cov2[0]
         val b = cov2[1]
         val c = cov2[2]
         val det = a * c - b * b
         if (!(det > 0f)) return
-        val u = k.fx * meanCv[0] / meanCv[2] + k.cx
-        val v = k.fy * meanCv[1] / meanCv[2] + k.cy
+        val u = fx * meanCv[0] / meanCv[2] * d + k.cx
+        val v = fy * meanCv[1] / meanCv[2] * d + k.cy
         val radius = ceil(cov2[3])
         if (!u.isFinite() || !v.isFinite() || !(radius > 0f)) return
         // Wholly off the image: no tile would hold it.

@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.train
 
+import com.huntercoles.splatman.splat.packet.CameraRefinement
 import com.huntercoles.splatman.splat.packet.TrainingInput
 import com.huntercoles.splatman.splat.packet.TrainingProgress
 import com.huntercoles.splatman.splat.train.init.SeedInit
@@ -19,7 +20,8 @@ import kotlinx.coroutines.flow.flow
  *
  * Cold and run in the collector's context; cancellation is checked between iterations. A failed run (the cloud
  * pruned to nothing, a non-finite parameter, no keyframes) ends the flow with [TrainingFailedException] carrying the
- * iteration. [seed] fixes the keyframe draws and split samples; [threads] sizes the rasteriser.
+ * iteration. With [OptimSettings.refineCamera] every optimiser emission reports the learned lens in
+ * [TrainingProgress.camera] (null otherwise). [seed] fixes the keyframe draws and split samples; [threads] sizes the rasteriser.
  */
 class CpuTrainer(
     private val threads: Int = Runtime.getRuntime().availableProcessors(),
@@ -44,7 +46,12 @@ class CpuTrainer(
                 val t = optimizer.iteration
                 if (t % settings.snapshotEvery == 0 || t == total) {
                     val snapshot = optimizer.snapshot()
-                    emit(TrainingProgress(t, total, optimizer.loss, snapshot.count, elapsedMs(), snapshot))
+                    val camera = if (settings.refineCamera) {
+                        CameraRefinement(optimizer.lens.focalScale, optimizer.lens.k1)
+                    } else {
+                        null
+                    }
+                    emit(TrainingProgress(t, total, optimizer.loss, snapshot.count, elapsedMs(), snapshot, camera))
                 }
             }
         }

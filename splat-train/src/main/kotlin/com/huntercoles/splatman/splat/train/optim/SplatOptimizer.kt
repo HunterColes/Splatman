@@ -2,6 +2,7 @@ package com.huntercoles.splatman.splat.train.optim
 
 import com.huntercoles.splatman.splat.model.Keyframe
 import com.huntercoles.splatman.splat.model.SplatCloud
+import com.huntercoles.splatman.splat.train.raster.Lens
 import com.huntercoles.splatman.splat.train.raster.Rasterizer
 import com.huntercoles.splatman.splat.train.raster.RenderBuffers
 import com.huntercoles.splatman.splat.train.raster.SplatGrads
@@ -14,12 +15,14 @@ import kotlin.math.sqrt
 /**
  * The stage-2 loop of ADR 0005, one [step] per iteration: a keyframe drawn at random (seeded), the forward pass,
  * the L1 loss against the keyframe's image (mean over pixels and channels, 0..1 colour), the backward pass, Adam per
- * parameter group, then densification on the [OptimSettings] schedule with the [maxSplats] cap.
+ * parameter group, then densification on the [OptimSettings] schedule with the [maxSplats] cap. With
+ * [OptimSettings.refineCamera], after [OptimSettings.cameraFreezeSteps] iterations the [lens] (one focal scale on
+ * every keyframe's fx, fy and one k1) is rendered with and learned too, by Adam, clamped to the settings' limits.
  *
  * The working cloud's arrays are written in place; it is never published, [snapshot] hands out copies.
  * Same inputs and seed give the same result for any [rasterizer] thread count. Not thread-safe.
  *
- * Throws [TrainingFailedException] when the cloud is or becomes empty, or a parameter is not finite.
+ * Throws [TrainingFailedException] when the cloud is or becomes empty, or a parameter (lens included) is not finite.
  */
 @Suppress("LongParameterList")
 class SplatOptimizer(
@@ -53,6 +56,10 @@ class SplatOptimizer(
     var loss: Float = Float.NaN
         private set
 
+    /** The learned lens; the pinhole until refinement starts, and always with [OptimSettings.refineCamera] off. */
+    var lens: Lens = Lens.PINHOLE
+        private set
+
     /** Scene extent, metres: 1.1 x the largest camera distance from the cameras' mean centre (3DGS). */
     val extent: Double = sceneExtent(keyframes, initial)
 
@@ -69,6 +76,10 @@ class SplatOptimizer(
     private val adamRotations = Adam(4)
     private val adamOpacity = Adam(1)
     private val adamShDc = Adam(3)
+    private val adamFocal = Adam(1)
+    private val adamK1 = Adam(1)
+    private val lensValue = FloatArray(1)
+    private val lensGrad = FloatArray(1)
 
     private var gradSum = FloatArray(cloud.count)
     private var gradViews = IntArray(cloud.count)
@@ -88,9 +99,11 @@ class SplatOptimizer(
         val out = buffers.getOrPut(kf.image.width.toLong() shl 32 or kf.image.height.toLong()) {
             RenderBuffers(kf.image.width, kf.image.height)
         }
-        rasterizer.forward(cloud, kf.intrinsics, kf.pose, out)
+        val refine = settings.refinesCameraAt(t)
+        val stepLens = if (refine) lens else null
+        rasterizer.forward(cloud, kf.intrinsics, kf.pose, out, stepLens)
         loss = l1(out.color, target)
-        rasterizer.backward(cloud, kf.intrinsics, kf.pose, out, dLdColor, grads)
+        rasterizer.backward(cloud, kf.intrinsics, kf.pose, out, dLdColor, grads, stepLens)
 
         val n = cloud.count
         for (i in 0 until n) {
@@ -104,10 +117,31 @@ class SplatOptimizer(
         adamRotations.step(cloud.rotations, grads.rotations, n, settings.rotationLr)
         adamOpacity.step(cloud.opacityLogits, grads.opacityLogits, n, settings.opacityLr)
         adamShDc.step(cloud.shDc, grads.shDc, n, settings.shDcLr)
+        if (refine) stepLens(t)
         iteration = t
         checkFinite()
         if (settings.densifiesAt(t, totalIterations)) densify()
         return loss
+    }
+
+    private fun stepLens(t: Int) {
+        val focal = adamOne(adamFocal, lens.focalScale, grads.focalScale, settings.focalScaleLr)
+        val k1 = adamOne(adamK1, lens.k1, grads.k1, settings.k1Lr)
+        if (!focal.isFinite() || !k1.isFinite()) {
+            throw TrainingFailedException(t, "lens is not finite: focalScale $focal, k1 $k1")
+        }
+        val fLim = settings.focalScaleLimit
+        lens = Lens(
+            focal.coerceIn((1 - fLim).toFloat(), (1 + fLim).toFloat()),
+            k1.coerceIn(-settings.k1Limit.toFloat(), settings.k1Limit.toFloat()),
+        )
+    }
+
+    private fun adamOne(adam: Adam, value: Float, grad: Double, lr: Double): Float {
+        lensValue[0] = value
+        lensGrad[0] = grad.toFloat()
+        adam.step(lensValue, lensGrad, 1, lr)
+        return lensValue[0]
     }
 
     /** A copy of the working model, safe to publish. */

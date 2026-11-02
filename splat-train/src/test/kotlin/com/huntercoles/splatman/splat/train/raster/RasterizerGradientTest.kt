@@ -33,6 +33,12 @@ class RasterizerGradientTest {
     private val c0 = 0.28209479177387814
     private val h = 1e-4
 
+    private val pinhole = doubleArrayOf(1.0, 0.0)
+
+    /** A lens 3 % long with barrel distortion, both strong enough to move every splat by pixels. */
+    private val lens = Lens(focalScale = 1.03f, k1 = -0.05f)
+    private val lensD = doubleArrayOf(lens.focalScale.toDouble(), lens.k1.toDouble())
+
     /** 16x16, pixel centres at integers, principal point in the middle. */
     private val k = CameraIntrinsics(fx = 20f, fy = 20f, cx = 7.5f, cy = 7.5f, width = 16, height = 16)
 
@@ -131,9 +137,14 @@ class RasterizerGradientTest {
 
     // ---- the Double reference forward pass ----
 
-    /** Renders [p] in Double; [offsets] (2 per splat, px) shift the projected centres, to differentiate by them. */
+    /**
+     * Renders [p] in Double; [offsets] (2 per splat, px) shift the projected centres, to differentiate by them;
+     * [lens] is the focal scale and k1 of [Lens] (1, 0 = the pinhole).
+     */
     @Suppress("CyclomaticComplexMethod", "LongMethod")
-    private fun render(p: Params, cam: CameraIntrinsics = k, offsets: DoubleArray? = null): DoubleArray {
+    private fun render(
+        p: Params, cam: CameraIntrinsics = k, offsets: DoubleArray? = null, lens: DoubleArray = pinhole,
+    ): DoubleArray {
         val n = p.count
         val u = DoubleArray(n)
         val v = DoubleArray(n)
@@ -142,8 +153,8 @@ class RasterizerGradientTest {
         val opacity = DoubleArray(n)
         val color = DoubleArray(3 * n)
         val visible = mutableListOf<Int>()
-        val fx = cam.fx.toDouble()
-        val fy = cam.fy.toDouble()
+        val fx = cam.fx.toDouble() * lens[0]
+        val fy = cam.fy.toDouble() * lens[0]
         for (i in 0 until n) {
             val dp = DoubleArray(3) { p.positions[3 * i + it] - centre[it] }
             val t = DoubleArray(3) { r -> w[r] * dp[0] + w[3 + r] * dp[1] + w[6 + r] * dp[2] }
@@ -159,7 +170,13 @@ class RasterizerGradientTest {
             )
             val m = DoubleArray(9) { rot[it] * exp(p.logScales[3 * i + it % 3]) }
             val sigma = DoubleArray(9) { (0 until 3).sumOf { j -> m[(it / 3) * 3 + j] * m[(it % 3) * 3 + j] } }
-            val jac = doubleArrayOf(fx / t[2], 0.0, -fx * t[0] / (t[2] * t[2]), 0.0, fy / t[2], -fy * t[1] / (t[2] * t[2]))
+            val xn = t[0] / t[2]
+            val yn = t[1] / t[2]
+            val dist = 1 + lens[1] * (xn * xn + yn * yn)
+            val jac = doubleArrayOf(
+                fx * dist / t[2], 0.0, -fx * dist * t[0] / (t[2] * t[2]),
+                0.0, fy * dist / t[2], -fy * dist * t[1] / (t[2] * t[2]),
+            )
             // T = J W, row-major 2x3; W(r, c) = w[c * 3 + r].
             val tm = DoubleArray(6) { (0 until 3).sumOf { j -> jac[(it / 3) * 3 + j] * w[(it % 3) * 3 + j] } }
             fun quad(r0: Int, r1: Int) = (0 until 3).sumOf { a -> (0 until 3).sumOf { b -> tm[r0 * 3 + a] * sigma[a * 3 + b] * tm[r1 * 3 + b] } }
@@ -170,8 +187,8 @@ class RasterizerGradientTest {
             if (!(det > 0)) continue
             val mid = 0.5 * (a + c)
             val radius = ceil(3 * sqrt(mid + sqrt(max(0.1, mid * mid - det))))
-            u[i] = fx * t[0] / t[2] + cam.cx + (offsets?.get(2 * i) ?: 0.0)
-            v[i] = fy * t[1] / t[2] + cam.cy + (offsets?.get(2 * i + 1) ?: 0.0)
+            u[i] = fx * xn * dist + cam.cx + (offsets?.get(2 * i) ?: 0.0)
+            v[i] = fy * yn * dist + cam.cy + (offsets?.get(2 * i + 1) ?: 0.0)
             if (u[i] + radius < 0 || v[i] + radius < 0 || u[i] - radius > cam.width - 1 || v[i] - radius > cam.height - 1) {
                 continue
             }
@@ -206,13 +223,15 @@ class RasterizerGradientTest {
 
     private fun loss(image: DoubleArray, wts: FloatArray) = image.indices.sumOf { image[it] * wts[it] }
 
-    private fun analytic(p: Params, wts: FloatArray, threads: Int = 1, cam: CameraIntrinsics = k): SplatGrads {
+    private fun analytic(
+        p: Params, wts: FloatArray, threads: Int = 1, cam: CameraIntrinsics = k, lens: Lens? = null,
+    ): SplatGrads {
         val cloud = p.cloud()
         val out = RenderBuffers(cam.width, cam.height)
         val grads = SplatGrads()
         Rasterizer(threads).use {
-            it.forward(cloud, cam, pose, out)
-            it.backward(cloud, cam, pose, out, wts, grads)
+            it.forward(cloud, cam, pose, out, lens)
+            it.backward(cloud, cam, pose, out, wts, grads, lens)
         }
         return grads
     }
@@ -240,16 +259,18 @@ class RasterizerGradientTest {
     }
 
     /** Every parameter of [splats]: analytic vs central difference; returns one line per disagreement. */
-    private fun mismatches(p: Params, grads: SplatGrads, wts: FloatArray, splats: IntRange = 0 until p.count): List<String> {
+    private fun mismatches(
+        p: Params, grads: SplatGrads, wts: FloatArray, splats: IntRange = 0 until p.count, lens: DoubleArray = pinhole,
+    ): List<String> {
         val bad = mutableListOf<String>()
         for ((name, values) in p.groups) {
             val per = values.size / p.count
             for (j in splats.first * per until (splats.last + 1) * per) {
                 val keep = values[j]
                 values[j] = keep + h
-                val plus = loss(render(p), wts)
+                val plus = loss(render(p, lens = lens), wts)
                 values[j] = keep - h
-                val minus = loss(render(p), wts)
+                val minus = loss(render(p, lens = lens), wts)
                 values[j] = keep
                 val numeric = (plus - minus) / (2 * h)
                 val a = array(grads, name)[j].toDouble()
@@ -351,6 +372,66 @@ class RasterizerGradientTest {
             assertArrayEquals(one.viewGradNorms, more.viewGradNorms, "viewGradNorms, $threads threads")
         }
         assertTrue(one.positions.any { abs(it) > 1e-3f }, "the scene must have gradients")
+    }
+
+    @Test
+    fun `the pinhole lens renders bit-identically to no lens and leaves the lens gradients 0 without one`() {
+        val cloud = scene.cloud()
+        val plain = RenderBuffers(k.width, k.height)
+        val unit = RenderBuffers(k.width, k.height)
+        Rasterizer(1).use {
+            it.forward(cloud, k, pose, plain)
+            it.forward(cloud, k, pose, unit, Lens.PINHOLE)
+        }
+        assertArrayEquals(plain.color, unit.color)
+        assertArrayEquals(plain.means2d, unit.means2d)
+        assertArrayEquals(plain.conics, unit.conics)
+        val grads = analytic(scene, weights(3 * k.width * k.height))
+        assertEquals(0.0, grads.focalScale)
+        assertEquals(0.0, grads.k1)
+    }
+
+    @Test
+    fun `with a lens the Double reference renders what the Float rasteriser renders`() {
+        val out = RenderBuffers(k.width, k.height)
+        Rasterizer(1).use { it.forward(scene.cloud(), k, pose, out, lens) }
+        val ref = render(scene, lens = lensD)
+        var maxErr = 0.0
+        for (j in ref.indices) maxErr = max(maxErr, abs(ref[j] - out.color[j]))
+        assertTrue(maxErr < 1e-5, "max |reference - forward| = $maxErr")
+        var moved = 0.0
+        val plain = render(scene)
+        for (j in ref.indices) moved = max(moved, abs(ref[j] - plain[j]))
+        assertTrue(moved > 0.02, "the lens must change the image, max change $moved")
+    }
+
+    @Test
+    fun `with a lens analytic gradients match central differences, focal scale and k1 included`() {
+        val wts = weights(3 * k.width * k.height, seed = 13)
+        val grads = analytic(scene, wts, lens = lens)
+        assertFinite(grads)
+        val bad = mismatches(scene, grads, wts, lens = lensD).toMutableList()
+        for ((j, name) in listOf(0 to "focalScale", 1 to "k1")) {
+            val plus = lensD.copyOf().also { it[j] += h }
+            val minus = lensD.copyOf().also { it[j] -= h }
+            val numeric = (loss(render(scene, lens = plus), wts) - loss(render(scene, lens = minus), wts)) / (2 * h)
+            val a = if (j == 0) grads.focalScale else grads.k1
+            assertTrue(abs(numeric) > 1e-2, "$name has only a ~0 gradient ($numeric): the check would be empty")
+            if (abs(a - numeric) >= 1e-3 * max(abs(a), abs(numeric))) bad += "$name: analytic $a, numeric $numeric"
+        }
+        assertTrue(bad.isEmpty(), bad.joinToString("\n"))
+    }
+
+    @Test
+    fun `lens gradients are bit-identical for any thread count`() {
+        val wts = weights(3 * k.width * k.height, seed = 17)
+        val one = analytic(scene, wts, threads = 1, lens = lens)
+        for (threads in listOf(2, 5)) {
+            val more = analytic(scene, wts, threads = threads, lens = lens)
+            assertEquals(one.focalScale, more.focalScale, "$threads threads")
+            assertEquals(one.k1, more.k1, "$threads threads")
+            assertArrayEquals(one.positions, more.positions, "positions, $threads threads")
+        }
     }
 
     @Test

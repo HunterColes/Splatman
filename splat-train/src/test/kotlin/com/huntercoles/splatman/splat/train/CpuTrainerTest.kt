@@ -2,9 +2,11 @@ package com.huntercoles.splatman.splat.train
 
 import com.huntercoles.splatman.splat.model.Keyframe
 import com.huntercoles.splatman.splat.model.SeedPoints
+import com.huntercoles.splatman.splat.packet.CameraRefinement
 import com.huntercoles.splatman.splat.packet.TrainingConfig
 import com.huntercoles.splatman.splat.packet.TrainingInput
 import com.huntercoles.splatman.splat.packet.TrainingProgress
+import com.huntercoles.splatman.splat.train.optim.OptimSettings
 import com.huntercoles.splatman.splat.train.optim.TestScenes
 import com.huntercoles.splatman.splat.train.optim.TrainingFailedException
 import kotlinx.coroutines.CancellationException
@@ -14,7 +16,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -53,6 +57,23 @@ class CpuTrainerTest {
         val b = runBlocking { CpuTrainer(threads = 3, seed = 9).train(input(60)).toList() }.last()
         assertTrue(a.snapshot!!.positions.contentEquals(b.snapshot!!.positions))
         assertEquals(a.loss, b.loss)
+    }
+
+    @Test
+    fun `the learned lens is reported with every optimiser emission, and not with the flag off`() {
+        val on = runBlocking {
+            CpuTrainer(threads = 1, settings = OptimSettings(cameraFreezeSteps = 10, snapshotEvery = 20)).train(input(40))
+                .toList()
+        }
+        assertEquals(listOf(0, 20, 40), on.map { it.iteration })
+        assertNull(on.first().camera, "the seed emission has trained nothing")
+        val camera = on.last().camera!!
+        assertNotEquals(CameraRefinement(1f, 0f), camera, "30 thawed iterations move the lens")
+        val off = runBlocking {
+            CpuTrainer(threads = 1, settings = OptimSettings(refineCamera = false, snapshotEvery = 20)).train(input(40))
+                .toList()
+        }
+        assertTrue(off.all { it.camera == null })
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.huntercoles.splatman.splat.model.CameraPose
 import com.huntercoles.splatman.splat.model.Keyframe
 import com.huntercoles.splatman.splat.model.RgbImage
 import com.huntercoles.splatman.splat.model.SplatCloud
+import com.huntercoles.splatman.splat.train.raster.Lens
 import com.huntercoles.splatman.splat.train.raster.Rasterizer
 import com.huntercoles.splatman.splat.train.raster.RenderBuffers
 import java.util.Random
@@ -75,13 +76,16 @@ internal object TestScenes {
             }
         }
 
-    /** PSNR of [cloud] against the keyframes, dB, from the mean squared error over every view, pixel and channel. */
-    fun psnr(cloud: SplatCloud, keyframes: List<Keyframe>): Double = Rasterizer(1).use { raster ->
+    /**
+     * PSNR of [cloud] against the keyframes, dB, from the mean squared error over every view, pixel and channel;
+     * rendered through [lens] (null = the keyframes' pinholes).
+     */
+    fun psnr(cloud: SplatCloud, keyframes: List<Keyframe>, lens: Lens? = null): Double = Rasterizer(1).use { raster ->
         var se = 0.0
         var count = 0L
         for (kf in keyframes) {
             val out = RenderBuffers(kf.image.width, kf.image.height)
-            raster.forward(cloud, kf.intrinsics, kf.pose, out)
+            raster.forward(cloud, kf.intrinsics, kf.pose, out, lens)
             for (p in 0 until kf.image.width * kf.image.height) {
                 for (c in 0 until 3) {
                     val target = (kf.image.rgba[4 * p + c].toInt() and 0xFF) / 255.0

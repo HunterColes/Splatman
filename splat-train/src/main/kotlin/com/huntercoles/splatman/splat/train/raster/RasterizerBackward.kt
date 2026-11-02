@@ -7,6 +7,7 @@ import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.splat.projection.Covariance
 import com.huntercoles.splatman.splat.sh.ShEval
 import com.huntercoles.splatman.splat.train.raster.SplatGrads.Companion.CA
+import com.huntercoles.splatman.splat.train.raster.SplatGrads.Companion.CAMERA
 import com.huntercoles.splatman.splat.train.raster.SplatGrads.Companion.CB
 import com.huntercoles.splatman.splat.train.raster.SplatGrads.Companion.CC
 import com.huntercoles.splatman.splat.train.raster.SplatGrads.Companion.ENTRY
@@ -27,7 +28,8 @@ import kotlin.math.sqrt
  *    entry;
  * 2. the entries summed per splat, in list order (deterministic for any thread count);
  * 3. per splat (in parallel), the chain rule through the projection, recomputed in Double from the cloud: conic ->
- *    2D covariance -> EWA Jacobian and 3D covariance -> camera-space mean, scales and normalised quaternion.
+ *    2D covariance -> EWA Jacobian and 3D covariance -> camera-space mean, scales and normalised quaternion; with a
+ *    [Lens], also its focal scale and k1, per splat, then summed in index order (deterministic).
  */
 internal object RasterizerBackward {
 
@@ -36,7 +38,7 @@ internal object RasterizerBackward {
     @Suppress("LongParameterList")
     fun run(
         raster: Rasterizer, cloud: SplatCloud, k: CameraIntrinsics, pose: CameraPose,
-        fwd: RenderBuffers, dLdColor: FloatArray, grads: SplatGrads,
+        fwd: RenderBuffers, dLdColor: FloatArray, grads: SplatGrads, lens: Lens? = null,
     ) {
         require(fwd.width == k.width && fwd.height == k.height) {
             "buffers ${fwd.width}x${fwd.height} do not match intrinsics ${k.width}x${k.height}"
@@ -83,8 +85,19 @@ internal object RasterizerBackward {
         view[11] = cvPose.translationM.z.toDouble()
         raster.parallelFor((n + CHUNK - 1) / CHUNK) { chunk ->
             for (i in chunk * CHUNK until min(n, (chunk + 1) * CHUNK)) {
-                if (fwd.radii[i] > 0) splatBackward(cloud, i, k, view, grads)
+                if (fwd.radii[i] > 0) splatBackward(cloud, i, k, lens, view, grads)
             }
+        }
+        if (lens != null) {
+            val cam = grads.splatCamera
+            var gs = 0.0
+            var gk = 0.0
+            for (i in 0 until n) {
+                gs += cam[CAMERA * i]
+                gk += cam[CAMERA * i + 1]
+            }
+            grads.focalScale = gs
+            grads.k1 = gk
         }
     }
 
@@ -166,14 +179,16 @@ internal object RasterizerBackward {
      * Stage 3 for splat [i]: [view] is `W = R_Ccv_W` column-major (9) then the camera centre in W (3). Writes the
      * splat's parameter gradients and view-gradient norm into [grads].
      */
-    @Suppress("LongMethod")
-    private fun splatBackward(cloud: SplatCloud, i: Int, k: CameraIntrinsics, view: DoubleArray, grads: SplatGrads) {
+    @Suppress("LongMethod", "LongParameterList")
+    private fun splatBackward(
+        cloud: SplatCloud, i: Int, k: CameraIntrinsics, lens: Lens?, view: DoubleArray, grads: SplatGrads,
+    ) {
         val g2 = grads.splatGrads2d
         val b2 = ENTRY * i
         val gu = g2[b2 + U]
         val gv = g2[b2 + V]
-        val fx = k.fx.toDouble()
-        val fy = k.fy.toDouble()
+        val fx = (if (lens == null) k.fx else k.fx * lens.focalScale).toDouble()
+        val fy = (if (lens == null) k.fy else k.fy * lens.focalScale).toDouble()
         grads.viewGradNorms[i] = sqrt(sq(gu * k.width / 2) + sq(gv * k.height / 2)).toFloat()
 
         for (ch in 0 until 3) {
@@ -215,11 +230,18 @@ internal object RasterizerBackward {
             m[r * 3] * m[c * 3] + m[r * 3 + 1] * m[c * 3 + 1] + m[r * 3 + 2] * m[c * 3 + 2]
         }
 
-        // T = J W (2x3, row-major), with J the Jacobian of the pinhole at t.
-        val j00 = fx / tz
-        val j02 = -fx * tx / (tz * tz)
-        val j11 = fy / tz
-        val j12 = -fy * ty / (tz * tz)
+        // T = J W (2x3, row-major), with J the Jacobian of the pinhole at t; with a lens, the pinhole's at focal
+        // lengths fx d, fy d (see Lens), d = 1 + k1 (xn^2 + yn^2).
+        val k1 = lens?.k1?.toDouble() ?: 0.0
+        val xn = tx / tz
+        val yn = ty / tz
+        val r2 = xn * xn + yn * yn
+        val dist = 1 + k1 * r2
+        val dz = dist / tz
+        val j00 = if (lens == null) fx / tz else fx * dz
+        val j02 = if (lens == null) -fx * tx / (tz * tz) else -fx * dz * xn
+        val j11 = if (lens == null) fy / tz else fy * dz
+        val j12 = if (lens == null) -fy * ty / (tz * tz) else -fy * dz * yn
         val tm = DoubleArray(6)
         for (c in 0 until 3) {
             tm[c] = j00 * view[c * 3] + j02 * view[c * 3 + 2]
@@ -261,12 +283,31 @@ internal object RasterizerBackward {
         }
 
         // Camera-space mean from u = fx tx / tz + cx, v = fy ty / tz + cy and from J.
-        val tz2 = tz * tz
-        val tz3 = tz2 * tz
-        val gtx = gu * fx / tz - gj02 * fx / tz2
-        val gty = gv * fy / tz - gj12 * fy / tz2
-        val gtz = -gu * fx * tx / tz2 - gv * fy * ty / tz2 - gj00 * fx / tz2 + gj02 * 2 * fx * tx / tz3 -
-            gj11 * fy / tz2 + gj12 * 2 * fy * ty / tz3
+        val gtx: Double
+        val gty: Double
+        val gtz: Double
+        if (lens == null) {
+            val tz2 = tz * tz
+            val tz3 = tz2 * tz
+            gtx = gu * fx / tz - gj02 * fx / tz2
+            gty = gv * fy / tz - gj12 * fy / tz2
+            gtz = -gu * fx * tx / tz2 - gv * fy * ty / tz2 - gj00 * fx / tz2 + gj02 * 2 * fx * tx / tz3 -
+                gj11 * fy / tz2 + gj12 * 2 * fy * ty / tz3
+        } else {
+            // u = F xn d + cx, v = G yn d + cy; J = dz (F, 0, -F xn; 0, G, -G yn), dz = d / tz, F = s fx, G = s fy.
+            val jx = gj00 - gj02 * xn
+            val jy = gj11 - gj12 * yn
+            val gF = gu * xn * dist + dz * jx
+            val gG = gv * yn * dist + dz * jy
+            val gDist = gu * fx * xn + gv * fy * yn + (fx * jx + fy * jy) / tz
+            val gx = gu * fx * dist - gj02 * fx * dz + gDist * 2 * k1 * xn
+            val gy = gv * fy * dist - gj12 * fy * dz + gDist * 2 * k1 * yn
+            gtx = gx / tz
+            gty = gy / tz
+            gtz = -dz / tz * (fx * jx + fy * jy) - (gx * xn + gy * yn) / tz
+            grads.splatCamera[CAMERA * i] = gF * k.fx + gG * k.fy
+            grads.splatCamera[CAMERA * i + 1] = gDist * r2
+        }
         for (j in 0 until 3) {
             grads.positions[3 * i + j] =
                 (view[j * 3] * gtx + view[j * 3 + 1] * gty + view[j * 3 + 2] * gtz).toFloat()

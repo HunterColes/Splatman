@@ -36,12 +36,33 @@ data class OptimSettings(
     val splitScaleDivisor: Double = 1.6,
     /** Emit a [com.huntercoles.splatman.splat.packet.TrainingProgress] snapshot every this many iterations. */
     val snapshotEvery: Int = 250,
+    /**
+     * Learn the lens (ticket #10): one shared scale on every keyframe's fx and fy and one radial k1, see
+     * [com.huntercoles.splatman.splat.train.raster.Lens]. False keeps the keyframes' pinholes, exactly as without it.
+     */
+    val refineCamera: Boolean = true,
+    /** Iterations the lens stays frozen at the pinhole before it learns (the splats settle first, as in TrackGS). */
+    val cameraFreezeSteps: Int = 500,
+    /** Focal-scale learning rate, per step. */
+    val focalScaleLr: Double = 5e-4,
+    /** k1 learning rate, per step. */
+    val k1Lr: Double = 1e-4,
+    /** The focal scale stays within 1 +- this. */
+    val focalScaleLimit: Double = 0.1,
+    /** k1 stays within +- this. */
+    val k1Limit: Double = 0.1,
 ) {
     init {
         require(densifyEvery > 0) { "densifyEvery must be > 0, got $densifyEvery" }
         require(snapshotEvery > 0) { "snapshotEvery must be > 0, got $snapshotEvery" }
         require(splitScaleDivisor > 0.0) { "splitScaleDivisor must be > 0, got $splitScaleDivisor" }
+        require(cameraFreezeSteps >= 0) { "cameraFreezeSteps must be >= 0, got $cameraFreezeSteps" }
+        require(focalScaleLimit >= 0.0 && focalScaleLimit < 1.0) { "focalScaleLimit must be in [0, 1), got $focalScaleLimit" }
+        require(k1Limit >= 0.0) { "k1Limit must be >= 0, got $k1Limit" }
     }
+
+    /** Whether iteration [t] (1-based) learns the lens: [refineCamera] and past [cameraFreezeSteps]. */
+    fun refinesCameraAt(t: Int): Boolean = refineCamera && t > cameraFreezeSteps
 
     /** Whether iteration [t] (1-based) of a [total]-iteration run densifies: every [densifyEvery] from [densifyFrom]. */
     fun densifiesAt(t: Int, total: Int): Boolean =

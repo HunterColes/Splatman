@@ -32,6 +32,11 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
   over threads; 50k splats at 320x240 in ~19 ms on the desktop) is the golden renderer. Backward (#40):
   `Rasterizer.backward` fills `SplatGrads` (positions, log-scales, raw quaternions, opacity logits, SH dc, NDC view
   gradient norm), proven by finite differences in Double (`RasterizerGradientTest`); no optimiser yet (#42).
+- Lens refinement (#10): `raster/Lens` (one focal scale on fx, fy plus k1) in forward and backward (lens gradients
+  proven by finite differences); `SplatOptimizer` learns it after `OptimSettings.cameraFreezeSteps` (500), Adam,
+  clamped to 1 +- 0.1 and +- 0.1, off with `refineCamera = false`; `TrainingProgress.camera` / `TrainingResult.camera`
+  (`CameraRefinement`) report it. Synthetic test: 5 % focal error -> 0.46 %. Needs captures from two distances: from
+  one orbit distance focal vs scene scale is nearly ambiguous and the lens can drift to its clamp.
 - Tracking (#36, ADR 0004): `capture-feature/tracking/` has the `PoseSource` seam, `TrackedFrame`, `TrackerDriver`
   (availability and permission before any session call, lifecycle pause/resume, dropped frames closed), `Yuv420`;
   `tracking/arcore/` holds ARCore 1.57.0 (optional at install) and `ArCorePoseSource`.

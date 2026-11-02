@@ -41,6 +41,18 @@ class SplatGrads {
     var viewGradNorms = FloatArray(0)
         private set
 
+    /** dL / d [Lens.focalScale], summed over the visible splats; 0 when the backward call had no lens. */
+    var focalScale: Double = 0.0
+        internal set
+
+    /** dL / d [Lens.k1], summed over the visible splats; 0 when the backward call had no lens. */
+    var k1: Double = 0.0
+        internal set
+
+    /** Per splat, [CAMERA] lens gradients (focal scale, k1), summed in index order into [focalScale] and [k1]. */
+    internal var splatCamera = DoubleArray(0)
+        private set
+
     /**
      * Per tile-list entry, [ENTRY] partial sums over the tile's pixels: dL / d u, v, conic a, b, c, colour r, g, b,
      * opacity. Written per tile (one thread each), then summed per splat in list order, so results do not depend on
@@ -63,6 +75,7 @@ class SplatGrads {
             shDc = FloatArray(3 * n)
             viewGradNorms = FloatArray(n)
             splatGrads2d = DoubleArray(ENTRY * n)
+            splatCamera = DoubleArray(CAMERA * n)
         }
         positions.fill(0f, 0, 3 * n)
         logScales.fill(0f, 0, 3 * n)
@@ -71,6 +84,9 @@ class SplatGrads {
         shDc.fill(0f, 0, 3 * n)
         viewGradNorms.fill(0f, 0, n)
         splatGrads2d.fill(0.0, 0, ENTRY * n)
+        splatCamera.fill(0.0, 0, CAMERA * n)
+        focalScale = 0.0
+        k1 = 0.0
     }
 
     internal fun ensureEntries(n: Int) {
@@ -87,5 +103,8 @@ class SplatGrads {
         const val CC = 4
         const val R = 5
         const val OP = 8
+
+        /** Lens gradient values per splat: focal scale, k1. */
+        const val CAMERA = 2
     }
 }
