@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shell_back">Back</string>
+    <string name="shell_scan">Scan</string>
+    <string name="shell_coming_soon">Coming soon.</string>
+    <string name="shell_onboarding_title">Welcome to Splatman</string>
+    <string name="shell_onboarding_body">Walk around something with your phone and Splatman turns it into a 3D scene you can orbit and export.</string>
+    <string name="shell_onboarding_start">Get started</string>
+    <string name="shell_library_title">Library</string>
+    <string name="shell_capture_title">Capture</string>
+    <string name="shell_processing_title">Processing</string>
+    <string name="shell_scan_id">Scan %1$s</string>
+    <string name="shell_settings_title">Settings</string>
+    <string name="shell_about_title">About</string>
+    <string name="shell_version">Version %1$s</string>
+</resources>

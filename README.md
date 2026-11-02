@@ -197,7 +197,7 @@ Result:   70-80% visual quality, 10x faster, 100% offline
 - [x] Package renaming (com.huntercoles.splatman)
 - [x] Module restructuring (capture/library/viewer features)
 - [x] Dark purple theme implementation (SplatColors)
-- [x] Bottom navigation with 3 tabs (Viewer/Library/Tools)
+- [x] App shell: Library home, full-screen routes, no bottom navigation
 - [x] Database setup (splatman_database)
 
 ## Phase 2: ARCore Capture 🚧 In Progress

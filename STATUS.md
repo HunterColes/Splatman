@@ -6,7 +6,11 @@ assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings
 - The gate counts the unit tests (`unit tests: N`) and goes red at 0 or under the floor in `tools/test-count.min` (69; raise it on purpose) (#59).
 - Poker-app leftovers (blinds, chips, odds, bank, tournament, timer) are deleted (#6); the Library nav route renders `LibraryScreen`.
 - Design tokens (#12): `core/design` holds the v1 violet dark/light M3 schemes, overlay tokens, full type scale plus
-  `numeral`, trimmed `SplatDimens`, `SplatMotion`, and one `SplatTheme(forceDark)`; the app root forces dark for now.
+  `numeral`, trimmed `SplatDimens`, `SplatMotion`, and one `SplatTheme(forceDark, darkTheme)`.
+- App shell (#13): no bottom nav; typed routes in `core/navigation/NavigationDestination` (`onboarding`, `library`,
+  `capture`, `processing/{scanId}`, `viewer/{scanId}`, `settings`, `about`), rules in `ShellRoutes`; host in
+  `app/shell/SplatmanShell.kt` (edge-to-edge, Capture/Processing/Viewer dark, others follow `ThemePreferences.themeMode`).
+  Onboarding on first run (`OnboardingPreferences`), else Library. Every route but Library and Viewer is a placeholder.
 - UI and product spec: `docs/design/` (v1 features, flows, every screen, tokens, copy); build tickets #12-#21.
 - Renderer: OpenGL ES, in `viewer-feature` (`GaussianCameraController`, now on `splat-core` math); camera capture works.
 - GPU packer (#35): `viewer-feature/rendering/pack/SplatPacker` packs a `SplatCloud` into the ADR 0006 RGBA32UI layout
