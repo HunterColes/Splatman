@@ -47,6 +47,9 @@ dependencies {
     implementation(project(":viewer-feature"))
     // TrackedFrame carries splat-core model types (ADR 0002).
     api(project(":splat-core"))
+    // The processing runner reads the capture bundle, writes splat.ply and runs the Trainer (ADR 0005).
+    implementation(project(":splat-io"))
+    implementation(project(":splat-train"))
     // ARCore behind the PoseSource seam, optional at install (ADR 0004); only tracking/arcore/ imports it.
     implementation(libs.arcore)
 
