@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -202,6 +203,32 @@ class TrackerDriverTest {
         runCurrent()
         assertTrue(done.isCompleted)
         assertEquals(1, session.closes)
+    }
+
+    @Test
+    fun aStartQueuedBehindDisposeNeverOpensASession() = runTest {
+        var opens = 0
+        val driver = driver { opens++; FakeSession() }
+        driver.dispose()
+        launch { driver.start() }
+        advanceUntilIdle()
+        assertEquals(0, opens)
+        assertEquals(PoseSourceStatus.Idle, driver.status.value)
+    }
+
+    @Test
+    fun everySessionOpenedAroundDisposeIsClosed() = runTest {
+        // start and dispose launched in either order, with and without letting start run first.
+        for (order in 0 until 4) {
+            val opened = mutableListOf<FakeSession>()
+            val driver = driver { FakeSession().also { opened += it } }
+            if (order % 2 == 0) launch { driver.start() } else driver.dispose()
+            if (order >= 2) runCurrent()
+            if (order % 2 == 0) driver.dispose() else launch { driver.start() }
+            advanceUntilIdle()
+            assertTrue(opened.all { it.closes == 1 }, "order $order")
+            if (order == 2) assertEquals(1, opened.size)
+        }
     }
 
     @Test

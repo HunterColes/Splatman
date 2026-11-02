@@ -65,6 +65,7 @@ class TrackerDriver(
     private var pump: Job? = null
     private var foreground = true
     private var preview: PreviewTarget? = null
+    private var disposed = false
 
     /** What the source is doing now. */
     val status: StateFlow<PoseSourceStatus> = mutableStatus.asStateFlow()
@@ -88,7 +89,8 @@ class TrackerDriver(
             return
         }
         withContext(dispatcher) {
-            if (session != null) return@withContext
+            // A start queued behind dispose must not open a session nothing would close.
+            if (disposed || session != null) return@withContext
             val opened = try {
                 openSession()
             } catch (e: CancellationException) {
@@ -133,7 +135,10 @@ class TrackerDriver(
     }
 
     /** Closes the session and stops the driver for good; the returned job completes once the session is closed. */
-    fun dispose(): Job = scope.launch { closeSession() }.also { job ->
+    fun dispose(): Job = scope.launch {
+        disposed = true
+        closeSession()
+    }.also { job ->
         job.invokeOnCompletion { scope.cancel() }
     }
 
