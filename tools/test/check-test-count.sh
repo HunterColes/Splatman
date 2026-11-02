@@ -89,6 +89,12 @@ result app A 10
 result app R 5 testReleaseUnitTest
 expect "only testDebugUnitTest and test dirs counted" pass "unit tests: 10"
 
+reset "flavoured debug results are counted, flavoured release ones are not (#48)"
+result capture-feature F 4 testFullDebugUnitTest
+result capture-feature O 6 testFossDebugUnitTest
+result capture-feature R 5 testFossReleaseUnitTest
+expect "both flavours' debug unit tests counted" pass "unit tests: 10"
+
 reset "the build cache is not counted"
 result core A 10
 mkdir -p "$T/root/build-cache/x/build/test-results/testDebugUnitTest"

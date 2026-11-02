@@ -42,6 +42,13 @@ android {
         testInstrumentationRunner = "com.huntercoles.splatman.HiltTestRunner"
     }
 
+    // ADR 0004: `full` has ARCore (capture works); `foss` is the F-Droid build, with no proprietary dependency.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") { dimension = "distribution" }
+        create("foss") { dimension = "distribution" }
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -153,6 +160,23 @@ androidComponents {
             rows.set(provider { licenceRows(runtime.get()) })
         }
         variant.sources.assets?.addGeneratedSourceDirectory(licences, GenerateLicencesTask::outputDir)
+
+        // The foss APK stays free of proprietary libraries (ADR 0004, F-Droid): building a foss variant first checks
+        // its runtime classpath, and fails on a module from a group in fossForbiddenGroups.
+        if (variant.flavorName == "foss") {
+            val verify = tasks.register("verify${capitalised}Dependencies", VerifyFossDependenciesTask::class.java) {
+                group = "verification"
+                forbiddenGroups.set(fossForbiddenGroups)
+                modules.set(
+                    runtime.map { config ->
+                        config.incoming.resolutionResult.allComponents
+                            .mapNotNull { (it.id as? ModuleComponentIdentifier)?.displayName }
+                            .sorted()
+                    },
+                )
+            }
+            tasks.matching { it.name == "pre${capitalised}Build" }.configureEach { dependsOn(verify) }
+        }
     }
 }
 
@@ -162,6 +186,10 @@ tasks.configureEach {
         enabled = false
     }
 }
+
+// The gate (tools/check.sh) runs testDebugUnitTest and lintDebug; with flavours AGP names them per flavour only.
+tasks.register("testDebugUnitTest") { dependsOn("testFullDebugUnitTest", "testFossDebugUnitTest") }
+tasks.register("lintDebug") { dependsOn("lintFullDebug", "lintFossDebug") }
 
 dependencies {
     implementation(project(":core"))
@@ -214,7 +242,32 @@ abstract class StripBaselineProfilesTask : DefaultTask() {
     }
 }
 
-/** Writes `licences.tsv` (module, version, licence, licence URL; one dependency a line) into generated assets. */
+/** Module groups the foss build must not carry: ARCore, Play Services, Firebase, Play Billing (and groups below). */
+val fossForbiddenGroups = listOf("com.google.ar", "com.google.android.gms", "com.google.firebase", "com.android.billingclient")
+
+/** Fails when one of [modules] (`group:name:version`) is in a group of [forbiddenGroups], or a group below one. */
+abstract class VerifyFossDependenciesTask : DefaultTask() {
+    @get:Input
+    abstract val forbiddenGroups: ListProperty<String>
+
+    @get:Input
+    abstract val modules: ListProperty<String>
+
+    @TaskAction
+    fun verify() {
+        val forbidden = forbiddenGroups.get()
+        val hits = modules.get().filter { module ->
+            val group = module.substringBefore(':')
+            forbidden.any { group == it || group.startsWith("$it.") }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Proprietary dependency in the foss build (ADR 0004): ${hits.joinToString()}")
+        }
+        logger.lifecycle("foss runtime classpath: ${modules.get().size} modules, none from ${forbidden.joinToString()}")
+    }
+}
+
+/** Writes `licences.tsv`(module, version, licence, licence URL; one dependency a line) into generated assets. */
 abstract class GenerateLicencesTask : DefaultTask() {
     @get:Input
     abstract val rows: ListProperty<String>

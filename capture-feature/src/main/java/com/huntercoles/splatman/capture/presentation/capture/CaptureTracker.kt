@@ -4,7 +4,7 @@ import android.content.Context
 import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackedFrame
-import com.huntercoles.splatman.capture.tracking.arcore.ArCorePoseSource
+import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -35,21 +35,13 @@ interface CaptureTracker {
     fun release()
 }
 
-/** [CaptureTracker] on ARCore. */
-class ArCoreCaptureTracker(private val source: ArCorePoseSource) : CaptureTracker {
-    override val status: StateFlow<PoseSourceStatus> get() = source.status
-    override val frames: Flow<TrackedFrame> get() = source.frames
-    override suspend fun start() = source.start()
-    override fun setForeground(inForeground: Boolean) = source.setForeground(inForeground)
-    override fun setPreview(target: PreviewTarget?): Job = source.setPreview(target)
-    override fun release() = source.release()
-}
-
-/** A fresh ARCore tracker for every capture view model (unscoped on purpose: each one is released with its owner). */
+/**
+ * A fresh tracker for every capture view model (unscoped on purpose: each one is released with its owner). The
+ * flavour picks it: ARCore in `full`, none in `foss` (ADR 0004, F-Droid).
+ */
 @Module
 @InstallIn(ViewModelComponent::class)
 object CaptureTrackerModule {
     @Provides
-    fun captureTracker(@ApplicationContext context: Context): CaptureTracker =
-        ArCoreCaptureTracker(ArCorePoseSource(context))
+    fun captureTracker(@ApplicationContext context: Context): CaptureTracker = FlavourTracking.captureTracker(context)
 }

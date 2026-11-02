@@ -84,7 +84,7 @@ A quick checklist to track your F-Droid submission progress.
 - F-Droid downloads your signed APK from GitHub releases
 - The `Binaries` field in the YAML points to your release URL
 - Tag format: `v{versionName}` (e.g., `v1.1.0`)
-- APK filename: `Splatman-v{versionName}-release.apk`
+- APK filename: `Splatman-v{versionName}-fossRelease.apk` (the `foss` flavour, no ARCore; ADR 0004)
 
 🔄 **Future Updates**
 - Create changelogs in `en-US/changelogs/{versionCode}.txt`

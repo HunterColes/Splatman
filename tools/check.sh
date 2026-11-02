@@ -23,11 +23,11 @@
 set -euo pipefail
 
 # test_result_dirs <root>: every module's unit-test results under root (not the build cache): an Android module's
-# build/test-results/testDebugUnitTest, and a pure-JVM module's build/test-results/test (splat-core, splat-io,
+# build/test-results/testDebugUnitTest (or test<Flavour>DebugUnitTest, #48), and a pure-JVM module's build/test-results/test (splat-core, splat-io,
 # splat-train: their testDebugUnitTest only depends on `test`, ADR 0001) (#92).
 test_result_dirs() {
   find "$1" \( -name build-cache -o -name .gradle -o -name .git \) -prune -o \
-    -type d \( -path '*/build/test-results/testDebugUnitTest' -o -path '*/build/test-results/test' \) -print -prune
+    -type d \( -path '*/build/test-results/test*DebugUnitTest' -o -path '*/build/test-results/test' \) -print -prune
 }
 
 # test_results_clear <root>: delete every module's unit-test results, so the count sees only the next run's.

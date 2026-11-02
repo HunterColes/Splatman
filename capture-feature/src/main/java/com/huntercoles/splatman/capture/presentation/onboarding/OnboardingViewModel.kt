@@ -5,7 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
-import com.huntercoles.splatman.capture.tracking.arcore.ArCoreAvailability
+import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** The AR availability check onboarding runs once (a seam over [ArCoreAvailability] for tests). */
+/** The AR availability check onboarding runs once (a seam over the flavour's TrackerSupport for tests). */
 fun interface ArAvailabilityCheck {
     /** Never throws; a failed check reads as [TrackingAvailability.UNSUPPORTED]. */
     suspend fun check(): TrackingAvailability
@@ -62,13 +62,13 @@ class OnboardingViewModel @Inject constructor(
     }
 }
 
-/** [ArAvailabilityCheck] on ARCore. */
+/** [ArAvailabilityCheck] on the flavour's tracker (ARCore in `full`, none in `foss`). */
 @Module
 @InstallIn(ViewModelComponent::class)
 object OnboardingModule {
     @Provides
     fun arAvailabilityCheck(@ApplicationContext context: Context): ArAvailabilityCheck {
-        val arCore = ArCoreAvailability(context)
-        return ArAvailabilityCheck { arCore.check() }
+        val tracker = FlavourTracking.support(context)
+        return ArAvailabilityCheck { tracker.check() }
     }
 }

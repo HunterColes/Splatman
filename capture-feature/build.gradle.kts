@@ -26,6 +26,13 @@ android {
         compose = true
     }
 
+    // ADR 0004: `full` tracks with ARCore (src/full); `foss` (F-Droid) has no proprietary library and no tracker.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") { dimension = "distribution" }
+        create("foss") { dimension = "distribution" }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -42,6 +49,10 @@ android {
     }
 }
 
+// The gate (tools/check.sh) runs testDebugUnitTest and lintDebug; with flavours AGP names them per flavour only.
+tasks.register("testDebugUnitTest") { dependsOn("testFullDebugUnitTest", "testFossDebugUnitTest") }
+tasks.register("lintDebug") { dependsOn("lintFullDebug", "lintFossDebug") }
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":viewer-feature"))
@@ -50,8 +61,8 @@ dependencies {
     // The processing runner reads the capture bundle, writes splat.ply and runs the Trainer (ADR 0005).
     implementation(project(":splat-io"))
     implementation(project(":splat-train"))
-    // ARCore behind the PoseSource seam, optional at install (ADR 0004); only tracking/arcore/ imports it.
-    implementation(libs.arcore)
+    // ARCore behind the PoseSource seam, optional at install (ADR 0004); only src/full's tracking/arcore/ imports it.
+    "fullImplementation"(libs.arcore)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

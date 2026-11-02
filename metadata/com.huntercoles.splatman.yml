@@ -12,7 +12,7 @@ AutoName: Splatman
 
 RepoType: git
 Repo: https://github.com/HunterColes/Splatman.git
-Binaries: https://github.com/HunterColes/Splatman/releases/download/v%v/Splatman-v%v-release.apk
+Binaries: https://github.com/HunterColes/Splatman/releases/download/v%v/Splatman-v%v-fossRelease.apk
 
 Builds:
   - versionName: 0.0.0
@@ -20,7 +20,7 @@ Builds:
     commit: v0.0.0
     subdir: app
     gradle:
-      - yes
+      - foss
     scandelete:
       - build-cache
 

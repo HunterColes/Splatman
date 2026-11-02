@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Device smoke test: boots a headless emulator, installs the debug APK and runs the Compose smoke test
-# (app/src/androidTest, `:app:connectedDebugAndroidTest`), then pulls its screenshots to build/e2e/.
+# (app/src/androidTest, `:app:connectedFullDebugAndroidTest`: the `full` flavour, #48), then pulls its screenshots to build/e2e/.
 #   tools/e2e.sh
 # - Its own AVD, `splatman_e2e` (android-34 google_apis_playstore x86_64, 1080x2400), created here if missing; it never
 #   touches another AVD. Started with -no-window -no-audio -no-snapshot-save -wipe-data (a clean device every run); the
@@ -21,7 +21,7 @@ image=system-images/android-34/google_apis_playstore/x86_64
 avd_home="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 out="$PWD/build/e2e"
 device_dir=/sdcard/Download/splatman-e2e
-results=app/build/outputs/androidTest-results/connected/debug
+results=app/build/outputs/androidTest-results/connected  # flavoured: debug/flavors/full/ below it (#48)
 
 red() { echo "e2e: RED: $*"; exit 1; }
 [[ -x $adb && -x $emulator ]] || red "no adb or emulator under $ANDROID_HOME"
@@ -141,7 +141,7 @@ log="$(mktemp)"
 set +e
 ( flock -w "${GATE_LOCK_WAIT:-3600}" 9 || { echo "e2e: waited too long for /tmp/splatman-gradle.lock"; exit 1; }
   ./gradlew --console=plain --no-daemon -Dorg.gradle.jvmargs=-Xmx2g -Pkotlin.daemon.jvmargs=-Xmx1g \
-    :app:connectedDebugAndroidTest ) 9> /tmp/splatman-gradle.lock 2>&1 | tee "$log"
+    :app:connectedFullDebugAndroidTest ) 9> /tmp/splatman-gradle.lock 2>&1 | tee "$log"
 rc=${PIPESTATUS[0]}
 set -e
 
@@ -158,11 +158,11 @@ rm -f "$log"
 
 attr() { sed -nE "s/.*<testsuite [^>]* $1=\"([0-9]+)\".*/\1/p" "$2" | head -1; }
 tests=0; skipped=0; failed=0
-for x in "$results"/*.xml; do
+while IFS= read -r -d "" x; do
   [[ -f $x ]] || continue
   t="$(attr tests "$x")"; s="$(attr skipped "$x")"; f="$(attr failures "$x")"; e="$(attr errors "$x")"
   tests=$((tests + ${t:-0})); skipped=$((skipped + ${s:-0})); failed=$((failed + ${f:-0} + ${e:-0}))
-done
+done < <(find "$results" -name '*.xml' -print0 2>/dev/null)
 ((tests > 0)) || red "no test results under $results"
 ((failed == 0)) || red "$failed of $tests tests failed"
 [[ -n $shots ]] || red "no screenshots were pulled to build/e2e/"

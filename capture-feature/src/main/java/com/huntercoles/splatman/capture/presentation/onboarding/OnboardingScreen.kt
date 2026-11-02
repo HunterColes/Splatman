@@ -57,7 +57,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.capture.R
-import com.huntercoles.splatman.capture.tracking.arcore.ArCoreAvailability
+import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import com.huntercoles.splatman.capture.tracking.rememberCameraPermissionRequest
 import com.huntercoles.splatman.core.design.SplatDimens
 
@@ -78,7 +78,7 @@ fun OnboardingScreen(onDone: (OnboardingExit) -> Unit, viewModel: OnboardingView
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val availability = remember(context) { ArCoreAvailability(context) }
+    val availability = remember(context) { FlavourTracking.support(context) }
     val currentState by rememberUpdatedState(state)
     val currentOnDone by rememberUpdatedState(onDone)
 

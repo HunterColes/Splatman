@@ -1,23 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ARCore tracking needs the camera; the request flow is tracking/CameraPermission.kt. -->
+    <!-- Tracking (ARCore, `full` flavour only: src/full/AndroidManifest.xml) needs the camera; the request flow is tracking/CameraPermission.kt. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- The processing runner (processing/ProcessingService.kt) trains in a dataSync foreground service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Its progress notification (API 33+ asks at runtime; without it the run still works, unseen). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Optional at install (ADR 0004): phones without ARCore still view, import and export. -->
-    <uses-feature
-        android:name="android.hardware.camera.ar"
-        android:required="false" />
-
     <application>
-        <meta-data
-            android:name="com.google.ar.core"
-            android:value="optional" />
-
         <service
             android:name=".processing.ProcessingService"
             android:exported="false"

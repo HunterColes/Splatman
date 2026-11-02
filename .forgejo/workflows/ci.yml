@@ -120,10 +120,10 @@ jobs:
         if: failure() && steps.kind.outputs.kind != 'docs'
         run: |
           shopt -s globstar nullglob
-          for f in **/build/test-results/testDebugUnitTest/*.xml; do
+          for f in **/build/test-results/test*DebugUnitTest/*.xml; do
             if grep -qE '<(failure|error)[ >]' "$f"; then echo "::group::$f"; head -c 200000 "$f"; echo; echo "::endgroup::"; fi
           done
-          for f in **/build/reports/lint-results-debug.txt; do echo "::group::$f"; head -c 200000 "$f"; echo "::endgroup::"; done
+          for f in **/build/reports/lint-results-*[dD]ebug.txt; do echo "::group::$f"; head -c 200000 "$f"; echo "::endgroup::"; done
       - name: detekt (non-blocking)
         # Last, and never fails the job: it has open findings until they are paid down; then drop continue-on-error
         # and add it to tools/check.sh.

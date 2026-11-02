@@ -64,7 +64,7 @@ import com.huntercoles.splatman.capture.R
 import com.huntercoles.splatman.capture.preview.CameraPreview
 import com.huntercoles.splatman.capture.preview.PreviewTarget
 import com.huntercoles.splatman.capture.tracking.CameraPermission
-import com.huntercoles.splatman.capture.tracking.arcore.ArCoreAvailability
+import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import com.huntercoles.splatman.capture.tracking.rememberCameraPermissionRequest
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
@@ -95,7 +95,7 @@ fun CaptureScreen(
     LaunchedEffect(viewModel) { viewModel.haptics.collect { view.play(it) } }
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val availability = remember(context) { ArCoreAvailability(context) }
+    val availability = remember(context) { FlavourTracking.support(context) }
     val currentState by rememberUpdatedState(state)
 
     LockPortrait(activity)

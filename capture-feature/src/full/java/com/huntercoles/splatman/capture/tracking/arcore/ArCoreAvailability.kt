@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException
+import com.huntercoles.splatman.capture.tracking.TrackerSupport
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import kotlinx.coroutines.delay
 
@@ -11,12 +12,14 @@ import kotlinx.coroutines.delay
  * Whether ARCore can run here (ADR 0004: optional at install). Never throws: any failure of the check reads as
  * [TrackingAvailability.UNSUPPORTED], so a phone without ARCore never crashes.
  */
-class ArCoreAvailability(context: Context) {
+class ArCoreAvailability(context: Context) : TrackerSupport {
     private val appContext = context.applicationContext
+
+    override suspend fun check(): TrackingAvailability = checkWithin(CHECK_TIMEOUT_MS)
 
     /** Checks availability, waiting out ARCore's transient "checking" answer for up to [timeoutMs]. */
     @Suppress("TooGenericExceptionCaught")
-    suspend fun check(timeoutMs: Long = CHECK_TIMEOUT_MS): TrackingAvailability = try {
+    suspend fun checkWithin(timeoutMs: Long): TrackingAvailability = try {
         val apk = ArCoreApk.getInstance()
         var answer = apk.checkAvailability(appContext)
         var waited = 0L
@@ -40,7 +43,7 @@ class ArCoreAvailability(context: Context) {
      * is under way or the user declined, [TrackingAvailability.UNSUPPORTED] when the phone cannot run it.
      */
     @Suppress("TooGenericExceptionCaught")
-    fun requestInstall(activity: Activity, userRequested: Boolean): TrackingAvailability = try {
+    override fun requestInstall(activity: Activity, userRequested: Boolean): TrackingAvailability = try {
         when (ArCoreApk.getInstance().requestInstall(activity, userRequested)) {
             ArCoreApk.InstallStatus.INSTALLED -> TrackingAvailability.SUPPORTED
             else -> TrackingAvailability.INSTALL_NEEDED
