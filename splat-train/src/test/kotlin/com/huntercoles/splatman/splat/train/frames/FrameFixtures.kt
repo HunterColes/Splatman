@@ -11,6 +11,7 @@ import com.huntercoles.splatman.splat.model.CameraPose
 import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.splat.train.raster.Rasterizer
 import com.huntercoles.splatman.splat.train.raster.RenderBuffers
+import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -316,6 +317,52 @@ object FrameFixtures {
 
     /** [t] as ARCore hands it over, `Pose.getTranslation()`. */
     fun arCoreTranslation(t: Vec3): FloatArray = floatArrayOf(t.x, t.y, t.z)
+
+    // ---- Frame suite 3 (card #145): export formats ----
+
+    /** The bundled cactus.spz, Innerscene's conversion (frame F, ADR 0003): the suite's only app-asset read. */
+    const val CACTUS_SPZ = "app/src/main/assets/samples/cactus.spz"
+
+    /** The repository file [path] (relative to the root, found by walking up to settings.gradle.kts), parsed. */
+    fun <T> loadSample(path: String, parse: (InputStream) -> T): T {
+        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (dir != null && !File(dir, "settings.gradle.kts").isFile) dir = dir.parentFile
+        val file = dir?.let { File(it, path) }
+        if (file == null || !file.isFile) throw AssertionError("sample $path is missing from the repository")
+        return file.inputStream().buffered().use(parse)
+    }
+
+    /**
+     * Indices of the splats of [cloud] whose DC colour is clearly bluer than red: the cactus's pot. Colour does not
+     * depend on the frame, so this picks the pot without trusting any reader's axes.
+     */
+    fun bluish(cloud: SplatCloud): IntArray =
+        (0 until cloud.count).filter { cloud.shDc[3 * it + 2] > cloud.shDc[3 * it] + BLUE_MARGIN }.toIntArray()
+
+    /**
+     * Six splats at +-[extent] on each W axis (SH degree 0), each with its own rotation: the half-turns about x, y
+     * and z (w = 0), a half-turn about a diagonal, the half-turn written with the opposite sign, and a generic one.
+     */
+    fun extremes(extent: Float): SplatCloud {
+        val h = sqrt(0.5f)
+        val rots = listOf(
+            Quat(0f, 1f, 0f, 0f), Quat(0f, 0f, 1f, 0f), Quat(0f, 0f, 0f, 1f),
+            Quat(0f, h, h, 0f), Quat(0f, 0f, -1f, 0f), Quat(0.8f, 0.2f, -0.4f, 0.4f).normalized(),
+        )
+        val n = 6
+        val pos = FloatArray(3 * n)
+        for (i in 0 until n) pos[3 * i + i / 2] = if (i % 2 == 0) extent else -extent
+        val rot = FloatArray(4 * n)
+        for ((i, q) in rots.withIndex()) {
+            rot[4 * i] = q.w; rot[4 * i + 1] = q.x; rot[4 * i + 2] = q.y; rot[4 * i + 3] = q.z
+        }
+        return SplatCloud(
+            n, 0, pos, FloatArray(3 * n) { if (it % 3 == 0) 0f else -1f }, rot, FloatArray(n), FloatArray(3 * n),
+            FloatArray(0),
+        )
+    }
+
+    private const val BLUE_MARGIN = 0.1f
 
     private const val FIT_MARGIN = 1.15f
 }
