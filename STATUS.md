@@ -2,7 +2,8 @@
 
 Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
-`tools/e2e.sh` (headless emulator smoke test, screenshots in build/e2e/) is green: OK (2 tests), capture skipped (no ARCore).
+`tools/e2e.sh` (headless emulator smoke test, screenshots in build/e2e/) is green: OK (14 tests), capture skipped (no ARCore).
+- Viewer e2e (#113): `app/src/androidTest/.../ViewerEndToEndTest` (samples with their splat counts, the picker answered by an ActivityMonitor with valid, random and header-only files, rotation, back). The cactus.spz test is a strict expected-to-fail until #165 (the viewer refuses SPZ).
 - End to end (#47): Capture's Stop saves the scan and opens `processing/{scanId}` (Capture leaves the back stack); `presentation/processing/ProcessingScreen` starts the foreground runner for an unprocessed scan, shows progress, Cancel and Try again, and on Done opens `viewer/{scanId}` (Processing leaves the back stack), which loads `scans/<id>/splat.ply`. Hops in `core/navigation/ScanFlow`. The runner's starts and ends update the library rows (`ScanStatusSync`, wired in `app/pipeline`); after a restart a row left PROCESSING reads FAILED and Processing offers Try again. Library delete cancels the run first.
 - Forge runner (`deploy/forgejo-runner/`, #60, #74): one job per container start (`forgejo-runner one-job`); credentials in a root-only volume, jobs as uid 1001 with no capabilities; the whole Gradle user home emptied before every job (#133: no job loads a dist or jar an earlier one left; every build downloads them again). Re-register once after #74 (README step 3).
 - `splat-gpu` (#101): GLES 3.1 compute plumbing (`GlesCompute` on one GL thread, `Ssbo`, `ComputeProgram`, `Dispatch`, `Std430`) and `GpuSupport.probe()`; JVM tests in the gate, the on-device smoke test is `./gradlew :splat-gpu:connectedDebugAndroidTest`.
