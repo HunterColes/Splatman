@@ -80,6 +80,25 @@ object FrameConversions {
     fun cvToGl(pose: CameraPose): CameraPose =
         CameraPose(checkRotation(pose.rotation) * X_HALF_TURN.conjugate(), pose.translationM)
 
+    // ---- OpenCV world-to-camera (R, t) <-> T_W_Cgl (rule 2) ----
+
+    /**
+     * OpenCV world-to-camera `x_cv = R x_W + t` ([rotationCcvW] = `R_Ccv_W`, [translationCcvW] = `t`) ->
+     * [CameraPose] `T_W_Cgl`: invert (`R_W_Ccv = R^T`, centre `c = -R^T t`), then `T_W_Cgl = T_W_Ccv F`.
+     * The rotation is normalised.
+     */
+    fun poseFromOpenCv(rotationCcvW: Quat, translationCcvW: Vec3): CameraPose {
+        val rWCcv = checkRotation(rotationCcvW).normalized().conjugate()
+        return cvToGl(CameraPose(rWCcv, -rWCcv.rotate(translationCcvW)))
+    }
+
+    /** The inverse of [poseFromOpenCv]: `T_W_Cgl` -> OpenCV `(R_Ccv_W, t)` with `t = -R_Ccv_W c`. */
+    fun poseToOpenCv(pose: CameraPose): Pair<Quat, Vec3> {
+        val wCcv = glToCv(pose)
+        val rCcvW = wCcv.rotation.normalized().conjugate()
+        return rCcvW to -rCcvW.rotate(wCcv.translationM)
+    }
+
     // ---- View, projection, pinhole (rules 3, 4) ----
 
     /** `T_W_Cgl` of [pose] as a column-major matrix (rotation normalised). */
