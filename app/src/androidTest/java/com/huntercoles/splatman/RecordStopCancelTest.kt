@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,9 +51,10 @@ class RecordStopCancelTest {
     fun openCapture() {
         compose.waitForIdle()
         if (exists(hasText(ONBOARDING_START))) compose.onNodeWithText(ONBOARDING_START).performClick()
-        compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
+        compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
         scansBefore = scanFolders()
-        compose.onNodeWithText(SCAN, useUnmergedTree = true).performClick() // the label sits inside the button
+        // The label sits inside the button: the FAB's Scan, or the empty Library's Start a scan (it has no FAB).
+        compose.onAllNodes(hasText(SCAN) or hasText(START_SCAN), useUnmergedTree = true).onFirst().performClick()
         compose.waitUntilAtLeastOneExists(START_ENABLED, TIMEOUT_MS)
     }
 
@@ -81,7 +83,7 @@ class RecordStopCancelTest {
         // its folder name.
         compose.waitUntil(TIMEOUT_MS) { !exists(FINISH) && !exists(hasContentDescription(START)) }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
+        compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
         compose.waitUntilAtLeastOneExists(hasText(id), TIMEOUT_MS)
     }
 
@@ -93,7 +95,7 @@ class RecordStopCancelTest {
         compose.onNode(hasContentDescription(CLOSE)).performClick()
         compose.waitUntilAtLeastOneExists(hasText(DISCARD) and hasClickAction(), TIMEOUT_MS)
         compose.onNode(hasText(DISCARD) and hasClickAction()).performClick()
-        compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
+        compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
         Thread.sleep(SETTLE_MS) // a save that wrongly ran would have finished by now
 
         assertEquals(scansBefore, scanFolders())
@@ -162,8 +164,9 @@ class RecordStopCancelTest {
 
     private companion object {
         const val ONBOARDING_START = "Skip"
-        const val LIBRARY = "Library"
+        const val LIBRARY_TITLE = "Splatman" // the Library's top bar title (lib_title); the whole text
         const val SCAN = "Scan"
+        const val START_SCAN = "Start a scan"
         const val START = "Start capture"
         const val CLOSE = "Close"
         const val DISCARD = "Discard"

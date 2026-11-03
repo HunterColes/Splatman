@@ -1,17 +1,20 @@
 package com.huntercoles.splatman
 
+import android.content.Intent
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import org.junit.After
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -20,7 +23,7 @@ import org.junit.runner.RunWith
 
 /**
  * The device smoke test tools/e2e.sh runs: the app starts (past onboarding on a fresh device) on the library, opens
- * the bundled sample in its viewer and leaves a screenshot of it at phone and at tablet width. Screenshots go to
+ * the bundled sample in its viewer (through the viewer route by its id, `viewer/sample:<file>`) and leaves a screenshot of it at phone and at tablet width. Screenshots go to
  * [DEVICE_DIR] (written by the shell user, so they outlive the app's uninstall after the run); the script pulls them
  * to build/e2e/.
  */
@@ -33,29 +36,31 @@ class SmokeTest {
     val hilt = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
-    val compose = createAndroidComposeRule<MainActivity>()
+    val compose = createEmptyComposeRule()
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private lateinit var scenario: ActivityScenario<MainActivity>
 
     /** A wiped device starts on onboarding; the first test through it lands on the library for the rest. */
     @Before
     fun passOnboarding() {
+        scenario = ActivityScenario.launch(MainActivity::class.java)
         compose.waitForIdle()
         if (exists(hasText(ONBOARDING_START))) compose.onNodeWithText(ONBOARDING_START).performClick()
-        compose.waitUntilAtLeastOneExists(hasText(LIBRARY), TIMEOUT_MS)
+        compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
     }
+
+    @After
+    fun closeApp() = scenario.close()
 
     @Test
     fun firstScreenShowsTheLibrary() {
-        compose.onNodeWithText(LIBRARY).assertExists()
-        compose.waitUntilAtLeastOneExists(hasText(SAMPLES), TIMEOUT_MS)
+        check(exists(hasText(LIBRARY_TITLE))) { "the Library's title is not on screen" }
     }
 
     @Test
     fun sampleModelOpensInTheViewer() {
-        compose.waitUntilAtLeastOneExists(hasText(SAMPLE_MODEL), TIMEOUT_MS)
-        compose.onNodeWithText(SAMPLE_MODEL).performClick()
-        waitForLoadedScene()
+        openSample()
         screenshot("library-viewer-phone.png")
 
         try {
@@ -72,9 +77,7 @@ class SmokeTest {
 
     @Test
     fun statsToggleShowsTheStatsLine() {
-        compose.waitUntilAtLeastOneExists(hasText(SAMPLE_MODEL), TIMEOUT_MS)
-        compose.onNodeWithText(SAMPLE_MODEL).performClick()
-        waitForLoadedScene()
+        openSample()
         check(!exists(hasText(STATS_FPS, substring = true))) { "the stats line shows before Stats is tapped" }
         // Stats is an icon button in the bottom bar, on screen at phone width (no scrolling).
         compose.onNodeWithContentDescription(VIEWER_STATS).performClick()
@@ -90,6 +93,15 @@ class SmokeTest {
         compose.onNodeWithText(SCAN).performClick()
         compose.waitForIdle()
         screenshot("capture-phone.png")
+    }
+
+    /** Starts the app again on the bundled [SAMPLE_MODEL]'s viewer route, on top of the Library, and waits for it. */
+    private fun openSample() {
+        scenario.close()
+        val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, "$VIEWER_ROUTE/$SAMPLE_ID_PREFIX$SAMPLE_MODEL")
+        scenario = ActivityScenario.launch(intent)
+        waitForLoadedScene()
     }
 
     /** The viewer is up (its Share button shows) and neither loading, idle nor failed: the scene is loaded. */
@@ -120,10 +132,11 @@ class SmokeTest {
 
     private companion object {
         const val ONBOARDING_START = "Skip" // the onboarding pager's Skip goes straight to the Library
-        const val LIBRARY = "Library"
-        const val SAMPLES = "Samples"
+        const val LIBRARY_TITLE = "Splatman" // the Library's top bar title (lib_title); the whole text
         const val SCAN = "Scan"
-        const val SAMPLE_MODEL = "Measuring tape"
+        const val SAMPLE_MODEL = "measuring-tape.ply"
+        const val VIEWER_ROUTE = "viewer" // ShellRoutes.VIEWER
+        const val SAMPLE_ID_PREFIX = "sample:" // library Sample.ID_PREFIX
         const val VIEWER_SHARE = "Share"
         const val VIEWER_LOADING = "Opening "
         const val VIEWER_FAILED = "Can't open this splat"
