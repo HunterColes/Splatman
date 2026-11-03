@@ -126,11 +126,15 @@ for c in json.load(sys.stdin): print("--- {} {} {}\n{}".format(c["user"]["login"
     [[ ! ($head =~ $TRAIN && $base == master) ]] || { echo "forge.sh: merge #$1: a day PR; Hunter merges those" >&2; exit 1; }
     out="$(mktemp)"; trap 'rm -f "$out"' EXIT
     # Our own title and message: the forge's default adds a Reviewed-on: line with the PR's URL, and GitHub mirrors
-    # master. The PR body goes in without any line naming the forge.
+    # master. The PR body goes in without any line naming the forge, then a blank line and Hunter's co-author trailer
+    # as the last line, once (an exact copy in the body is dropped first; other trailers stay), so the commit counts
+    # on his GitHub profile too (#324; tools/test/forge-merge-trailer.sh).
     code="$(py '
 import json,sys
 p=json.loads(sys.argv[1]); base=sys.argv[3]
-body="\n".join(l for l in (p.get("body") or "").splitlines() if base not in l).strip()
+co="Co-authored-by: Hunter Coles <hunter.colesw@gmail.com>"
+body="\n".join(l for l in (p.get("body") or "").splitlines() if base not in l and l.strip()!=co).strip()
+body=body+"\n\n"+co if body else co
 print(json.dumps({"Do":"squash","head_commit_id":sys.argv[2],"delete_branch_after_merge":True,
   "MergeTitleField":"{} (#{})".format(p["title"], p["number"]),"MergeMessageField":body}))' "$pr_json" "$2" "$BASE_URL" \
       | curl -sS --proto '=https' -H @"$MHDR" -H 'Content-Type: application/json' -X POST --data-binary @- \
