@@ -1,7 +1,7 @@
 # Splatman Forgejo runner
 
 A Forgejo Actions runner that can build Splatman: forgejo-runner 13.2.1, Temurin JDK 21.0.13, node 22.23.4, the
-Android command-line tools (13114758), `platforms;android-34` and `build-tools;34.0.0`, licences accepted at image
+Android command-line tools (13114758), `platforms;android-34` and `build-tools;34.0.0`, `ndk;27.0.12077973`, `cmake;3.22.1`, licences accepted at image
 build time. Every download is checked against a pinned sha256 (see the top of the `Dockerfile`). Image size: about
 1.7 GB on disk.
 
@@ -104,6 +104,7 @@ flags against a fake forge on the container's loopback, plants what a hostile jo
 
 ## Update or remove
 
+- NDK and CMake (for `splat-sfm`, #225) are in the image: after pulling this change, rebuild it (`docker compose build && docker compose up -d`); the build log's `sdkmanager --list_installed` shows both.
 - New versions: change the `ARG` and its sha256 together in the `Dockerfile`, then `docker compose build && docker compose up -d`.
 - Re-register: `docker compose down -v` (drops the registration, the job volume and the Gradle cache), then steps 2 to 4.
 - Remove: `docker compose down -v`, then delete the runner in the forge's runner settings.

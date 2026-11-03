@@ -8,6 +8,8 @@
 #   cmdline-tools    13114758 (Android command-line tools: sdkmanager)
 #   platforms        android-34   (compileSdk = 34 in every module)
 #   build-tools      34.0.0       (the default for Android Gradle Plugin 8.7.2, gradle/libs.versions.toml)
+#   ndk              27.0.12077973 (AGP 8.7.2 default; native splat-sfm module, #225)
+#   cmake            3.22.1       (AGP 8.7.2 default)
 # Gradle itself (8.11.1) is fetched by ./gradlew, which checks distributionSha256Sum.
 FROM eclipse-temurin:21.0.13_9-jdk-noble@sha256:114cabb73033ca4ce7ceec3deb62396bc1b716282bae051ed3c1d82e38fcab2d
 
@@ -19,6 +21,8 @@ ARG CMDLINE_TOOLS_BUILD=13114758
 ARG CMDLINE_TOOLS_SHA256=7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee
 ARG ANDROID_PLATFORM=android-34
 ARG ANDROID_BUILD_TOOLS=34.0.0
+ARG ANDROID_NDK=27.0.12077973
+ARG ANDROID_CMAKE=3.22.1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     ANDROID_HOME=/opt/android-sdk \
@@ -54,7 +58,8 @@ RUN curl -fsSL -o /tmp/cmdline-tools.zip \
  && rm /tmp/cmdline-tools.zip \
  && (yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null) \
  && "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install \
-      "platforms;${ANDROID_PLATFORM}" "build-tools;${ANDROID_BUILD_TOOLS}" > /dev/null \
+      "platforms;${ANDROID_PLATFORM}" "build-tools;${ANDROID_BUILD_TOOLS}" \
+      "ndk;${ANDROID_NDK}" "cmake;${ANDROID_CMAKE}" > /dev/null \
  && "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --list_installed \
  && rm -rf /root/.android /tmp/*
 
