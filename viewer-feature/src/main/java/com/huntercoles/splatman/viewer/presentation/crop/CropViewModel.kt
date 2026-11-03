@@ -131,6 +131,11 @@ class CropViewModel @Inject constructor(
                 _uiState.value = CropUiState.Refused(box, selected, canRevert, CropMessage.EMPTY)
                 return@launch
             }
+            if (cropped.count == loaded.count) {
+                leave(canRevert)
+                _effects.send(CropEffect.NothingCut)
+                return@launch
+            }
             val kept = try {
                 withContext(io) {
                     store.apply(target, cropped)
@@ -160,6 +165,7 @@ class CropViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                _effects.send(CropEffect.RevertFailed)
                 return@launch
             }
             _uiState.value = CropUiState.Idle(offered = true, canRevert = kept)
@@ -171,7 +177,7 @@ class CropViewModel @Inject constructor(
         /** One In / Out tap, metres (docs/design/screens/crop.md: 1 cm). */
         const val NUDGE_STEP_METRES = 0.01f
 
-        /** The face selected on Enter. */
-        private val DEFAULT_FACE = BoxFace.Y_POS
+        /** The face selected on Enter: Bottom (docs/design/screens/crop.md). */
+        val DEFAULT_FACE = BoxFace.Y_NEG
     }
 }

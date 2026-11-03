@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled._360
+import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
@@ -72,8 +73,12 @@ import com.huntercoles.splatman.viewer.R
 import java.text.NumberFormat
 import java.util.Date
 
-/** The top bar on a top-down scrim: Back, the name (tap to rename), Details and the overflow menu. */
+/**
+ * The top bar on a top-down scrim: Back, the name (tap to rename), Details and the overflow menu (Rename, Revert crop
+ * while an original is kept, Delete, Open file).
+ */
 @Composable
+@Suppress("LongParameterList")
 internal fun ViewerTopBar(
     title: String,
     canEdit: Boolean,
@@ -84,6 +89,8 @@ internal fun ViewerTopBar(
     onDelete: () -> Unit,
     onOpenFile: () -> Unit,
     modifier: Modifier = Modifier,
+    canRevert: Boolean = false,
+    onRevert: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -123,6 +130,14 @@ internal fun ViewerTopBar(
                         text = { Text(stringResource(R.string.view_rename)) },
                         onClick = { menu = false; onRename() },
                     )
+                }
+                if (canRevert) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.crop_revert)) },
+                        onClick = { menu = false; onRevert() },
+                    )
+                }
+                if (canEdit) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.view_delete)) },
                         onClick = { menu = false; onDelete() },
@@ -137,8 +152,9 @@ internal fun ViewerTopBar(
     }
 }
 
-/** The bottom bar on a bottom-up scrim: Reset view, Auto-rotate, Stats, and Share. All fit at phone width. */
+/** The bottom bar on a bottom-up scrim: Reset view, Auto-rotate, Crop, Stats, and Share. All fit at phone width. */
 @Composable
+@Suppress("LongParameterList")
 internal fun ViewerBottomBar(
     autoRotate: Boolean,
     showStats: Boolean,
@@ -147,6 +163,8 @@ internal fun ViewerBottomBar(
     onStats: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
+    canCrop: Boolean = false,
+    onCrop: () -> Unit = {},
 ) {
     Row(
         modifier = modifier
@@ -164,6 +182,9 @@ internal fun ViewerBottomBar(
         }
         FilledIconToggleButton(checked = autoRotate, onCheckedChange = { onAutoRotate() }) {
             Icon(Icons.Default._360, contentDescription = stringResource(R.string.view_autorotate))
+        }
+        IconButton(onClick = onCrop, enabled = canCrop) {
+            Icon(Icons.Rounded.Crop, contentDescription = stringResource(R.string.crop_action))
         }
         IconToggleButton(checked = showStats, onCheckedChange = { onStats() }) {
             Icon(Icons.Default.Speed, contentDescription = stringResource(R.string.view_stats))
@@ -281,6 +302,24 @@ internal fun RenameScanDialog(
         },
         dismissButton = {
             TextButton(onClick = onCancel) { Text(stringResource(R.string.view_cancel)) }
+        },
+    )
+}
+
+/** Revert crop confirm (docs/design/screens/crop.md): Cancel and Revert (`primary`). */
+@Composable
+internal fun RevertCropDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.crop_revert_title)) },
+        text = { Text(stringResource(R.string.crop_revert_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.crop_revert_confirm), color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.crop_cancel)) }
         },
     )
 }

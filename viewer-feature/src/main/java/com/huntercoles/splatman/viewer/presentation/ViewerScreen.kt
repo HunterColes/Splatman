@@ -4,7 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.opengl.GLSurfaceView
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import android.view.accessibility.AccessibilityManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +87,11 @@ import com.huntercoles.splatman.viewer.R
 import com.huntercoles.splatman.viewer.export.ExportIntent
 import com.huntercoles.splatman.viewer.export.ExportSheet
 import com.huntercoles.splatman.viewer.export.ExportViewModel
+import com.huntercoles.splatman.viewer.presentation.crop.CropEffect
+import com.huntercoles.splatman.viewer.presentation.crop.CropIntent
+import com.huntercoles.splatman.viewer.presentation.crop.CropOverlay
+import com.huntercoles.splatman.viewer.presentation.crop.CropUiState
+import com.huntercoles.splatman.viewer.presentation.crop.CropViewModel
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
@@ -99,15 +108,24 @@ import kotlin.math.max
  * on scrims. One finger orbits, two pan and pinch, a double tap eases back to the initial view, a fling keeps
  * turning and a single tap hides the chrome (not while TalkBack is on). Every gesture also has a button: Reset and
  * Auto-rotate in the bottom bar, TalkBack custom actions on the render, and arrow, `+`/`-` and `0` keys.
+ *
+ * Crop mode ([CropViewModel], docs/design/screens/crop.md) replaces the bars with [CropOverlay]; an Apply or a Revert
+ * reloads the source through Loading with the camera kept, then shows its snackbar.
  */
 @Composable
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 fun ViewerScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ViewerViewModel = hiltViewModel(),
     exportViewModel: ExportViewModel = hiltViewModel(),
+    cropViewModel: CropViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val crop by cropViewModel.uiState.collectAsStateWithLifecycle()
+    val cropping = crop !is CropUiState.Idle
+    val context = LocalContext.current
+    val view = LocalView.current
     val camera = remember { GaussianCameraController() }
     val renderer = remember { SplatRenderer(camera) }
     val stats by renderer.stats.collectAsStateWithLifecycle()
@@ -125,16 +143,56 @@ fun ViewerScreen(
 
     val load = state.load
     val loaded = (load as? ViewerLoad.Loaded)?.scene
+    // A crop reload keeps the camera where it is; read now, before ReloadShown clears it.
+    val keepPose = state.reloaded != null
     LaunchedEffect(loaded) {
         exportViewModel.setScene(loaded?.name, loaded?.cloud)
-        if (loaded != null) frame(camera, loaded, size)
+        if (loaded != null && !keepPose) frame(camera, loaded, size)
         renderer.setScene(loaded?.render)
+    }
+
+    var reloadReason by rememberSaveable { mutableStateOf(ViewerReload.CROPPED) }
+    var confirmRevert by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(viewModel, cropViewModel) {
+        viewModel.ready.collect { cropViewModel.onIntent(CropIntent.SourceReady(it)) }
+    }
+    LaunchedEffect(cropViewModel) {
+        cropViewModel.effects.collect { effect ->
+            when (effect) {
+                CropEffect.ReloadSource -> viewModel.onIntent(ViewerIntent.Reload(reloadReason))
+                CropEffect.NothingCut -> scope.launch { snackbar.showSnackbar(context.getString(R.string.crop_nothing)) }
+                CropEffect.RevertFailed ->
+                    scope.launch { snackbar.showSnackbar(context.getString(R.string.crop_revert_error)) }
+            }
+        }
+    }
+    val reloaded = state.reloaded
+    LaunchedEffect(reloaded, loaded) {
+        if (reloaded == null || loaded == null) return@LaunchedEffect
+        viewModel.onIntent(ViewerIntent.ReloadShown)
+        val text = if (reloaded == ViewerReload.CROPPED) {
+            if (viewModel.haptics) view.confirm()
+            context.getString(R.string.crop_done, NumberFormat.getIntegerInstance().format(loaded.count))
+        } else {
+            context.getString(R.string.crop_reverted)
+        }
+        scope.launch { snackbar.showSnackbar(text) }
+    }
+    val cropBox = when (val c = crop) {
+        is CropUiState.Editing -> c.box
+        is CropUiState.Applying -> c.box
+        is CropUiState.Refused -> c.box
+        is CropUiState.Idle -> null
+    }
+    LaunchedEffect(cropBox) { renderer.setCropBox(cropBox) }
+    BackHandler(enabled = cropping) {
+        if (crop !is CropUiState.Applying) cropViewModel.onIntent(CropIntent.Cancel)
     }
     LaunchedEffect(state.autoRotate) { synchronized(camera) { camera.autoRotate = state.autoRotate } }
     LaunchedEffect(state.closed) { if (state.closed) onBack() }
 
-    val chromeShown = state.chromeVisible || talkBack || loaded == null
-    ImmersiveWhileHidden(hidden = !chromeShown)
+    val chromeShown = (state.chromeVisible || talkBack || loaded == null) && !cropping
+    ImmersiveWhileHidden(hidden = !chromeShown && !cropping)
     val reset = { synchronized(camera) { camera.resetToInitial(animated = resetMs > 0) } }
 
     Box(
@@ -149,9 +207,10 @@ fun ViewerScreen(
                 camera = camera,
                 scene = loaded,
                 title = state.title,
+                cropping = cropping,
                 onTap = {
                     viewModel.onIntent(ViewerIntent.DismissHint)
-                    if (!talkBack) viewModel.onIntent(ViewerIntent.ToggleChrome)
+                    if (!talkBack && !cropping) viewModel.onIntent(ViewerIntent.ToggleChrome)
                 },
                 onDoubleTap = {
                     viewModel.onIntent(ViewerIntent.DismissHint)
@@ -171,7 +230,11 @@ fun ViewerScreen(
             ) {
                 CircularProgressIndicator()
                 Text(
-                    text = stringResource(R.string.view_loading, load.source.name),
+                    text = if (load.reload == ViewerReload.REVERTED) {
+                        stringResource(R.string.crop_reverting)
+                    } else {
+                        stringResource(R.string.view_loading, load.source.name)
+                    },
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
                 )
@@ -201,6 +264,8 @@ fun ViewerScreen(
                     onDetails = { viewModel.onIntent(ViewerIntent.ShowDetails) },
                     onDelete = { viewModel.onIntent(ViewerIntent.AskDelete) },
                     onOpenFile = { picker.launch(arrayOf("*/*")) },
+                    canRevert = (crop as? CropUiState.Idle)?.canRevert == true,
+                    onRevert = { confirmRevert = true },
                 )
                 val current = stats
                 if (state.showStats && loaded != null && current != null) {
@@ -220,7 +285,7 @@ fun ViewerScreen(
         if (loaded != null) {
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 SnackbarHost(snackbar, modifier = Modifier.align(Alignment.CenterHorizontally))
-                if (state.showHint) {
+                if (state.showHint && !cropping) {
                     GestureHint(onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) })
                 }
                 AnimatedVisibility(
@@ -235,10 +300,38 @@ fun ViewerScreen(
                         onAutoRotate = { viewModel.onIntent(ViewerIntent.ToggleAutoRotate) },
                         onStats = { viewModel.onIntent(ViewerIntent.ToggleStats) },
                         onShare = { exportViewModel.onIntent(ExportIntent.Show) },
+                        canCrop = (crop as? CropUiState.Idle)?.offered == true,
+                        onCrop = {
+                            viewModel.onIntent(ViewerIntent.EnterCrop)
+                            cropViewModel.onIntent(CropIntent.Enter(loaded.cloud))
+                        },
                     )
                 }
             }
+            if (cropping) {
+                CropOverlay(
+                    state = crop,
+                    cloud = loaded.cloud,
+                    camera = camera,
+                    haptics = viewModel.haptics,
+                    onIntent = cropViewModel::onIntent,
+                    onApply = {
+                        reloadReason = ViewerReload.CROPPED
+                        cropViewModel.onIntent(CropIntent.Apply)
+                    },
+                )
+            }
         }
+    }
+    if (confirmRevert) {
+        RevertCropDialog(
+            onConfirm = {
+                confirmRevert = false
+                reloadReason = ViewerReload.REVERTED
+                cropViewModel.onIntent(CropIntent.Revert)
+            },
+            onCancel = { confirmRevert = false },
+        )
     }
 
     val details = state.details
@@ -282,6 +375,7 @@ private fun GestureLayer(
     camera: GaussianCameraController,
     scene: LoadedScene,
     title: String,
+    cropping: Boolean,
     onTap: () -> Unit,
     onDoubleTap: () -> Unit,
     onGesture: () -> Unit,
@@ -294,11 +388,11 @@ private fun GestureLayer(
     val focus = remember { FocusRequester() }
     LaunchedEffect(scene) { runCatching { focus.requestFocus() } }
 
-    val description = stringResource(
-        R.string.view_a11y_render,
-        title,
-        NumberFormat.getIntegerInstance().format(scene.count),
-    )
+    val description = if (cropping) {
+        stringResource(R.string.crop_render_desc, title)
+    } else {
+        stringResource(R.string.view_a11y_render, title, NumberFormat.getIntegerInstance().format(scene.count))
+    }
     val actions = listOf(
         stringResource(R.string.view_a11y_rotate_left) to { orbit(camera, -1, 0) },
         stringResource(R.string.view_a11y_rotate_right) to { orbit(camera, 1, 0) },
@@ -467,6 +561,12 @@ private fun ImmersiveWhileHidden(hidden: Boolean) {
         if (hidden) controller.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { controller.show(WindowInsetsCompat.Type.systemBars()) }
     }
+}
+
+private fun android.view.View.confirm() {
+    performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.LONG_PRESS,
+    )
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

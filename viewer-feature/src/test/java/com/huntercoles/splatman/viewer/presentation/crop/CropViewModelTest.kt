@@ -48,6 +48,7 @@ class CropViewModelTest {
         val asked = mutableListOf<SplatSource>()
         var gate: CompletableDeferred<Unit>? = null
         var failApply: Throwable? = null
+        var failRevert: Throwable? = null
 
         override suspend fun apply(source: SplatSource, cloud: SplatCloud) {
             applied += source to cloud
@@ -58,6 +59,7 @@ class CropViewModelTest {
 
         override suspend fun revert(source: SplatSource) {
             reverted += source
+            failRevert?.let { throw it }
             original = false
         }
 
@@ -227,7 +229,8 @@ class CropViewModelTest {
     fun `A3 intents are ignored while applying`() = test {
         val store = FakeCropStore().apply { gate = CompletableDeferred() }
         val vm = entered(store)
-        vm.onIntent(CropIntent.MoveFace(BoxFace.Y_NEG, 0.2f))
+        // Move the face in, so the crop cuts something (a crop that keeps every splat writes nothing, #186).
+        vm.onIntent(CropIntent.MoveFace(BoxFace.Y_NEG, -0.2f))
         advanceUntilIdle()
         val box = editing(vm).box
 
@@ -379,6 +382,44 @@ class CropViewModelTest {
         vm.onIntent(CropIntent.Nudge(BoxFace.X_POS, out = true))
         advanceUntilIdle()
         assertEquals(box.moveFace(BoxFace.X_POS, CropViewModel.NUDGE_STEP_METRES), editing(vm).box)
+    }
+
+    @Test
+    fun `#186 Enter selects the Bottom face`() = test {
+        val vm = entered(FakeCropStore())
+
+        assertEquals(BoxFace.Y_NEG, editing(vm).selected)
+    }
+
+    @Test
+    fun `#186 an Apply that keeps every splat writes nothing, leaves crop mode and says crop_nothing`() = test {
+        val store = FakeCropStore()
+        val vm = entered(store)
+        val effects = effectsOf(vm)
+        BoxFace.entries.forEach { vm.onIntent(CropIntent.MoveFace(it, 0.5f)) }
+        advanceUntilIdle()
+
+        vm.onIntent(CropIntent.Apply)
+        advanceUntilIdle()
+
+        assertTrue(store.applied.isEmpty())
+        assertEquals(listOf(CropEffect.NothingCut), effects)
+        assertEquals(CropUiState.Idle(offered = true, canRevert = false), vm.uiState.value)
+    }
+
+    @Test
+    fun `#186 a failed Revert keeps the splat and says crop_revert_error`() = test {
+        val store = FakeCropStore(original = true).apply { failRevert = IOException("busy") }
+        val vm = viewModel(store)
+        val effects = effectsOf(vm)
+        vm.onIntent(CropIntent.SourceReady(scan))
+        advanceUntilIdle()
+
+        vm.onIntent(CropIntent.Revert)
+        advanceUntilIdle()
+
+        assertEquals(listOf(CropEffect.RevertFailed), effects)
+        assertEquals(CropUiState.Idle(offered = true, canRevert = true), vm.uiState.value)
     }
 
     private companion object {

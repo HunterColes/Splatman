@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import com.huntercoles.splatman.core.preferences.PreferenceStore
+import com.huntercoles.splatman.core.preferences.SettingsPreferences
 import com.huntercoles.splatman.core.utils.MainDispatcherExtension
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatFileException
@@ -17,8 +19,10 @@ import com.huntercoles.splatman.viewer.rendering.gl.SceneFraming
 import com.huntercoles.splatman.viewer.rendering.pack.SplatPacker
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -57,8 +61,8 @@ class ViewerViewModelTest {
         }
     }
 
-    private fun scene(name: String): LoadedScene {
-        val cloud = TestClouds.cloud(3)
+    private fun scene(name: String, count: Int = 3): LoadedScene {
+        val cloud = TestClouds.cloud(count)
         val framing = SceneFraming.of(cloud.positions, cloud.count, 60f)
         return LoadedScene(
             name, SplatFormat.PLY, cloud, RenderScene(SplatPacker().pack(cloud), cloud.positions, framing.radius),
@@ -88,6 +92,20 @@ class ViewerViewModelTest {
         }
     }
 
+    private class MapStore : PreferenceStore {
+        private val values = mutableMapOf<String, Any>()
+        override fun getBoolean(key: String, default: Boolean): Boolean = values[key] as? Boolean ?: default
+        override fun putBoolean(key: String, value: Boolean) {
+            values[key] = value
+        }
+        override fun getString(key: String): String? = values[key] as? String
+        override fun putString(key: String, value: String) {
+            values[key] = value
+        }
+    }
+
+    private val settings = SettingsPreferences(MapStore())
+
     private fun viewModel(
         loader: SplatLoader,
         scanId: String? = null,
@@ -97,7 +115,7 @@ class ViewerViewModelTest {
         val args = SavedStateHandle(if (scanId == null) emptyMap() else mapOf(ViewerViewModel.ARG_SCAN_ID to scanId))
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = ViewerViewModel(loader, scans, hints, args) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = ViewerViewModel(loader, scans, hints, settings, args) as T
         }
         return ViewModelProvider(store, factory)[ViewerViewModel::class.java]
     }
@@ -425,5 +443,74 @@ class ViewerViewModelTest {
         assertTrue(vm.uiState.value.showDetails)
         vm.onIntent(ViewerIntent.HideDetails)
         assertFalse(vm.uiState.value.showDetails)
+    }
+
+    @Test
+    fun `#186 a crop reload reopens the source through Loading, keeps the title and the info sheet shows the new count`() =
+        test {
+            val scans = FakeScans(mutableMapOf(scanId to record))
+            var count = 3
+            val vm = viewModel(FakeLoader(mapOf(scanSource to { scene(scanId, count) })), scanId, scans)
+            advanceUntilIdle()
+            assertEquals(null, vm.uiState.value.reloaded)
+
+            // The crop store rewrote splat.ply and the Library recounted it.
+            count = 2
+            scans.rows[scanId] = record.copy(sizeBytes = 600)
+            vm.onIntent(ViewerIntent.Reload(ViewerReload.CROPPED))
+
+            assertEquals(ViewerLoad.Loading(scanSource, ViewerReload.CROPPED), vm.uiState.value.load)
+            assertEquals("Desk plant", vm.uiState.value.title)
+            advanceUntilIdle()
+            val state = vm.uiState.value
+            assertEquals(ViewerReload.CROPPED, state.reloaded)
+            assertEquals(2, (state.load as ViewerLoad.Loaded).scene.count)
+            assertEquals(ViewerDetails("Desk plant", 1_700_000_000_000, 2, 600, 42, SplatFormat.PLY), state.details)
+
+            vm.onIntent(ViewerIntent.ReloadShown)
+            assertEquals(null, vm.uiState.value.reloaded)
+        }
+
+    @Test
+    fun `#186 a revert reload is marked so the screen shows crop_reverting`() = test {
+        val vm = loadedScan()
+        vm.onIntent(ViewerIntent.Reload(ViewerReload.REVERTED))
+        assertEquals(ViewerLoad.Loading(scanSource, ViewerReload.REVERTED), vm.uiState.value.load)
+        advanceUntilIdle()
+        assertEquals(ViewerReload.REVERTED, vm.uiState.value.reloaded)
+    }
+
+    @Test
+    fun `#186 every load that reaches Ready is told once, failures are not`() = test {
+        val doc = SplatSource.Document("content://gone/9")
+        val vm = viewModel(
+            FakeLoader(mapOf(scanSource to { scene(scanId) }, doc to { throw FileNotFoundException("gone") })),
+            scanId,
+        )
+        val ready = mutableListOf<SplatSource>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ready.collect { ready += it } }
+        advanceUntilIdle()
+        vm.onIntent(ViewerIntent.Reload(ViewerReload.CROPPED))
+        advanceUntilIdle()
+        vm.onIntent(ViewerIntent.Open(doc))
+        advanceUntilIdle()
+        assertEquals(listOf<SplatSource>(scanSource, scanSource), ready)
+    }
+
+    @Test
+    fun `#186 entering crop stops auto-rotate, dismisses the hint and shows the chrome`() = test {
+        val hints = FakeHints()
+        val vm = loadedScan(hints = hints)
+        vm.onIntent(ViewerIntent.ToggleAutoRotate)
+        vm.onIntent(ViewerIntent.ToggleChrome)
+        assertTrue(vm.uiState.value.showHint)
+
+        vm.onIntent(ViewerIntent.EnterCrop)
+
+        val state = vm.uiState.value
+        assertFalse(state.autoRotate)
+        assertFalse(state.showHint)
+        assertTrue(state.chromeVisible)
+        assertTrue(hints.hintSeen)
     }
 }

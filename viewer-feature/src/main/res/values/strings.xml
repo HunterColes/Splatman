@@ -69,4 +69,45 @@
     </plurals>
     <string name="exp_error">Couldn\'t write the file. Check free space and try again.</string>
     <string name="exp_low_storage">Needs %1$s free. You have %2$s.</string>
+
+    <!-- Crop mode (docs/design/copy.md#crop) -->
+    <string name="crop_action">Crop</string>
+    <string name="crop_title">Crop</string>
+    <string name="crop_hint">Drag a dot to move a side. The dim part gets cut.</string>
+    <string name="crop_size">%1$s × %2$s × %3$s</string>
+    <string name="crop_size_desc">Box %1$s wide, %2$s deep, %3$s tall</string>
+    <string name="crop_face_picker">Side to move</string>
+    <string name="crop_face_top">Top</string>
+    <string name="crop_face_bottom">Bottom</string>
+    <string name="crop_face_front">Front</string>
+    <string name="crop_face_back">Back</string>
+    <string name="crop_face_left">Left</string>
+    <string name="crop_face_right">Right</string>
+    <string name="crop_face_top_desc">Top face</string>
+    <string name="crop_face_bottom_desc">Bottom face</string>
+    <string name="crop_face_front_desc">Front face</string>
+    <string name="crop_face_back_desc">Back face</string>
+    <string name="crop_face_left_desc">Left face</string>
+    <string name="crop_face_right_desc">Right face</string>
+    <string name="crop_in">In</string>
+    <string name="crop_out">Out</string>
+    <string name="crop_in_desc">Move %1$s in 1 cm</string>
+    <string name="crop_out_desc">Move %1$s out 1 cm</string>
+    <string name="crop_limit">This side can\'t move further</string>
+    <string name="crop_reset">Reset box</string>
+    <string name="crop_cancel">Cancel</string>
+    <string name="crop_apply">Apply</string>
+    <string name="crop_render_desc">3D view of %1$s with a crop box</string>
+    <string name="crop_applying">Cropping…</string>
+    <string name="crop_empty">Nothing is inside the box. Make it bigger and try again.</string>
+    <string name="crop_nothing">Everything is inside the box, so nothing was cut.</string>
+    <string name="crop_error">Couldn\'t save the crop. Check free space and try again.</string>
+    <string name="crop_done">Cropped. %1$s splats left</string>
+    <string name="crop_revert">Revert crop</string>
+    <string name="crop_revert_title">Go back to the original?</string>
+    <string name="crop_revert_body">This undoes every crop on this scan, not just the last one.</string>
+    <string name="crop_revert_confirm">Revert</string>
+    <string name="crop_reverting">Restoring the original…</string>
+    <string name="crop_reverted">Original restored</string>
+    <string name="crop_revert_error">Couldn\'t restore the original. Try again.</string>
 </resources>

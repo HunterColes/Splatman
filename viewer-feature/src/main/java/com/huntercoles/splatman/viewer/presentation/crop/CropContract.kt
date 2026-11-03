@@ -59,4 +59,10 @@ sealed interface CropUiState {
 sealed interface CropEffect {
     /** A crop was applied or reverted: reload the source through the Viewer's Loading state. */
     data object ReloadSource : CropEffect
+
+    /** Apply kept every splat: nothing was written and crop mode closed (`crop_nothing`). */
+    data object NothingCut : CropEffect
+
+    /** Revert failed: the current splat stays (`crop_revert_error`). */
+    data object RevertFailed : CropEffect
 }

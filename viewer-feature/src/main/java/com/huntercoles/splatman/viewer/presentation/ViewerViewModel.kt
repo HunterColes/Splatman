@@ -3,6 +3,7 @@ package com.huntercoles.splatman.viewer.presentation
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huntercoles.splatman.core.preferences.SettingsPreferences
 import com.huntercoles.splatman.splat.io.SplatFormat
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatFileException
@@ -12,9 +13,12 @@ import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -24,12 +28,16 @@ import javax.inject.Inject
 /** What the viewer is showing. */
 sealed interface ViewerLoad {
     data object Idle : ViewerLoad
-    data class Loading(val source: SplatSource) : ViewerLoad
+    /** [reload]: a crop changed the source's file; the camera keeps its pose (docs/design/screens/crop.md). */
+    data class Loading(val source: SplatSource, val reload: ViewerReload? = null) : ViewerLoad
     class Loaded(val scene: LoadedScene) : ViewerLoad
 
     /** [outOfMemory]: the file was too big for this phone (`view_error_memory`). */
     data class Failed(val source: SplatSource, val message: String, val outOfMemory: Boolean = false) : ViewerLoad
 }
+
+/** Why the Viewer reopens its source: a crop was applied (`crop_done`) or reverted (`crop_reverting`). */
+enum class ViewerReload { CROPPED, REVERTED }
 
 /** The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). */
 data class ViewerDetails(
@@ -64,6 +72,10 @@ data class ViewerUiState(
     val confirmDelete: Boolean = false,
     /** The scan was deleted: the screen goes back to the Library. */
     val closed: Boolean = false,
+    /** What is open (or opening). */
+    val source: SplatSource? = null,
+    /** A crop reload just reached Ready: keep the camera, show its snackbar, then send [ViewerIntent.ReloadShown]. */
+    val reloaded: ViewerReload? = null,
 )
 
 sealed interface ViewerIntent {
@@ -82,6 +94,15 @@ sealed interface ViewerIntent {
     data object AskDelete : ViewerIntent
     data object CancelDelete : ViewerIntent
     data object ConfirmDelete : ViewerIntent
+
+    /** Crop mode opens: auto-rotate stops (and stays off), the hint goes, the chrome shows. */
+    data object EnterCrop : ViewerIntent
+
+    /** A crop changed the source's file: open it again through Loading, keeping the camera. */
+    data class Reload(val reason: ViewerReload) : ViewerIntent
+
+    /** The screen showed [ViewerUiState.reloaded]. */
+    data object ReloadShown : ViewerIntent
 }
 
 /**
@@ -95,11 +116,20 @@ class ViewerViewModel @Inject constructor(
     private val loader: SplatLoader,
     private val scans: ViewerScanStore,
     private val hints: ViewerHintStore,
+    private val settings: SettingsPreferences,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewerUiState())
     val uiState: StateFlow<ViewerUiState> = _uiState.asStateFlow()
+
+    private val _ready = Channel<SplatSource>(Channel.CONFLATED)
+
+    /** Each source that reached Ready, once (crop mode reads `canRevert` from it; a rotation does not repeat it). */
+    val ready: Flow<SplatSource> = _ready.receiveAsFlow()
+
+    /** Settings > Haptics. */
+    val haptics: Boolean get() = settings.haptics.value
 
     private var loadJob: Job? = null
     private var lastSource: SplatSource? = null
@@ -130,6 +160,9 @@ class ViewerViewModel @Inject constructor(
             ViewerIntent.AskDelete -> _uiState.update { it.copy(confirmDelete = it.canEdit) }
             ViewerIntent.CancelDelete -> _uiState.update { it.copy(confirmDelete = false) }
             ViewerIntent.ConfirmDelete -> confirmDelete()
+            ViewerIntent.EnterCrop -> enterCrop()
+            is ViewerIntent.Reload -> lastSource?.let { open(it, intent.reason) }
+            ViewerIntent.ReloadShown -> _uiState.update { it.copy(reloaded = null) }
         }
     }
 
@@ -137,6 +170,11 @@ class ViewerViewModel @Inject constructor(
         if (!_uiState.value.showHint) return
         hints.markHintSeen()
         _uiState.update { it.copy(showHint = false) }
+    }
+
+    private fun enterCrop() {
+        dismissHint()
+        _uiState.update { it.copy(autoRotate = false, chromeVisible = true, showDetails = false) }
     }
 
     private fun saveRename() {
@@ -173,13 +211,15 @@ class ViewerViewModel @Inject constructor(
         }
     }
 
-    private fun open(source: SplatSource) {
+    private fun open(source: SplatSource, reload: ViewerReload? = null) {
         loadJob?.cancel()
         lastSource = source
         _uiState.update {
             it.copy(
-                load = ViewerLoad.Loading(source),
-                title = source.name,
+                load = ViewerLoad.Loading(source, reload),
+                title = if (reload != null) it.title else source.name,
+                source = source,
+                reloaded = null,
                 canEdit = false,
                 details = null,
                 showDetails = false,
@@ -208,7 +248,8 @@ class ViewerViewModel @Inject constructor(
                 ViewerLoad.Failed(source, "Not enough memory to open this file.", outOfMemory = true)
             }
             val record = if (next is ViewerLoad.Loaded && source is SplatSource.Scan) record(source.scanId) else null
-            _uiState.update { it.mapLoad(source, next, record) }
+            _uiState.update { it.mapLoad(source, next, record, reload) }
+            if (next is ViewerLoad.Loaded) _ready.send(source)
         }
     }
 
@@ -221,7 +262,12 @@ class ViewerViewModel @Inject constructor(
         null
     }
 
-    private fun ViewerUiState.mapLoad(source: SplatSource, next: ViewerLoad, record: ScanRecord?): ViewerUiState {
+    private fun ViewerUiState.mapLoad(
+        source: SplatSource,
+        next: ViewerLoad,
+        record: ScanRecord?,
+        reload: ViewerReload?,
+    ): ViewerUiState {
         if (next !is ViewerLoad.Loaded) return copy(load = next, title = source.name)
         val scene = next.scene
         val name = record?.name ?: scene.name
@@ -238,6 +284,7 @@ class ViewerViewModel @Inject constructor(
                 format = scene.format,
             ),
             showHint = !hints.hintSeen,
+            reloaded = reload,
         )
     }
 
