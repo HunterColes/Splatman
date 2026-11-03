@@ -61,6 +61,10 @@
     <string name="cap_status_tracking">Tracking</string>
     <string name="cap_status_limited">Tracking: limited</string>
     <string name="cap_status_lost">Lost track</string>
+    <string name="cap_status_ready">Ready</string>
+    <string name="cap_status_recording">Recording</string>
+    <string name="cap_pf_aim">Point at what you want to scan, then tap Start</string>
+    <string name="cap_pf_aim_hint">Camera positions are worked out after the scan, not during it</string>
     <string name="cap_start_capture">Start capture</string>
     <string name="cap_pause_capture">Pause capture</string>
     <string name="cap_resume_capture">Resume capture</string>

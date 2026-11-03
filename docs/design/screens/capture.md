@@ -65,6 +65,30 @@ Wide (600 dp+, tablets): same layout, ring 136 dp, controls in a column along th
 warning never replaces a higher one before `GuidanceMinShow`; the same warning waits `GuidanceCooldown` before it
 can show again.
 
+## Pose-free mode (foss build, #219)
+
+The F-Droid build has no ARCore; it records frames, `imu.csv` and `calibration.json` without poses (PoseFreeRecorder,
+ADR 0007) and Processing builds camera positions later. Same layout, tokens and controls as above; only these differ:
+
+| Part | Pose-free |
+|---|---|
+| Phases | Checking while the recorder opens; Permission, Failed (`capture_failed` + Try again) as above. Unsupported only when the phone has no back camera the recorder can open (foss `ar_unsupported_*`: no usable camera). Never Install needed or Couldn't check |
+| Stages | Starting → Aim → Capturing ⇄ Paused → Finishing. No Finding surfaces: the camera is ready as soon as frames arrive |
+| Status pill | Starting (`tertiary`), Ready `cap_status_ready` (`secondary`) before recording, Recording `cap_status_recording` (`RecordRed` dot) while recording, Paused as above. Never Tracking, Tracking: limited or Lost track |
+| Reticle | none, and the preview takes no taps (no subject: the whole frame is the scan) |
+| Aim | `cap_pf_aim` with `cap_pf_aim_hint` as the second line (dropped at 200% font like `cap_aim_hint`) |
+| Capturing | the same `cap_walk` → `cap_go_higher` → `cap_go_lower` sequence and ring, from gyro coverage (yaw from the first frame, bands from gravity). The `primary` facing tick follows the gyro |
+| Warnings | only Too dark (`cap_warn_dark`) and Slow down (`cap_warn_fast`: fast turn or two blurred frames running); Too dark > Slow down. Never Lost track, Too close, Too far. Shown while recording, as above |
+| Finish | enabled as soon as a recording runs (Capturing or Paused): tonal until coverage is ready, then `primary` filled with the `CONFIRM` haptic and `cap_ready`. Coverage guides here, it does not gate (a tripod or the emulator never fills the ring) |
+| Finish with no frames | back to Aim with `capture_nothing_recorded` as the instruction; nothing saved, no navigation |
+| Saved | to Processing, which shows its Needs poses state (`proc_needs_poses_*`) |
+
+Background mid-recording pauses frames and sensors (the recorder's `setForeground`) and keeps the recording; back in
+front it carries on with the same pill and counts, and the capture time leaves out the time away. Portrait-locked as
+above, so rotating the phone changes nothing on screen.
+
+![Pose-free capture recording on the emulator's virtual back camera (fossDebug)](img/capture-pose-free-recording.png)
+
 ## Accessibility
 
 All warnings are text plus haptic plus announcement; none rely on colour or sound. The ring has a content

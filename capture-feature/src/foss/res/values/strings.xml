@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The `foss` (F-Droid) build has no tracker (ADR 0004): capture and onboarding explain that, not a phone limit. -->
+<!-- The `foss` (F-Droid) build has no ARCore (ADR 0004) and scans pose-free instead (#219). Capture says "unsupported"
+     only when the phone has no back camera the pose-free recorder can open; then this replaces the ARCore wording. -->
 <resources>
-    <string name="ar_unsupported_title">Scanning isn\'t in this version</string>
-    <string name="ar_unsupported_body">This free (F-Droid) build leaves out Google\'s ARCore, which scanning needs to track the camera. You can still open, view and export splat files.</string>
+    <string name="ar_unsupported_title">This phone has no camera Splatman can scan with</string>
+    <string name="ar_unsupported_body">Scanning needs a back camera. You can still open, view and export splat files.</string>
 </resources>

@@ -75,8 +75,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val PREVIEW_DETACH_TIMEOUT_MS = 1_000L
 
 /**
- * The capture route (docs/design/screens/capture.md): live ARCore camera full screen with the guidance overlay
- * ([CaptureOverlay]), or the reason it cannot run (permission, unsupported, install needed, failure). Always dark and
+ * The capture route (docs/design/screens/capture.md): live camera full screen (ARCore, or the pose-free recorder in
+ * the foss build) with the guidance overlay ([CaptureOverlay]), or the reason it cannot run (permission, unsupported,
+ * install needed, failure). Always dark and
  * portrait-locked while shown. Close and system Back go through the view model (it asks before discarding frames);
  * a saved scan goes to [onScanSaved] (its id), which opens Processing.
  */
@@ -167,13 +168,19 @@ private fun CaptureContent(
                     onTarget = { target -> attachPreview(viewModel, target) },
                     modifier = Modifier.fillMaxSize(),
                 )
+                // Pose-free (foss): no subject tap, so the preview takes no taps at all (no ripple, no TalkBack action).
+                val taps = if (state.poseFree) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(viewModel) {
+                        detectTapGestures { viewModel.onIntent(CaptureIntent.Tap(it.x, it.y)) }
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .onSizeChanged { viewModel.onIntent(CaptureIntent.ViewSize(it.width, it.height)) }
-                        .pointerInput(viewModel) {
-                            detectTapGestures { viewModel.onIntent(CaptureIntent.Tap(it.x, it.y)) }
-                        },
+                        .then(taps),
                 )
                 CaptureOverlay(state, fontScale, viewModel::onIntent, onHelp = { help = true })
             }

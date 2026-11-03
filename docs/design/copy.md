@@ -28,6 +28,8 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `onb_start` | Start scanning |
 | `ar_unsupported_title` | This phone can't track motion |
 | `ar_unsupported_body` | Scanning needs ARCore, which this phone doesn't support. You can still open and view splat files. |
+| `ar_unsupported_title` (foss) | This phone has no camera Splatman can scan with |
+| `ar_unsupported_body` (foss) | Scanning needs a back camera. You can still open, view and export splat files. |
 | `ar_install_title` | ARCore is not installed (needs Google Play) |
 | `ar_install_body` | Scanning needs Google Play Services for AR. It's free and works offline once installed. |
 | `ar_install_action` | Install |
@@ -89,6 +91,10 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `cap_status_tracking` | Tracking | status pill |
 | `cap_status_limited` | Tracking: limited | status pill |
 | `cap_status_lost` | Lost track | status pill |
+| `cap_status_ready` | Ready | status pill, pose-free, camera open, not recording |
+| `cap_status_recording` | Recording | status pill, pose-free, recording |
+| `cap_pf_aim` | Point at what you want to scan, then tap Start | pose-free Aim (no subject tap) |
+| `cap_pf_aim_hint` | Camera positions are worked out after the scan, not during it | pose-free Aim, second line |
 | `cap_start_capture` | Start capture | capture button description |
 | `cap_pause_capture` | Pause capture | capture button description |
 | `cap_resume_capture` | Resume capture | capture button description |

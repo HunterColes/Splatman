@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** The `foss` flavour (ADR 0004, F-Droid): no ARCore on the classpath, and capture explains instead of tracking. */
+/** The `foss` flavour (ADR 0004, F-Droid): no ARCore on the classpath; capture records pose-free wherever there is a back camera. */
 class FossTrackingTest {
     @Test
     fun noArCoreClassIsOnTheFossClasspath() {
@@ -30,7 +30,29 @@ class FossTrackingTest {
     }
 
     @Test
-    fun captureStartsIntoTheUnsupportedExplanation() = runTest {
+    fun poseFreeCaptureIsSupportedWithABackCamera() = runTest {
+        assertEquals(
+            TrackingCheck(TrackingAvailability.SUPPORTED, PoseFreeSupport.AVAILABLE),
+            PoseFreeSupport { true }.check(),
+        )
+    }
+
+    @Test
+    fun poseFreeCaptureIsUnsupportedOnlyWithoutABackCamera() = runTest {
+        val answer = PoseFreeSupport { false }.check()
+        assertEquals(TrackingCheck(TrackingAvailability.UNSUPPORTED, PoseFreeSupport.NO_CAMERA), answer)
+        assertEquals(
+            CapturePhase.Unsupported(PoseFreeSupport.NO_CAMERA),
+            capturePhase(
+                PoseSourceStatus.Unavailable(answer.availability, answer.reason),
+                permissionDenied = false,
+                hint = TrackingHint.TRACKING,
+            ),
+        )
+    }
+
+    @Test
+    fun theStubTrackerStartsIntoUnavailable() = runTest {
         val tracker = UnavailableCaptureTracker(UnavailablePoseSource())
         assertEquals(PoseSourceStatus.Idle, tracker.status.value)
 

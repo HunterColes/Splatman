@@ -56,8 +56,11 @@ sealed interface CaptureIntent {
 /** Where the live capture is (docs/design/screens/capture.md, States). */
 enum class CaptureStage { STARTING, FINDING_SURFACES, AIM, CAPTURING, PAUSED, FINISHING }
 
-/** The status pill at the top. */
-enum class StatusPill { STARTING, TRACKING, LIMITED, LOST, PAUSED }
+/**
+ * The status pill at the top. TRACKING, LIMITED and LOST are ARCore's; a pose-free capture (foss) never tracks, so it
+ * shows READY (camera open, not recording) and RECORDING instead (docs/design/screens/capture.md, Pose-free mode).
+ */
+enum class StatusPill { STARTING, TRACKING, LIMITED, LOST, PAUSED, READY, RECORDING }
 
 /** A haptic the screen plays (Settings > Haptics on). */
 enum class CaptureHaptic { CONFIRM, REJECT }
@@ -117,7 +120,9 @@ sealed interface CapturePhase {
  * The capture screen's state. [installPending]: an ARCore install was started; check again on resume. [recorder]:
  * the recording, with its live keyframe count and coverage. The rest is the live guidance overlay: [instruction] is
  * null while a [warning] replaces it; [reticle] is the subject's view position (null: the centre at half alpha);
- * [facingSegment] is the coverage segment the phone is in; [ready] unlocks Finish.
+ * [facingSegment] is the coverage segment the phone is in; [ready] unlocks Finish. [poseFree]: the scan records
+ * without tracking (foss, PoseFreeRecorder present): no subject tap or reticle, the pose-free aim copy, the READY and
+ * RECORDING pills, and Finish usable as soon as recording starts (filled once [ready]).
  */
 data class CaptureUiState(
     val phase: CapturePhase = CapturePhase.Checking,
@@ -135,6 +140,7 @@ data class CaptureUiState(
     val elapsedMs: Long = 0,
     val framesKept: Int = 0,
     val confirmDiscard: Boolean = false,
+    val poseFree: Boolean = false,
 )
 
 /** The stage for the [recorder], whether the user [paused], whether any frame came yet and the latest [hint]. */

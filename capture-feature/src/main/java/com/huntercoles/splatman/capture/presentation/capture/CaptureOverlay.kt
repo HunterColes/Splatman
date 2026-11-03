@@ -108,7 +108,8 @@ internal fun CaptureOverlay(
         if (state.stage == CaptureStage.PAUSED) {
             Box(Modifier.fillMaxSize().background(SplatColors.OverlayScrim))
         }
-        if (!finishing) ReticleMark(state.reticle, state.subjectSet)
+        // Pose-free: no subject to aim at, so no reticle (the whole frame is the scan).
+        if (!finishing && !state.poseFree) ReticleMark(state.reticle, state.subjectSet)
 
         Column(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(SplatDimens.SpacingSmall)) {
             TopBar(state.status, onClose = { onIntent(CaptureIntent.Close) }, onHelp = onHelp)
@@ -125,7 +126,7 @@ internal fun CaptureOverlay(
             verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingDefault),
         ) {
             state.instruction?.let {
-                InstructionPill(it, showHint = !dropExtras, recorder = state.recorder)
+                InstructionPill(it, showHint = !dropExtras, recorder = state.recorder, poseFree = state.poseFree)
             }
             if (!wide) {
                 Row(
@@ -140,7 +141,7 @@ internal fun CaptureOverlay(
                     }
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                         Fade(controlsShown) {
-                            FinishButton(state.ready) { onIntent(CaptureIntent.Stop) }
+                            FinishButton(state.ready, finishEnabled(state)) { onIntent(CaptureIntent.Stop) }
                         }
                     }
                 }
@@ -160,7 +161,7 @@ internal fun CaptureOverlay(
                     CaptureButtonWithCaption(state, showCaption = !dropExtras, onIntent = onIntent)
                 }
                 Fade(controlsShown) {
-                    FinishButton(state.ready) { onIntent(CaptureIntent.Stop) }
+                    FinishButton(state.ready, finishEnabled(state)) { onIntent(CaptureIntent.Stop) }
                 }
             }
         }
@@ -227,6 +228,8 @@ private fun StatusPillView(status: StatusPill) {
         StatusPill.LIMITED -> scheme.tertiary to R.string.cap_status_limited
         StatusPill.LOST -> scheme.error to R.string.cap_status_lost
         StatusPill.PAUSED -> scheme.tertiary to R.string.cap_paused
+        StatusPill.READY -> scheme.secondary to R.string.cap_status_ready
+        StatusPill.RECORDING -> SplatColors.RecordRed to R.string.cap_status_recording
     }
     Row(
         modifier = Modifier
@@ -326,9 +329,10 @@ private fun ReticleMark(at: ScreenPoint?, subjectSet: Boolean) {
 }
 
 @Composable
-private fun InstructionPill(instruction: Instruction, showHint: Boolean, recorder: RecorderState) {
-    val text = when (instruction) {
-        Instruction.SAVE_FAILED -> stringResource(
+private fun InstructionPill(instruction: Instruction, showHint: Boolean, recorder: RecorderState, poseFree: Boolean) {
+    val text = when {
+        instruction == Instruction.AIM && poseFree -> stringResource(R.string.cap_pf_aim)
+        instruction == Instruction.SAVE_FAILED -> stringResource(
             R.string.capture_save_failed,
             (recorder as? RecorderState.Failed)?.reason.orEmpty(),
         )
@@ -351,7 +355,7 @@ private fun InstructionPill(instruction: Instruction, showHint: Boolean, recorde
         )
         if (instruction == Instruction.AIM && showHint) {
             Text(
-                stringResource(R.string.cap_aim_hint),
+                stringResource(if (poseFree) R.string.cap_pf_aim_hint else R.string.cap_aim_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = SplatColors.OverlayOnScrim,
                 textAlign = TextAlign.Center,
@@ -444,14 +448,24 @@ private fun CaptureButton(stage: CaptureStage, onIntent: (CaptureIntent) -> Unit
     }
 }
 
+/**
+ * Whether Finish takes a tap. ARCore: only once [CaptureUiState.ready]. Pose-free: as soon as a recording is under way,
+ * since gyro coverage is a guide there, not a gate (an emulator or a tripod never fills the ring); Stop with no
+ * keyframes lands on the `capture_nothing_recorded` instruction, not a crash.
+ */
+private fun finishEnabled(state: CaptureUiState): Boolean =
+    state.ready ||
+        (state.poseFree && (state.stage == CaptureStage.CAPTURING || state.stage == CaptureStage.PAUSED))
+
+/** Tonal while [enabled] but not [ready]; `primary` filled once [ready]; 38% when disabled. */
 @Composable
-private fun FinishButton(ready: Boolean, onFinish: () -> Unit) {
+private fun FinishButton(ready: Boolean, enabled: Boolean, onFinish: () -> Unit) {
     val colors = if (ready) {
         ButtonDefaults.buttonColors()
     } else {
         ButtonDefaults.filledTonalButtonColors()
     }
-    FilledTonalButton(onClick = onFinish, enabled = ready, colors = colors) {
+    FilledTonalButton(onClick = onFinish, enabled = enabled, colors = colors) {
         Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(SplatDimens.SpacingSmall))
         Text(stringResource(R.string.cap_finish))
