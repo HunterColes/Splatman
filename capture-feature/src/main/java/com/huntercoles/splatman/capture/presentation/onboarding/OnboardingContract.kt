@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.capture.presentation.onboarding
 
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
+import com.huntercoles.splatman.capture.tracking.TrackingCheck
 
 /** The pager's pages (docs/design/screens/onboarding.md); [CAMERA] is replaced by the AR states when needed. */
 enum class OnboardingPage {
@@ -28,6 +29,9 @@ enum class ArState {
 
     /** This phone cannot track: the open-a-file page. */
     UNSUPPORTED,
+
+    /** The check failed or timed out: the couldn't-check page with Try again. */
+    COULDNT_CHECK,
     ;
 
     companion object {
@@ -36,6 +40,7 @@ enum class ArState {
             TrackingAvailability.SUPPORTED -> SUPPORTED
             TrackingAvailability.INSTALL_NEEDED -> INSTALL_NEEDED
             TrackingAvailability.UNSUPPORTED -> UNSUPPORTED
+            TrackingAvailability.COULDNT_CHECK -> COULDNT_CHECK
         }
     }
 }
@@ -64,7 +69,13 @@ sealed interface OnboardingIntent {
     data class PermissionResult(val granted: Boolean) : OnboardingIntent
 
     /** The answer of a Play Services for AR install request. */
-    data class InstallResult(val availability: TrackingAvailability) : OnboardingIntent
+    data class InstallResult(val check: TrackingCheck) : OnboardingIntent
+
+    /** The availability check answered (the first check, or one after Try again). */
+    data class CheckResult(val check: TrackingCheck) : OnboardingIntent
+
+    /** "Try again" on the couldn't-check page: check ARCore again. */
+    data object RetryCheck : OnboardingIntent
 
     /** "Later" on the install page. */
     data object Later : OnboardingIntent
@@ -77,12 +88,14 @@ sealed interface OnboardingIntent {
 }
 
 /**
- * The onboarding screen's state. [installPending]: an install was started, ask again on resume. [exit]: set once
- * onboarding is over; the screen then marks the first-run flag and leaves.
+ * The onboarding screen's state. [arReason]: the raw reason behind [ar] (the Details line). [installPending]: an
+ * install was started, ask again on resume. [exit]: set once onboarding is over; the screen then marks the first-run
+ * flag and leaves.
  */
 data class OnboardingUiState(
     val page: OnboardingPage = OnboardingPage.WELCOME,
     val ar: ArState = ArState.CHECKING,
+    val arReason: String = "",
     val installPending: Boolean = false,
     val permissionGranted: Boolean? = null,
     val exit: OnboardingExit? = null,
@@ -102,9 +115,17 @@ fun reduce(state: OnboardingUiState, intent: OnboardingIntent): OnboardingUiStat
         is OnboardingIntent.PermissionResult ->
             state.copy(permissionGranted = intent.granted, exit = OnboardingExit.LIBRARY)
         is OnboardingIntent.InstallResult -> state.copy(
-            ar = ArState.of(intent.availability),
-            installPending = intent.availability == TrackingAvailability.INSTALL_NEEDED,
+            ar = ArState.of(intent.check.availability),
+            arReason = intent.check.reason,
+            installPending = intent.check.availability == TrackingAvailability.INSTALL_NEEDED,
         )
+        // An install result that came in first is newer than a check's answer.
+        is OnboardingIntent.CheckResult -> if (state.ar == ArState.CHECKING) {
+            state.copy(ar = ArState.of(intent.check.availability), arReason = intent.check.reason)
+        } else {
+            state
+        }
+        OnboardingIntent.RetryCheck -> state.copy(ar = ArState.CHECKING, arReason = "")
         OnboardingIntent.OpenFile -> state.copy(exit = OnboardingExit.IMPORT)
     }
 }

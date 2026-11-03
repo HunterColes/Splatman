@@ -4,6 +4,7 @@ import com.huntercoles.splatman.capture.recording.CoverageCells
 import com.huntercoles.splatman.capture.recording.RecorderState
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
+import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import com.huntercoles.splatman.capture.tracking.TrackingFailure
 import com.huntercoles.splatman.capture.tracking.TrackingState
 
@@ -16,9 +17,9 @@ sealed interface CaptureIntent {
     data class PermissionResult(val granted: Boolean) : CaptureIntent
 
     /** The answer of an ARCore install or update request. */
-    data class InstallResult(val availability: TrackingAvailability) : CaptureIntent
+    data class InstallResult(val check: TrackingCheck) : CaptureIntent
 
-    /** Try to open the tracker again (after a failure or a refused permission). */
+    /** Try to open the tracker again (after a failure, a refused permission or a check that could not answer). */
     data object Retry : CaptureIntent
 
     /** The preview view is [width] x [height] pixels (for the tap ray and the reticle). */
@@ -90,11 +91,14 @@ sealed interface CapturePhase {
     /** Checking ARCore and the permission. */
     data object Checking : CapturePhase
 
-    /** This phone cannot run ARCore. */
-    data object Unsupported : CapturePhase
+    /** This phone cannot run ARCore; [reason] is the raw answer (the Details line). */
+    data class Unsupported(val reason: String) : CapturePhase
 
-    /** ARCore is supported but missing or too old: offer the install. */
-    data object InstallNeeded : CapturePhase
+    /** ARCore is supported but missing or too old: offer the install; [reason] is the raw answer. */
+    data class InstallNeeded(val reason: String) : CapturePhase
+
+    /** The ARCore check failed or timed out: offer Try again; [reason] is the raw answer or the exception. */
+    data class CouldntCheck(val reason: String) : CapturePhase
 
     /** CAMERA not granted yet: the screen asks. */
     data object PermissionNeeded : CapturePhase
@@ -190,8 +194,9 @@ fun capturePhase(status: PoseSourceStatus, permissionDenied: Boolean, hint: Trac
     when (status) {
         PoseSourceStatus.Idle -> CapturePhase.Checking
         is PoseSourceStatus.Unavailable -> when (status.availability) {
-            TrackingAvailability.UNSUPPORTED -> CapturePhase.Unsupported
-            TrackingAvailability.INSTALL_NEEDED -> CapturePhase.InstallNeeded
+            TrackingAvailability.UNSUPPORTED -> CapturePhase.Unsupported(status.reason)
+            TrackingAvailability.INSTALL_NEEDED -> CapturePhase.InstallNeeded(status.reason)
+            TrackingAvailability.COULDNT_CHECK -> CapturePhase.CouldntCheck(status.reason)
             TrackingAvailability.SUPPORTED -> CapturePhase.Checking
         }
         PoseSourceStatus.NeedsPermission ->

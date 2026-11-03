@@ -26,7 +26,7 @@ class FossTrackingTest {
 
     @Test
     fun theTrackerIsNeverAvailable() = runTest {
-        assertEquals(TrackingAvailability.UNSUPPORTED, NoTrackerSupport.check())
+        assertEquals(TrackingCheck(TrackingAvailability.UNSUPPORTED, NoTrackerSupport.REASON), NoTrackerSupport.check())
     }
 
     @Test
@@ -36,9 +36,12 @@ class FossTrackingTest {
 
         tracker.start()
 
-        assertEquals(PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED), tracker.status.value)
         assertEquals(
-            CapturePhase.Unsupported,
+            PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED, NoTrackerSupport.REASON),
+            tracker.status.value,
+        )
+        assertEquals(
+            CapturePhase.Unsupported(NoTrackerSupport.REASON),
             capturePhase(tracker.status.value, permissionDenied = false, hint = TrackingHint.LOOKING_FOR_SURFACES),
         )
         assertTrue(tracker.frames.toList().isEmpty())

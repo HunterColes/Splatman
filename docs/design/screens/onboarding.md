@@ -39,6 +39,8 @@ Wide (600 dp and up): the column is max 480 dp wide, centred; the illustration s
 | Normal | the three pages above; swipe or Next moves on; Skip goes straight to the Library |
 | AR unsupported | replaces page 3: `ar_unsupported_title` / `ar_unsupported_body`, button "Open a file" (import) and text button "Continue" (Library). The Scan FAB in the Library is then shown disabled with the same explanation on tap |
 | AR needs install | replaces page 3: `ar_install_title` / `ar_install_body`, buttons `ar_install_action` (opens the store listing by intent; no internet permission needed in-app) and "Later" |
+| AR couldn't check | ARCore's check erred, timed out or threw (never read as unsupported): replaces page 3: `ar_check_failed_title` / `ar_check_failed_body`, button "Try again" (checks again) and text button "Continue" (Library) |
+| Details (every AR state) | under the body: `ar_details` with the raw reason. Only ARCore's UNSUPPORTED_DEVICE_NOT_CAPABLE (or the foss build) is "unsupported"; SUPPORTED_NOT_INSTALLED and SUPPORTED_APK_TOO_OLD are "needs install" |
 | Long text / 200% font | the page scrolls vertically; the bottom bar stays fixed |
 
 ## Accessibility

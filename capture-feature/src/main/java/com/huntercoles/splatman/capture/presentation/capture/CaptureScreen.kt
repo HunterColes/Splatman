@@ -180,14 +180,33 @@ private fun CaptureContent(
             CapturePhase.Checking -> Message(R.string.cap_starting, onBack = onBack) {
                 CircularProgressIndicator(modifier = Modifier.padding(top = SplatDimens.SpacingDefault))
             }
-            CapturePhase.Unsupported ->
-                Message(R.string.ar_unsupported_body, title = R.string.ar_unsupported_title, onBack = onBack)
-            CapturePhase.InstallNeeded ->
-                Message(R.string.ar_install_body, title = R.string.ar_install_title, onBack = onBack) {
-                    Button(onClick = onInstall, modifier = Modifier.padding(top = SplatDimens.SpacingDefault)) {
-                        Text(stringResource(R.string.ar_install_action))
-                    }
+            is CapturePhase.Unsupported -> Message(
+                R.string.ar_unsupported_body,
+                title = R.string.ar_unsupported_title,
+                details = phase.reason,
+                onBack = onBack,
+            )
+            is CapturePhase.InstallNeeded -> Message(
+                R.string.ar_install_body,
+                title = R.string.ar_install_title,
+                details = phase.reason,
+                onBack = onBack,
+            ) {
+                Button(onClick = onInstall, modifier = Modifier.padding(top = SplatDimens.SpacingDefault)) {
+                    Text(stringResource(R.string.ar_install_action))
                 }
+            }
+            is CapturePhase.CouldntCheck -> Message(
+                R.string.ar_check_failed_body,
+                title = R.string.ar_check_failed_title,
+                details = phase.reason,
+                onBack = onBack,
+            ) {
+                Button(
+                    onClick = { viewModel.onIntent(CaptureIntent.Retry) },
+                    modifier = Modifier.padding(top = SplatDimens.SpacingDefault),
+                ) { Text(stringResource(R.string.capture_retry)) }
+            }
             CapturePhase.PermissionNeeded -> {
                 LaunchedEffect(Unit) { requestPermission() }
                 PermissionMessage(permanent = false, requestPermission, onOpenSettings, onBack)
@@ -264,13 +283,14 @@ private fun attachPreview(viewModel: CaptureViewModel, target: PreviewTarget?) {
     if (target == null) runBlocking { withTimeoutOrNull(PREVIEW_DETACH_TIMEOUT_MS) { job.join() } }
 }
 
-/** A centred message on the dark screen, with its [actions] and then a Back text button. */
+/** A centred message on the dark screen, an optional [details] line (the raw reason), its [actions], then Back. */
 @Composable
 private fun Message(
     @StringRes text: Int,
     vararg args: Any,
     @StringRes title: Int? = null,
     icon: Boolean = false,
+    details: String? = null,
     onBack: () -> Unit,
     actions: @Composable ColumnScope.() -> Unit = {},
 ) {
@@ -303,6 +323,15 @@ private fun Message(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = SplatDimens.SpacingSmall),
         )
+        if (!details.isNullOrBlank()) {
+            Text(
+                text = stringResource(R.string.ar_details, details),
+                style = MaterialTheme.typography.bodySmall,
+                color = onScrim,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = SplatDimens.SpacingSmall),
+            )
+        }
         actions()
         TextButton(onClick = onBack) { Text(stringResource(R.string.capture_back)) }
     }

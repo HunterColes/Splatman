@@ -2,6 +2,7 @@ package com.huntercoles.splatman.capture.presentation.onboarding
 
 import androidx.lifecycle.SavedStateHandle
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
+import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,7 +21,7 @@ import org.junit.jupiter.params.provider.EnumSource
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnboardingViewModelTest {
-    private val pending = CompletableDeferred<TrackingAvailability>()
+    private val pending = CompletableDeferred<TrackingCheck>()
 
     @BeforeEach
     fun setUp() {
@@ -40,7 +41,8 @@ class OnboardingViewModelTest {
         return OnboardingViewModel(handle, check)
     }
 
-    private fun answered(availability: TrackingAvailability) = viewModel(check = { availability })
+    private fun answered(availability: TrackingAvailability) =
+        viewModel(check = { TrackingCheck(availability, availability.name) })
 
     @Test
     fun `starts on the welcome page with nothing decided`() {
@@ -128,6 +130,7 @@ class OnboardingViewModelTest {
             TrackingAvailability.SUPPORTED -> ArState.SUPPORTED
             TrackingAvailability.INSTALL_NEEDED -> ArState.INSTALL_NEEDED
             TrackingAvailability.UNSUPPORTED -> ArState.UNSUPPORTED
+            TrackingAvailability.COULDNT_CHECK -> ArState.COULDNT_CHECK
         }
         assertEquals(expected, answered(availability).uiState.value.ar)
     }
@@ -136,7 +139,7 @@ class OnboardingViewModelTest {
     fun `the camera page shows while the check is still running`() {
         val vm = viewModel()
         assertEquals(ArState.CHECKING, vm.uiState.value.ar)
-        pending.complete(TrackingAvailability.UNSUPPORTED)
+        pending.complete(TrackingCheck(TrackingAvailability.UNSUPPORTED))
         assertEquals(ArState.UNSUPPORTED, vm.uiState.value.ar)
     }
 
@@ -154,7 +157,7 @@ class OnboardingViewModelTest {
     @Test
     fun `install finished turns the page into the camera page`() {
         val vm = answered(TrackingAvailability.INSTALL_NEEDED)
-        vm.onIntent(OnboardingIntent.InstallResult(TrackingAvailability.SUPPORTED))
+        vm.onIntent(OnboardingIntent.InstallResult(TrackingCheck(TrackingAvailability.SUPPORTED)))
         assertEquals(ArState.SUPPORTED, vm.uiState.value.ar)
         assertFalse(vm.uiState.value.installPending)
         assertNull(vm.uiState.value.exit)
@@ -163,7 +166,7 @@ class OnboardingViewModelTest {
     @Test
     fun `install under way stays on the install page and asks again on resume`() {
         val vm = answered(TrackingAvailability.INSTALL_NEEDED)
-        vm.onIntent(OnboardingIntent.InstallResult(TrackingAvailability.INSTALL_NEEDED))
+        vm.onIntent(OnboardingIntent.InstallResult(TrackingCheck(TrackingAvailability.INSTALL_NEEDED)))
         assertEquals(ArState.INSTALL_NEEDED, vm.uiState.value.ar)
         assertTrue(vm.uiState.value.installPending)
     }
@@ -171,7 +174,7 @@ class OnboardingViewModelTest {
     @Test
     fun `install refused by the phone turns into the unsupported page`() {
         val vm = answered(TrackingAvailability.INSTALL_NEEDED)
-        vm.onIntent(OnboardingIntent.InstallResult(TrackingAvailability.UNSUPPORTED))
+        vm.onIntent(OnboardingIntent.InstallResult(TrackingCheck(TrackingAvailability.UNSUPPORTED)))
         assertEquals(ArState.UNSUPPORTED, vm.uiState.value.ar)
         assertFalse(vm.uiState.value.installPending)
     }
@@ -186,8 +189,42 @@ class OnboardingViewModelTest {
     @Test
     fun `a late check answer does not undo an install result`() {
         val vm = viewModel()
-        vm.onIntent(OnboardingIntent.InstallResult(TrackingAvailability.SUPPORTED))
-        pending.complete(TrackingAvailability.INSTALL_NEEDED)
+        vm.onIntent(OnboardingIntent.InstallResult(TrackingCheck(TrackingAvailability.SUPPORTED)))
+        pending.complete(TrackingCheck(TrackingAvailability.INSTALL_NEEDED))
         assertEquals(ArState.SUPPORTED, vm.uiState.value.ar)
+    }
+
+    @Test
+    fun `the answer's raw reason is kept for the details line`() {
+        val vm = viewModel(check = { TrackingCheck(TrackingAvailability.INSTALL_NEEDED, "SUPPORTED_NOT_INSTALLED") })
+        assertEquals(ArState.INSTALL_NEEDED, vm.uiState.value.ar)
+        assertEquals("SUPPORTED_NOT_INSTALLED", vm.uiState.value.arReason)
+    }
+
+    @Test
+    fun `couldn't check offers try again, which checks once more`() {
+        val answers = ArrayDeque(
+            listOf(
+                TrackingCheck(TrackingAvailability.COULDNT_CHECK, "UNKNOWN_TIMED_OUT"),
+                TrackingCheck(TrackingAvailability.SUPPORTED, "SUPPORTED_INSTALLED"),
+            ),
+        )
+        var checks = 0
+        val vm = viewModel(check = { checks++; answers.removeFirst() })
+        assertEquals(ArState.COULDNT_CHECK, vm.uiState.value.ar)
+        assertEquals("UNKNOWN_TIMED_OUT", vm.uiState.value.arReason)
+
+        vm.onIntent(OnboardingIntent.RetryCheck)
+
+        assertEquals(2, checks)
+        assertEquals(ArState.SUPPORTED, vm.uiState.value.ar)
+        assertNull(vm.uiState.value.exit)
+    }
+
+    @Test
+    fun `continue on the couldn't-check page goes to the library`() {
+        val vm = answered(TrackingAvailability.COULDNT_CHECK)
+        vm.onIntent(OnboardingIntent.Continue)
+        assertEquals(OnboardingExit.LIBRARY, vm.uiState.value.exit)
     }
 }

@@ -12,6 +12,7 @@ import com.huntercoles.splatman.capture.tracking.FeaturePoints
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
+import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import com.huntercoles.splatman.capture.tracking.TrackingFailure
 import com.huntercoles.splatman.capture.tracking.TrackingState
 import com.huntercoles.splatman.core.preferences.PreferenceStore
@@ -200,22 +201,53 @@ class CaptureViewModelTest {
     @Test
     fun `maps each availability state`() {
         val vm = viewModel()
-        tracker.mutableStatus.value = PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED)
-        assertEquals(CapturePhase.Unsupported, vm.uiState.value.phase)
-        tracker.mutableStatus.value = PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED)
-        assertEquals(CapturePhase.InstallNeeded, vm.uiState.value.phase)
+        tracker.mutableStatus.value =
+            PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED, "UNSUPPORTED_DEVICE_NOT_CAPABLE")
+        assertEquals(CapturePhase.Unsupported("UNSUPPORTED_DEVICE_NOT_CAPABLE"), vm.uiState.value.phase)
+        tracker.mutableStatus.value =
+            PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED, "SUPPORTED_NOT_INSTALLED")
+        assertEquals(CapturePhase.InstallNeeded("SUPPORTED_NOT_INSTALLED"), vm.uiState.value.phase)
+        tracker.mutableStatus.value =
+            PoseSourceStatus.Unavailable(TrackingAvailability.COULDNT_CHECK, "SecurityException: denied")
+        assertEquals(CapturePhase.CouldntCheck("SecurityException: denied"), vm.uiState.value.phase)
         tracker.mutableStatus.value = PoseSourceStatus.Unavailable(TrackingAvailability.SUPPORTED)
         assertEquals(CapturePhase.Checking, vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `resume checks ARCore again, so an install made meanwhile can scan without a restart`() {
+        val vm = viewModel()
+        assertEquals(1, tracker.starts)
+        tracker.mutableStatus.value =
+            PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED, "SUPPORTED_NOT_INSTALLED")
+        vm.onIntent(CaptureIntent.Foreground(false))
+        assertEquals(1, tracker.starts)
+
+        vm.onIntent(CaptureIntent.Foreground(true))
+
+        assertEquals(2, tracker.starts)
+        tracker.mutableStatus.value = PoseSourceStatus.Running
+        vm.onIntent(CaptureIntent.Foreground(true))
+        assertEquals(2, tracker.starts)
+        assertEquals(CapturePhase.Preview(TrackingHint.LOOKING_FOR_SURFACES, paused = false), vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `try again after a check that could not answer checks again`() {
+        val vm = viewModel()
+        tracker.mutableStatus.value = PoseSourceStatus.Unavailable(TrackingAvailability.COULDNT_CHECK, "UNKNOWN_ERROR")
+        vm.onIntent(CaptureIntent.Retry)
+        assertEquals(2, tracker.starts)
     }
 
     @Test
     fun `install under way waits for resume, a finished install starts again`() {
         val vm = viewModel()
         tracker.mutableStatus.value = PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED)
-        vm.onIntent(CaptureIntent.InstallResult(TrackingAvailability.INSTALL_NEEDED))
+        vm.onIntent(CaptureIntent.InstallResult(TrackingCheck(TrackingAvailability.INSTALL_NEEDED)))
         assertTrue(vm.uiState.value.installPending)
         assertEquals(1, tracker.starts)
-        vm.onIntent(CaptureIntent.InstallResult(TrackingAvailability.SUPPORTED))
+        vm.onIntent(CaptureIntent.InstallResult(TrackingCheck(TrackingAvailability.SUPPORTED)))
         assertFalse(vm.uiState.value.installPending)
         assertEquals(2, tracker.starts)
     }

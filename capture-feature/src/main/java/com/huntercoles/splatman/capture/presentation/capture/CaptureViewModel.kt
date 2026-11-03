@@ -146,15 +146,15 @@ class CaptureViewModel @Inject constructor(
         when (intent) {
             is CaptureIntent.Foreground -> {
                 tracker.setForeground(intent.inForeground)
-                // Back from the settings app: the permission may have been granted there.
-                if (intent.inForeground && tracker.status.value == PoseSourceStatus.NeedsPermission) start()
+                // Back from the settings app or the store: the permission or ARCore may be there now.
+                if (intent.inForeground && needsRecheck(tracker.status.value)) start()
             }
             is CaptureIntent.PermissionResult -> {
                 permissionDenied.value = !intent.granted
                 if (intent.granted) start()
             }
             is CaptureIntent.InstallResult -> {
-                val pending = intent.availability == TrackingAvailability.INSTALL_NEEDED
+                val pending = intent.check.availability == TrackingAvailability.INSTALL_NEEDED
                 installPending.value = pending
                 if (!pending) start()
             }
@@ -202,6 +202,10 @@ class CaptureViewModel @Inject constructor(
     private fun start() {
         viewModelScope.launch { tracker.start() }
     }
+
+    /** A status that a resume should check again: no permission yet, or no usable ARCore yet. */
+    private fun needsRecheck(status: PoseSourceStatus): Boolean =
+        status == PoseSourceStatus.NeedsPermission || status is PoseSourceStatus.Unavailable
 
     private fun record() {
         if (subject == null) mapping()?.let { setSubject(it.centre) }

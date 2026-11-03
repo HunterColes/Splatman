@@ -46,7 +46,7 @@ interface TrackerSession : AutoCloseable {
  * the thread that calls `update`).
  */
 class TrackerDriver(
-    private val availability: suspend () -> TrackingAvailability,
+    private val availability: suspend () -> TrackingCheck,
     private val permissionGranted: () -> Boolean,
     private val openSession: () -> TrackerSession,
     private val dispatcher: CoroutineDispatcher,
@@ -78,10 +78,10 @@ class TrackerDriver(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            TrackingAvailability.UNSUPPORTED
+            TrackingCheck.failed(e)
         }
-        if (available != TrackingAvailability.SUPPORTED) {
-            mutableStatus.value = PoseSourceStatus.Unavailable(available)
+        if (available.availability != TrackingAvailability.SUPPORTED) {
+            mutableStatus.value = PoseSourceStatus.Unavailable(available.availability, available.reason)
             return
         }
         if (!permissionGranted()) {

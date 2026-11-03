@@ -26,10 +26,14 @@ object FlavourTracking {
 
 /** Always [TrackingAvailability.UNSUPPORTED]: there is nothing to install from an F-Droid build. */
 object NoTrackerSupport : TrackerSupport {
-    override suspend fun check(): TrackingAvailability = TrackingAvailability.UNSUPPORTED
+    /** The Details line of the foss build's explanation. */
+    const val REASON = "foss build: no ARCore"
 
-    override fun requestInstall(activity: Activity, userRequested: Boolean): TrackingAvailability =
-        TrackingAvailability.UNSUPPORTED
+    private val answer = TrackingCheck(TrackingAvailability.UNSUPPORTED, REASON)
+
+    override suspend fun check(): TrackingCheck = answer
+
+    override fun requestInstall(activity: Activity, userRequested: Boolean): TrackingCheck = answer
 }
 
 /** The stub [PoseSource]: no frames, and [start] ends in [PoseSourceStatus.Unavailable], never a session. */
@@ -42,7 +46,7 @@ class UnavailablePoseSource : PoseSource {
     override val frames: Flow<TrackedFrame> = emptyFlow()
 
     override suspend fun start() {
-        state.value = PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED)
+        state.value = PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED, NoTrackerSupport.REASON)
     }
 
     override fun stop() {

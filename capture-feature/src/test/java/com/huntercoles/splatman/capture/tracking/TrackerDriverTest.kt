@@ -16,7 +16,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -83,7 +82,7 @@ class TrackerDriverTest {
         granted: Boolean = true,
         open: () -> TrackerSession,
     ) = TrackerDriver(
-        availability = { availability },
+        availability = { TrackingCheck(availability, availability.name) },
         permissionGranted = { granted },
         openSession = open,
         dispatcher = StandardTestDispatcher(testScheduler),
@@ -96,7 +95,7 @@ class TrackerDriverTest {
         driver.start()
         runCurrent()
         assertEquals(0, opens)
-        assertEquals(PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED), driver.status.value)
+        assertEquals(PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED, "UNSUPPORTED"), driver.status.value)
     }
 
     @Test
@@ -105,11 +104,14 @@ class TrackerDriverTest {
         val driver = driver(TrackingAvailability.INSTALL_NEEDED) { opens++; FakeSession() }
         driver.start()
         assertEquals(0, opens)
-        assertEquals(PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED), driver.status.value)
+        assertEquals(
+            PoseSourceStatus.Unavailable(TrackingAvailability.INSTALL_NEEDED, "INSTALL_NEEDED"),
+            driver.status.value,
+        )
     }
 
     @Test
-    fun aThrowingAvailabilityCheckReadsAsUnsupported() = runTest {
+    fun aThrowingAvailabilityCheckReadsAsCouldntCheckWithItsReason() = runTest {
         var opens = 0
         val driver = TrackerDriver(
             availability = { throw IllegalStateException("no arcore") },
@@ -119,7 +121,10 @@ class TrackerDriverTest {
         )
         driver.start()
         assertEquals(0, opens)
-        assertEquals(PoseSourceStatus.Unavailable(TrackingAvailability.UNSUPPORTED), driver.status.value)
+        assertEquals(
+            PoseSourceStatus.Unavailable(TrackingAvailability.COULDNT_CHECK, "IllegalStateException: no arcore"),
+            driver.status.value,
+        )
     }
 
     @Test
@@ -270,12 +275,10 @@ class TrackerDriverTest {
     }
 
     @Test
-    fun availabilityClassification() {
-        assertEquals(TrackingAvailability.SUPPORTED, TrackingAvailability.classify(true, true, false))
-        assertEquals(TrackingAvailability.INSTALL_NEEDED, TrackingAvailability.classify(true, false, false))
-        assertEquals(TrackingAvailability.UNSUPPORTED, TrackingAvailability.classify(false, false, false))
-        assertEquals(TrackingAvailability.UNSUPPORTED, TrackingAvailability.classify(false, false, true))
-        assertFalse(TrackingAvailability.classify(true, true, true) == TrackingAvailability.SUPPORTED)
+    fun aFailedCheckDescribesTheException() {
+        assertEquals("SecurityException: denied", TrackingCheck.describe(SecurityException("denied")))
+        assertEquals("RuntimeException", TrackingCheck.describe(RuntimeException()))
+        assertEquals(TrackingAvailability.COULDNT_CHECK, TrackingCheck.failed(RuntimeException("x")).availability)
     }
 
     private val target = PreviewTarget(mockk<Surface>(), 1080, 2340, 0)

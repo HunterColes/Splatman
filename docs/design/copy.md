@@ -28,9 +28,12 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `onb_start` | Start scanning |
 | `ar_unsupported_title` | This phone can't track motion |
 | `ar_unsupported_body` | Scanning needs ARCore, which this phone doesn't support. You can still open and view splat files. |
-| `ar_install_title` | One more thing to install |
+| `ar_install_title` | ARCore is not installed (needs Google Play) |
 | `ar_install_body` | Scanning needs Google Play Services for AR. It's free and works offline once installed. |
 | `ar_install_action` | Install |
+| `ar_check_failed_title` | Couldn't check ARCore |
+| `ar_check_failed_body` | The phone didn't answer whether it can run ARCore, which scanning needs. Try again; you can still open and view splat files. |
+| `ar_details` | Details: %1$s (the raw reason: ARCore's answer such as `SUPPORTED_NOT_INSTALLED`, or the exception's class and message; also logged) |
 
 ## Library
 

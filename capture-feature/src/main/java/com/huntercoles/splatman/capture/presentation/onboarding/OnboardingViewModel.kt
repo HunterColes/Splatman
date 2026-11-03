@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
+import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import dagger.Module
 import dagger.Provides
@@ -21,8 +22,8 @@ import javax.inject.Inject
 
 /** The AR availability check onboarding runs once (a seam over the flavour's TrackerSupport for tests). */
 fun interface ArAvailabilityCheck {
-    /** Never throws; a failed check reads as [TrackingAvailability.UNSUPPORTED]. */
-    suspend fun check(): TrackingAvailability
+    /** Never throws; a failed check reads as [TrackingAvailability.COULDNT_CHECK] with its reason. */
+    suspend fun check(): TrackingCheck
 }
 
 /**
@@ -32,7 +33,7 @@ fun interface ArAvailabilityCheck {
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    availability: ArAvailabilityCheck,
+    private val availability: ArAvailabilityCheck,
 ) : ViewModel() {
     private val state = MutableStateFlow(
         OnboardingUiState(page = OnboardingPage.at(savedStateHandle.get<Int>(PAGE_KEY) ?: 0)),
@@ -42,18 +43,18 @@ class OnboardingViewModel @Inject constructor(
     val uiState: StateFlow<OnboardingUiState> = state.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            val answer = availability.check()
-            // An install result that came in first is newer than this answer.
-            state.update { current ->
-                if (current.ar == ArState.CHECKING) current.copy(ar = ArState.of(answer)) else current
-            }
-        }
+        check()
     }
 
     /** Handles one [intent]. */
     fun onIntent(intent: OnboardingIntent) {
+        val before = state.value
         state.update { reduce(it, intent) }
+        if (intent == OnboardingIntent.RetryCheck && before.exit == null) check()
+    }
+
+    private fun check() {
+        viewModelScope.launch { onIntent(OnboardingIntent.CheckResult(availability.check())) }
     }
 
     companion object {

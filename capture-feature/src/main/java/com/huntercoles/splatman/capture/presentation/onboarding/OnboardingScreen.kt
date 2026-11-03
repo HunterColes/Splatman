@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.SlowMotionVideo
@@ -136,7 +137,7 @@ private fun OnboardingContent(
                 ) { Text(stringResource(R.string.onb_skip)) }
             }
             HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { index ->
-                PageBody(page = OnboardingPage.at(index), ar = state.ar)
+                PageBody(page = OnboardingPage.at(index), ar = state.ar, reason = state.arReason)
             }
             BottomBar(
                 state = state,
@@ -150,7 +151,7 @@ private fun OnboardingContent(
 }
 
 @Composable
-private fun PageBody(page: OnboardingPage, ar: ArState) {
+private fun PageBody(page: OnboardingPage, ar: ArState, reason: String) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -194,11 +195,19 @@ private fun PageBody(page: OnboardingPage, ar: ArState) {
                     Illustration(Icons.Rounded.Download)
                     Title(R.string.ar_install_title)
                     Body(R.string.ar_install_body)
+                    Details(reason)
                 }
                 ArState.UNSUPPORTED -> {
                     Illustration(Icons.Rounded.FolderOpen)
                     Title(R.string.ar_unsupported_title)
                     Body(R.string.ar_unsupported_body)
+                    Details(reason)
+                }
+                ArState.COULDNT_CHECK -> {
+                    Illustration(Icons.Rounded.ErrorOutline)
+                    Title(R.string.ar_check_failed_title)
+                    Body(R.string.ar_check_failed_body)
+                    Details(reason)
                 }
             }
         }
@@ -233,6 +242,14 @@ private fun BottomBar(
                     Button(onClick = onInstall, modifier = wide) { Text(stringResource(R.string.ar_install_action)) }
                     TextButton(onClick = { onIntent(OnboardingIntent.Later) }, modifier = wide) {
                         Text(stringResource(R.string.onb_later))
+                    }
+                }
+                ArState.COULDNT_CHECK -> {
+                    Button(onClick = { onIntent(OnboardingIntent.RetryCheck) }, modifier = wide) {
+                        Text(stringResource(R.string.capture_retry))
+                    }
+                    TextButton(onClick = { onIntent(OnboardingIntent.Continue) }, modifier = wide) {
+                        Text(stringResource(R.string.onb_continue))
                     }
                 }
                 ArState.UNSUPPORTED -> {
@@ -298,6 +315,18 @@ private fun Body(@StringRes text: Int) {
     Text(
         stringResource(text),
         style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** The Details line: the raw reason behind an AR state (nothing while there is none). */
+@Composable
+private fun Details(reason: String) {
+    if (reason.isBlank()) return
+    Text(
+        stringResource(R.string.ar_details, reason),
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     )

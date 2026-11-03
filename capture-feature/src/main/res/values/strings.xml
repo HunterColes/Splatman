@@ -21,9 +21,12 @@
     <string name="onb_page">Page %1$d of %2$d</string>
     <string name="ar_unsupported_title">This phone can\'t track motion</string>
     <string name="ar_unsupported_body">Scanning needs ARCore, which this phone doesn\'t support. You can still open and view splat files.</string>
-    <string name="ar_install_title">One more thing to install</string>
+    <string name="ar_install_title">ARCore is not installed (needs Google Play)</string>
     <string name="ar_install_body">Scanning needs Google Play Services for AR. It\'s free and works offline once installed.</string>
     <string name="ar_install_action">Install</string>
+    <string name="ar_check_failed_title">Couldn\'t check ARCore</string>
+    <string name="ar_check_failed_body">The phone didn\'t answer whether it can run ARCore, which scanning needs. Try again; you can still open and view splat files.</string>
+    <string name="ar_details">Details: %1$s</string>
     <string name="capture_nothing_recorded">Nothing was captured. Move slowly around the object while capturing</string>
     <string name="capture_save_failed">The scan could not be saved: %1$s</string>
 

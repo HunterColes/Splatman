@@ -7,9 +7,9 @@ import android.app.Activity
  * one: ARCore in `full`, a tracker that is never there in `foss` (no proprietary library, F-Droid).
  */
 interface TrackerSupport {
-    /** Never throws; a failed check reads as [TrackingAvailability.UNSUPPORTED]. */
-    suspend fun check(): TrackingAvailability
+    /** Never throws; a failed or timed-out check reads as [TrackingAvailability.COULDNT_CHECK] with its reason. */
+    suspend fun check(): TrackingCheck
 
     /** Asks for the tracker's install (from the activity's onResume); never throws. */
-    fun requestInstall(activity: Activity, userRequested: Boolean): TrackingAvailability
+    fun requestInstall(activity: Activity, userRequested: Boolean): TrackingCheck
 }
