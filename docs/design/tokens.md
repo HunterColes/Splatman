@@ -153,9 +153,9 @@ otherwise. One icon per idea across the app:
 | Hot phone | `Icons.Rounded.Thermostat` |
 | Pause / resume | `Icons.Rounded.Pause` / `Icons.Rounded.PlayArrow` |
 
-App icon: a single violet (`primary` dark) splat blob, three overlapping soft ellipses, on `#0E0D12`, as an adaptive
-icon with a monochrome layer for themed icons. Its own ticket is not needed in v1; the builder of the shell ticket
-replaces the launcher foreground.
+App icon: Hunter's original Splatman icon (restored from ac960ac, gold splat on the original background), an
+adaptive icon with the original monochrome silhouette for themed icons. It is the one thing that does not follow the
+v1 violet scheme.
 
 ## Haptics
 

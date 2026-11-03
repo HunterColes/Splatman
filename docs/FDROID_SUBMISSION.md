@@ -15,7 +15,7 @@ Before submitting, you need to add these images to `metadata/en-US/`:
 
 ### 1. App Icon (`icon.png` - 512x512)
 - Export your app icon at 512x512 resolution
-- Source: Use your original icon artwork or export from `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` and resize
+- Source: Use your original icon artwork or export from `app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp` and resize (`metadata/en-US/images/icon.png` is already the original)
 
 ### 2. Feature Graphic (`featureGraphic.png` - 1024x500)
 - Create a banner image showcasing your app

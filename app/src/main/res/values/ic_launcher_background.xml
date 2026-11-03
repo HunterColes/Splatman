@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- docs/design/tokens.md, Icons: the app icon sits on #0E0D12. -->
-    <color name="ic_launcher_background">#0E0D12</color>
-</resources>
