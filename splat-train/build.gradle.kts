@@ -2,6 +2,8 @@
 plugins {
     // By id: the Kotlin Gradle plugin is already on the root classpath, so a versioned alias would clash.
     id(libs.plugins.kotlin.jvm.get().pluginId)
+    // src/testFixtures: the synthetic scan with ground truth (#224), shared with the tests of other modules.
+    `java-test-fixtures`
 }
 
 java {
