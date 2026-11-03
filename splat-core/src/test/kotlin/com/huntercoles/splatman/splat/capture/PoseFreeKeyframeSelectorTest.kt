@@ -169,4 +169,36 @@ class PoseFreeKeyframeSelectorTest {
         val allocated = bean.getThreadAllocatedBytes(id) - before
         assertTrue(allocated < 16_000, "10000 offers allocated $allocated bytes")
     }
+
+    /**
+     * #340: a 30 s walk round an object at 30 fps turning 20 deg/s, sharpness 500 to 1300 as on the Pixel 8 Pro, the
+     * image change growing with the turn; the selector sees every [everyNthFrame]th frame. Returns the keyframes kept.
+     */
+    private fun walk(everyNthFrame: Int): Int {
+        val s = PoseFreeKeyframeSelector(PoseFreeKeyframePolicy())
+        val random = java.util.Random(340)
+        val degPerFrame = 20.0 / 30.0
+        var sinceKeyDeg = 0.0
+        for (i in 0 until 30 * 30) {
+            sinceKeyDeg += degPerFrame
+            val sharpness = 500f + 800f * random.nextFloat()
+            val rate = deg(20.0 + 4.0 * (random.nextDouble() - 0.5))
+            if (i % everyNthFrame != 0) continue
+            val change = minOf(255.0, 1.5 * sinceKeyDeg).toFloat()
+            if (s.offer(ms(i * 1000L / 30), deg(sinceKeyDeg), change, rate, sharpness)) sinceKeyDeg = 0.0
+        }
+        return s.keyframeCount
+    }
+
+    @Test
+    fun `340 a 30 s walk at 30 fps keeps 100 to 300 keyframes`() {
+        val kept = walk(everyNthFrame = 1)
+        assertTrue(kept in 100..300, "kept $kept")
+    }
+
+    @Test
+    fun `340 the same walk seen once per 0_6 s as by the Pixel's worker keeps under 50`() {
+        val kept = walk(everyNthFrame = 18)
+        assertTrue(kept < 50, "kept $kept")
+    }
 }

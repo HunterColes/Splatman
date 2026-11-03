@@ -89,8 +89,12 @@ class FossPoseFreeRecorderTest {
             preview = target
         }
 
+        /** The reader lease of the frames handed out through [Camera2FrameSource.deliver], retired on [suspend]. */
+        var lease: ReaderLease? = null
+
         override fun suspend() {
             suspended = true
+            lease?.retire()
         }
 
         override suspend fun resume() {
@@ -343,21 +347,104 @@ class FossPoseFreeRecorderTest {
     }
 
     @Test
-    fun aBusyWorkerDropsNewFramesInsteadOfQueueingThem() = runTest {
+    fun aBusyWorkerKeepsOnlyTheNewestWaitingFrame() = runTest {
         val rec = recorder()
         openAndStart(rec)
-        turnAndFrame(5f) // handed to the worker, which has not run yet
-        val second = frame() // waits in the one slot
+        val first = frame() // waits; the worker has not run yet
+        val second = frame() // newer: the first is closed and counted as dropped
+        assertEquals(1, first.closes)
         assertEquals(0, second.closes)
-        val third = frame() // no room: closed at once, never queued
-        assertEquals(1, third.closes)
-        val fourth = frame()
-        assertEquals(1, fourth.closes)
+        turnAndFrame(5f) // newer still, 200 ms on and 5 degrees turned
+        assertEquals(1, second.closes)
         advanceUntilIdle()
         val s = rec.state.value as PoseFreeState.Recording
-        assertEquals(1, s.keyframes) // the second came at the same instant: too soon for a keyframe
+        assertEquals(1, s.keyframes)
         assertEquals(2, s.droppedFrames)
-        assertTrue(images.all { it.closes >= 1 })
+        assertTrue(images.all { it.closes == 1 })
+        rec.stop()
+        advanceUntilIdle()
+        val kept = PoseFreeCaptureReader.read(File(scans, "scan_test")).frames.single()
+        assertEquals(clockNs, kept.entry.timestampNs) // the newest frame, not the oldest waiting one
+    }
+
+    @Test
+    fun backgroundingWhileAFrameWaitsStillMeasuresItAndClosesTheReaderAfter() = runTest {
+        // #340: on master suspend() closed the ImageReader, which closed the waiting image: the worker's next read
+        // threw "Image is already closed" and the frame was skipped.
+        val rec = recorder()
+        openAndStart(rec)
+        val reader = Camera2FrameSourceTest.ClosingReader()
+        val lease = ReaderLease(reader)
+        source.lease = lease
+        repeat(20) {
+            clockNs += 10_000_000L
+            imu.onSample(Sensor.TYPE_GYROSCOPE, clockNs, 0f, 0.4f, 0f)
+        }
+        val image = reader.next()
+        Camera2FrameSource.deliver(image, clockNs, 8_000_000L, lease, source.listener)
+        rec.setForeground(false) // suspend() retires the lease while the frame waits for the worker
+        assertFalse(image.closed)
+        advanceUntilIdle()
+        val s = rec.state.value as PoseFreeState.Recording
+        assertEquals(1, s.keyframes)
+        assertEquals(0, s.droppedFrames)
+        assertEquals(1, image.closes)
+        assertEquals(1, reader.closes)
+    }
+
+    @Test
+    fun aCameraFrameIsKeptAsNv21ThroughTheNv21Encoder() = runTest {
+        val nv21Calls = mutableListOf<KeptPixels.Nv21>()
+        val d = StandardTestDispatcher(testScheduler)
+        val rec = FossPoseFreeRecorder(
+            source = source,
+            imu = imu,
+            scansRoot = scans,
+            stagingRoot = staging,
+            encoder = encoder,
+            worker = d,
+            nv21Encoder = { pixels, quality ->
+                assertEquals(90, quality)
+                nv21Calls += pixels
+                byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+            },
+            io = d,
+            newScanId = { "scan_test" },
+        )
+        openAndStart(rec)
+        val image = FakeImage().also { images += it }
+        checkNotNull(source.listener).onFrame(SourceFrame(clockNs, null, image) { KeptPixels.Nv21(64, 48, ByteArray(64 * 48 * 3 / 2)) })
+        advanceUntilIdle()
+        assertEquals(1, nv21Calls.size)
+        assertEquals(0, encoder.calls)
+        assertEquals(1, image.closes)
+        rec.stop()
+        advanceUntilIdle()
+        val capture = PoseFreeCaptureReader.read(File(scans, "scan_test"))
+        assertEquals(64, capture.frames.single().entry.width)
+    }
+
+    @Test
+    fun stopWhileAKeyframeIsBeingEncodedSavesItAndAFrameAfterStopIsOnlyClosed() = runTest {
+        lateinit var rec: FossPoseFreeRecorder
+        val stopping = object : JpegEncoder {
+            var stops = 0
+            override fun encode(image: RgbImage, quality: Int): ByteArray {
+                if (stops++ == 0) rec.stop() // Stop pressed mid-encode
+                return byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+            }
+        }
+        val d = StandardTestDispatcher(testScheduler)
+        rec = FossPoseFreeRecorder(source, imu, scans, staging, stopping, d, io = d, newScanId = { "scan_test" })
+        openAndStart(rec)
+        turnAndFrame(5f)
+        advanceUntilIdle()
+        assertEquals(PoseFreeState.Saved("scan_test", 1), rec.state.value)
+        val late = frame()
+        advanceUntilIdle()
+        assertEquals(1, late.closes)
+        assertEquals(PoseFreeState.Saved("scan_test", 1), rec.state.value)
+        assertEquals(1, PoseFreeCaptureReader.read(File(scans, "scan_test")).frames.size)
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.huntercoles.splatman.capture.recording
 
 import com.huntercoles.splatman.capture.presentation.capture.GuidanceWarning
 import com.huntercoles.splatman.capture.preview.PreviewTarget
+import com.huntercoles.splatman.capture.tracking.LumaPlane
 import com.huntercoles.splatman.splat.capture.GyroIntegrator
 import com.huntercoles.splatman.splat.capture.ImageChange
 import com.huntercoles.splatman.splat.capture.PoseFreeKeyframePolicy
@@ -41,12 +42,14 @@ import kotlin.math.min
  * The foss [PoseFreeRecorder] (#216): frames from a [PoseFreeFrameSource] (Camera2 on a phone), gyro and
  * accelerometer from an [ImuRecorder] into `imu.csv`.
  *
- * Frames: the source hands each one to a one-slot queue; when the worker is still busy the new frame is closed at
- * once and counted in `droppedFrames`, so the camera's reader never stalls. Per frame on [worker]: the luma plane's
- * mean, [Sharpness.laplacianVariance], the gyro rate, [PoseFreeGuidanceTracker] warnings; while recording and not
- * paused, a 64x48 thumbnail for [ImageChange], [PoseFreeKeyframeSelector], and for a keyframe [GyroCoverage], RGB
- * conversion (the camera image is closed before encoding), [JpegEncoder] q90 and [PoseFreeCaptureWriter.writeFrame]
- * straight into `stagingRoot/<id>/`: no image is kept in memory.
+ * Frames: the source hands each one to a one-slot mailbox that keeps the newest frame; a frame still waiting when a
+ * newer one comes is closed and counted in `droppedFrames`, so the camera's reader never stalls and the worker always
+ * judges the freshest frame (#340: the old queue kept the oldest one, up to a whole frame time stale). Per frame on
+ * [worker], on a luma plane box-reduced to about [MEASURE_WIDTH] wide: its mean, [Sharpness.laplacianVariance], the
+ * gyro rate, [PoseFreeGuidanceTracker] warnings; while recording and not paused, a 64x48 thumbnail for
+ * [ImageChange], [PoseFreeKeyframeSelector], and for a keyframe [GyroCoverage], a copy of its pixels
+ * ([SourceFrame.keep]: NV21 from the camera), the camera image closed, then [Nv21JpegEncoder] (or [JpegEncoder] for
+ * RGB) q90 and [PoseFreeCaptureWriter.writeFrame] straight into `stagingRoot/<id>/`: no image is kept in memory.
  *
  * [stop] closes `imu.csv`, writes `calibration.json` and `capture.json` and renames the folder into
  * `scansRoot/<id>/` on [io]. [cancel] deletes it. A camera lost or a write failure mid-recording ends in
@@ -59,6 +62,7 @@ class FossPoseFreeRecorder(
     private val stagingRoot: File,
     private val encoder: JpegEncoder,
     private val worker: CoroutineDispatcher,
+    private val nv21Encoder: Nv21JpegEncoder = YuvImageJpegEncoder,
     private val io: CoroutineDispatcher,
     private val policy: PoseFreeKeyframePolicy = PoseFreeKeyframePolicy(),
     private val newScanId: () -> String = ::timestampScanId,
@@ -81,11 +85,17 @@ class FossPoseFreeRecorder(
     private val guidance = PoseFreeGuidanceTracker()
     private val floor = SharpnessFloor(policy)
     private val thumb = ByteArray(ImageChange.SIZE)
+    private var small = ByteArray(0)
+    private val stats = FrameStats()
 
     private val current = AtomicReference<Take?>(null)
     private val dropped = AtomicInteger()
 
-    @Volatile private var inbox: Channel<SourceFrame>? = null
+    /** The newest frame waiting for the worker; whoever takes it out with getAndSet owns (and closes) it. */
+    private val waiting = AtomicReference<SourceFrame?>(null)
+
+    /** Rings the worker when [waiting] got a frame. */
+    @Volatile private var inbox: Channel<Unit>? = null
 
     @Volatile private var opened = false
 
@@ -110,10 +120,11 @@ class FossPoseFreeRecorder(
                 frame.close()
                 return
             }
-            if (!channel.trySend(frame).isSuccess) {
+            waiting.getAndSet(frame)?.let { stale ->
                 dropped.incrementAndGet()
-                frame.close()
+                stale.close()
             }
+            if (!channel.trySend(Unit).isSuccess) waiting.getAndSet(null)?.close() // closed meanwhile
         }
 
         override fun onError(reason: String) {
@@ -130,9 +141,15 @@ class FossPoseFreeRecorder(
         if (released) return false
         if (opened) return true
         mutableState.value = PoseFreeState.Opening
-        val channel = Channel<SourceFrame>(capacity = 1, onUndeliveredElement = { it.close() })
+        val channel = Channel<Unit>(Channel.CONFLATED)
         inbox = channel
-        scope.launch(worker) { for (frame in channel) process(frame) }
+        scope.launch(worker) {
+            try {
+                for (ring in channel) waiting.getAndSet(null)?.let { process(it) }
+            } finally {
+                waiting.getAndSet(null)?.close()
+            }
+        }
         return when (val r = controlLock.withLock { source.open(listener) }) {
             is SourceOpen.Refused -> {
                 closeFrames()
@@ -200,7 +217,11 @@ class FossPoseFreeRecorder(
         imu.stop()
         savingTake = take
         return scope.launch(io) {
-            frameLock.withLock { } // the frame in flight is written first
+            frameLock.withLock {
+                // The frame in flight is written first; the timings cover the frames since the last stop.
+                Timber.i("PoseFreeRecorder: %s; %d frames dropped", stats.summary(), dropped.get())
+                stats.reset()
+            }
             save(take)
         }.also { saveJob = it }
     }
@@ -243,7 +264,7 @@ class FossPoseFreeRecorder(
     }
 
     private fun closeFrames() {
-        inbox?.close() // the worker drains what waits, then ends
+        inbox?.close() // the worker measures what waits, then ends and closes anything left
         inbox = null
     }
 
@@ -304,15 +325,10 @@ class FossPoseFreeRecorder(
 
     /** Guidance for [frame]; while [take] records, keeps it when the selector takes it. */
     private fun measure(frame: SourceFrame, take: Take?): Set<GuidanceWarning> {
-        val luma = frame.image.luma()
+        val started = System.nanoTime()
+        val luma = reduce(frame.image.luma())
         val meanLuma = CaptureRecorder.meanLuma(luma)
-        val sharpness = Sharpness.laplacianVariance(
-            luma.bytes,
-            luma.width,
-            luma.height,
-            luma.rowStride,
-            max(Sharpness.DEFAULT_DOWNSAMPLE, luma.width / SHARPNESS_WIDTH),
-        )
+        val sharpness = Sharpness.laplacianVariance(luma.bytes, luma.width, luma.height, luma.rowStride, 1)
         val turned: Float
         val rate: Float
         val orientation: Quat
@@ -322,20 +338,56 @@ class FossPoseFreeRecorder(
             orientation = integrator.orientation()
         }
         val warnings = guidance.update(rate, sharpness, floor.offer(sharpness), meanLuma)
-        if (take == null || take.paused) return warnings
+        if (take == null || take.paused) return warnings.also { stats.measured(started) }
         ImageChange.thumbnail(luma.bytes, luma.width, luma.height, luma.rowStride, thumb)
         val change = if (take.hasThumb) ImageChange.meanAbsDiff(thumb, take.lastThumb) else 0f
-        if (!take.selector.offer(frame.timestampNs, turned, change, rate, sharpness)) return warnings
+        val keep = take.selector.offer(frame.timestampNs, turned, change, rate, sharpness)
+        stats.measured(started)
+        if (!keep) return warnings
+        val keptAt = System.nanoTime()
         synchronized(gyroLock) { integrator.mark() }
         thumb.copyInto(take.lastThumb)
         take.hasThumb = true
         take.coverage.add(orientation, imu.latestGravity)
-        val rgb = frame.image.toRgb()
-        frame.close() // the camera gets its buffer back before the slow part
-        val jpeg = encoder.encode(rgb, JPEG_QUALITY)
-        val input = PoseFreeFrameInput(frame.timestampNs, rgb.width, rgb.height, sharpness, jpeg, null, frame.exposureNs)
+        val pixels = frame.keep()
+        frame.close() // the camera gets its buffer back before the encode
+        val jpeg = when (pixels) {
+            is KeptPixels.Nv21 -> nv21Encoder.encode(pixels, JPEG_QUALITY)
+            is KeptPixels.Rgb -> encoder.encode(pixels.image, JPEG_QUALITY)
+        }
+        val input = PoseFreeFrameInput(frame.timestampNs, pixels.width, pixels.height, sharpness, jpeg, null, frame.exposureNs)
         take.entries += PoseFreeCaptureWriter.writeFrame(take.dir, take.entries.size, input)
+        stats.kept(keptAt)
         return warnings
+    }
+
+    /**
+     * [plane] box-reduced by `width / MEASURE_WIDTH` (4 at 1080p, 2 at 720p, none for a small plane) into a buffer
+     * reused frame to frame (#340): sharpness, thumbnail and mean then read 130 thousand bytes, not 14 million.
+     */
+    private fun reduce(plane: LumaPlane): LumaPlane {
+        val k = max(1, plane.width / MEASURE_WIDTH)
+        if (k == 1) return plane
+        val w = plane.width / k
+        val h = plane.height / k
+        if (small.size < w * h) small = ByteArray(w * h)
+        val src = plane.bytes
+        val stride = plane.rowStride
+        val n = k * k
+        var o = 0
+        for (y in 0 until h) {
+            val row0 = y * k * stride
+            for (x in 0 until w) {
+                var sum = 0
+                var r = row0 + x * k
+                for (yy in 0 until k) {
+                    for (xx in r until r + k) sum += src[xx].toInt() and 0xFF
+                    r += stride
+                }
+                small[o++] = ((sum + n / 2) / n).toByte()
+            }
+        }
+        return LumaPlane(w, h, w, small)
     }
 
     private suspend fun save(take: Take) {
@@ -439,8 +491,38 @@ class FossPoseFreeRecorder(
         /** The reason of a stop before any keyframe. */
         const val NO_FRAMES = "no frames"
 
-        /** Sharpness is scored on a plane about this wide (1080p is box-downsampled by 3). */
-        private const val SHARPNESS_WIDTH = 640
+        /** Frames are measured on a luma plane about this wide (1080p is box-reduced by 4 to 480x270). */
+        const val MEASURE_WIDTH = 480
+    }
+
+    /** Worker-only timings, logged at [stop] so a phone run shows where the worker's time goes. */
+    private class FrameStats {
+        private var measuredCount = 0
+        private var measuredNs = 0L
+        private var keptCount = 0
+        private var keptNs = 0L
+
+        fun measured(startNs: Long) {
+            measuredCount++
+            measuredNs += System.nanoTime() - startNs
+        }
+
+        fun kept(startNs: Long) {
+            keptCount++
+            keptNs += System.nanoTime() - startNs
+        }
+
+        fun summary(): String = "measured $measuredCount frames, ${perFrameMs(measuredNs, measuredCount)} ms each; " +
+            "kept $keptCount, ${perFrameMs(keptNs, keptCount)} ms each to copy, encode and write"
+
+        fun reset() {
+            measuredCount = 0
+            measuredNs = 0L
+            keptCount = 0
+            keptNs = 0L
+        }
+
+        private fun perFrameMs(ns: Long, n: Int): Long = if (n == 0) 0L else ns / n / 1_000_000L
     }
 }
 

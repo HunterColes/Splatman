@@ -28,7 +28,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import kotlin.coroutines.resume
 
-/** One camera frame for the [PoseFreeRecorder]: the receiver closes it exactly once. */
+/**
+ * One camera frame for the [PoseFreeRecorder]: the receiver closes it exactly once (a second [close] does nothing).
+ * [keep] copies a keyframe's pixels out before the close, so the camera gets its buffer back before the encode.
+ */
 class SourceFrame(
     /** `SENSOR_TIMESTAMP` of the matching CaptureResult (the image's own timestamp until it arrives), ns. */
     val timestampNs: Long,
@@ -36,8 +39,22 @@ class SourceFrame(
     val exposureNs: Long?,
     /** The YUV image, sensor orientation. */
     val image: CameraImage,
+    /** Copies the image's planes as NV21 (the camera); null converts through [CameraImage.toRgb]. */
+    private val copyNv21: (() -> KeptPixels.Nv21)? = null,
 ) : AutoCloseable {
-    override fun close() = image.close()
+    @Volatile private var closed = false
+
+    /** The pixels a keyframe needs, owned by the caller: NV21 from the camera, RGB otherwise. Before [close] only. */
+    fun keep(): KeptPixels {
+        check(!closed) { "frame already closed" }
+        return copyNv21?.invoke() ?: KeptPixels.Rgb(image.toRgb())
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        image.close()
+    }
 }
 
 /** How [PoseFreeFrameSource.open] went. */
@@ -97,6 +114,8 @@ class Camera2FrameSource(private val context: Context) : PoseFreeFrameSource {
     @Volatile private var session: CameraCaptureSession? = null
 
     @Volatile private var reader: ImageReader? = null
+
+    @Volatile private var lease: ReaderLease? = null
 
     /** True while this source closes the camera on purpose, so the callbacks do not report it as lost. */
     @Volatile private var closing = false
@@ -184,8 +203,10 @@ class Camera2FrameSource(private val context: Context) : PoseFreeFrameSource {
         val h = handler ?: return "camera closed"
         closing = false
         val r = ImageReader.newInstance(size.w, size.h, ImageFormat.YUV_420_888, MAX_IMAGES)
-        r.setOnImageAvailableListener({ onImage(it) }, h)
+        val l = ReaderLease(r)
+        r.setOnImageAvailableListener({ onImage(it, l) }, h)
         reader = r
+        lease = l
         val failure = suspendCancellableCoroutine<String?> { cont ->
             val callback = object : CameraDevice.StateCallback() {
                 private var first = true
@@ -280,21 +301,16 @@ class Camera2FrameSource(private val context: Context) : PoseFreeFrameSource {
     }
 
     /** Camera thread: the latest image only (older ones are closed by the reader), handed on at once. */
-    private fun onImage(r: ImageReader) {
+    private fun onImage(r: ImageReader, l: ReaderLease) {
         val image = try {
             r.acquireLatestImage()
         } catch (e: IllegalStateException) {
             Timber.w(e, "Camera2FrameSource: no image buffer free")
             null
         } ?: return
-        val l = listener
-        if (l == null) {
-            image.close()
-            return
-        }
         val t = image.timestamp
         val exposure = synchronized(results) { results[t] }
-        l.onFrame(SourceFrame(t, exposure, MediaCameraImage(image)))
+        deliver(MediaCameraImage(image), t, exposure, l, listener) { Nv21.of(image) }
     }
 
     private fun closeDevice() {
@@ -307,14 +323,36 @@ class Camera2FrameSource(private val context: Context) : PoseFreeFrameSource {
         session = null
         device?.close()
         device = null
-        reader?.close()
+        reader?.setOnImageAvailableListener(null, null)
         reader = null
+        lease?.retire() // the reader closes once the recorder has closed every frame it still holds (#340)
+        lease = null
         synchronized(results) { results.clear() }
     }
 
     companion object {
         /** Images the reader holds: one acquired, one waiting for the worker, one on the worker, one spare. */
         const val MAX_IMAGES = 4
+
+        /**
+         * Hands [image] to [listener] as a frame counted in [lease], or closes it at once when the lease is retired
+         * (a frame arriving after suspend or close) or nobody listens. Each image is closed exactly once: here, or
+         * by the frame's receiver.
+         */
+        internal fun deliver(
+            image: CameraImage,
+            timestampNs: Long,
+            exposureNs: Long?,
+            lease: ReaderLease,
+            listener: PoseFreeFrameSource.Listener?,
+            copyNv21: (() -> KeptPixels.Nv21)? = null,
+        ) {
+            if (listener == null || !lease.acquire()) {
+                image.close()
+                return
+            }
+            listener.onFrame(SourceFrame(timestampNs, exposureNs, LeasedImage(image, lease), copyNv21))
+        }
 
         private const val RESULTS_KEPT = 16
         private const val TARGET_FPS = 30
