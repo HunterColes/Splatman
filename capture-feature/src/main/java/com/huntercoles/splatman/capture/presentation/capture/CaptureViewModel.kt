@@ -1,6 +1,8 @@
 package com.huntercoles.splatman.capture.presentation.capture
 
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +13,7 @@ import com.huntercoles.splatman.capture.recording.CoverageCells
 import com.huntercoles.splatman.capture.recording.PoseFreeRecorder
 import com.huntercoles.splatman.capture.recording.PoseFreeState
 import com.huntercoles.splatman.capture.recording.RecorderState
+import com.huntercoles.splatman.capture.recording.RoomCells
 import com.huntercoles.splatman.capture.tracking.CameraPermission
 import com.huntercoles.splatman.capture.tracking.FeaturePoints
 import com.huntercoles.splatman.capture.tracking.FlavourTracking
@@ -19,7 +22,10 @@ import com.huntercoles.splatman.capture.tracking.TrackedFrame
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import com.huntercoles.splatman.capture.tracking.TrackingState
+import com.huntercoles.splatman.core.preferences.CapturePreferences
+import com.huntercoles.splatman.core.preferences.PreferenceStore
 import com.huntercoles.splatman.core.preferences.SettingsPreferences
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.CameraPose
@@ -53,6 +59,9 @@ interface PoseFreeAccess {
 
     /** A monotonic clock for the capture time, in nanoseconds. */
     fun nowNs(): Long
+
+    /** Whether the phone has a gyroscope; without one Room mode has no gauge and finishes on kept frames alone. */
+    fun hasGyroscope(): Boolean = true
 }
 
 /** [PoseFreeAccess] on the app's context: the CAMERA grant, the flavour's camera check, the elapsed-realtime clock. */
@@ -65,6 +74,8 @@ object PoseFreeAccessModule {
         override fun cameraGranted(): Boolean = CameraPermission.isGranted(context)
         override suspend fun check(): TrackingCheck = support.check()
         override fun nowNs(): Long = SystemClock.elapsedRealtimeNanos()
+        override fun hasGyroscope(): Boolean =
+            context.getSystemService(SensorManager::class.java)?.getDefaultSensor(Sensor.TYPE_GYROSCOPE) != null
     }
 }
 
@@ -74,6 +85,19 @@ private object NoPoseFreeAccess : PoseFreeAccess {
     override suspend fun check(): TrackingCheck =
         TrackingCheck(TrackingAvailability.UNSUPPORTED, "no pose-free recorder")
     override fun nowNs(): Long = System.nanoTime()
+}
+
+/** Remembers nothing past the view model: the default when no [CapturePreferences] is given (tests). */
+private class MemoryPreferenceStore : PreferenceStore {
+    private val values = mutableMapOf<String, Any>()
+    override fun getBoolean(key: String, default: Boolean): Boolean = values[key] as? Boolean ?: default
+    override fun putBoolean(key: String, value: Boolean) {
+        values[key] = value
+    }
+    override fun getString(key: String): String? = values[key] as? String
+    override fun putString(key: String, value: String) {
+        values[key] = value
+    }
 }
 
 /**
@@ -88,6 +112,11 @@ private object NoPoseFreeAccess : PoseFreeAccess {
  * recorder opens the camera once [access] allows it, and its state drives the screen (keyframes, gyro coverage, the
  * DARK and FAST warnings). No subject tap and no reticle; a Stop with no keyframe says so; a saved scan goes to
  * Processing as above.
+ *
+ * Room mode (pose-free only): [CaptureIntent.SelectMode] picks the mode while no recording is under way and saves it
+ * to [capturePreferences], whose value is the first mode. A Room take records with the mode, shows the gyro Seen
+ * cells as the room gauge, unlocks Finish by [PoseFreeRoom.ready] and shows ROOM_WALK_ON for
+ * [PoseFreeRoom.WALK_ON_SHOW_MS] after each further full turn of yaw. Its warnings are the pose-free ones (DARK, FAST).
  */
 @HiltViewModel
 class CaptureViewModel @Inject constructor(
@@ -96,6 +125,7 @@ class CaptureViewModel @Inject constructor(
     private val settings: SettingsPreferences,
     poseFree: Optional<PoseFreeRecorder> = Optional.empty(),
     private val access: PoseFreeAccess = NoPoseFreeAccess,
+    private val capturePreferences: CapturePreferences = CapturePreferences(MemoryPreferenceStore()),
 ) : ViewModel() {
     /** The pose-free recorder (foss), or null on the ARCore path. */
     private val poseFreeRecorder: PoseFreeRecorder? = poseFree.orElse(null)
@@ -103,7 +133,10 @@ class CaptureViewModel @Inject constructor(
     private val permissionDenied = MutableStateFlow(false)
     private val installPending = MutableStateFlow(false)
     private val hint = MutableStateFlow(TrackingHint.LOOKING_FOR_SURFACES)
-    private val live = MutableStateFlow(Live())
+    private val live = MutableStateFlow(Live(mode = ScanMode.fromKey(capturePreferences.scanMode.value)))
+
+    /** Read once, before [uiState] first combines. */
+    private val hasGyroscope = access.hasGyroscope()
 
     /** The guidance's own state, beside the tracker's and the recorder's. */
     private data class Live(
@@ -116,6 +149,9 @@ class CaptureViewModel @Inject constructor(
         val facingSegment: Int = 0,
         val elapsedMs: Long = 0,
         val confirmDiscard: Boolean = false,
+        val mode: ScanMode = ScanMode.OBJECT,
+        val takeOn: Boolean = false,
+        val walkOn: Boolean = false,
     )
 
     private val base = combine(tracker.status, permissionDenied, hint, installPending, recorder.state) {
@@ -163,25 +199,39 @@ class CaptureViewModel @Inject constructor(
             val shown = poseFreeRecorderState(s, outcome)
             val stage = poseFreeStage(s, l.paused)
             val cells = (s as? PoseFreeState.Recording)?.cells ?: l.cells
+            val framesKept = when (shown) {
+                is RecorderState.Recording -> shown.keyframes
+                is RecorderState.Saving -> shown.keyframes
+                is RecorderState.Saved -> shown.keyframes
+                else -> 0
+            }
+            val inTakeStage = stage == CaptureStage.CAPTURING || stage == CaptureStage.PAUSED
+            val room = l.mode == ScanMode.ROOM
+            val progress = RoomProgress(cells, framesKept, hasGyroscope, l.walkOn)
             CaptureUiState(
                 phase = capturePhase(status, denied, TrackingHint.TRACKING),
                 recorder = shown,
                 stage = stage,
                 status = poseFreePill(stage),
-                instruction = instructionFor(stage, cells, l.warning, shown),
+                instruction = if (room) {
+                    roomInstructionFor(stage, progress, l.warning, shown)
+                } else {
+                    instructionFor(stage, cells, l.warning, shown)
+                },
                 warning = if (stage == CaptureStage.CAPTURING) l.warning else null,
                 cells = cells,
                 facingSegment = (s as? PoseFreeState.Recording)?.facingSegment ?: l.facingSegment,
-                ready = cells.ready && (stage == CaptureStage.CAPTURING || stage == CaptureStage.PAUSED),
+                ready = inTakeStage && if (room) progress.ready else cells.ready,
                 elapsedMs = l.elapsedMs,
-                framesKept = when (shown) {
-                    is RecorderState.Recording -> shown.keyframes
-                    is RecorderState.Saving -> shown.keyframes
-                    is RecorderState.Saved -> shown.keyframes
-                    else -> 0
-                },
+                framesKept = framesKept,
                 confirmDiscard = l.confirmDiscard,
                 poseFree = true,
+                mode = l.mode,
+                modeSwitchVisible = !l.takeOn,
+                roomCells = if (room) RoomCells(seen = cells) else null,
+                roomPercent = if (room) cells.percent else 0,
+                noGauge = room && !hasGyroscope,
+                budgetReached = room && inTakeStage && progress.budgetReached,
             )
         }
 
@@ -216,6 +266,8 @@ class CaptureViewModel @Inject constructor(
     private var lastKeyframes = 0
     private var foreground = true
     private var lastTickNs = 0L
+    private val yawTurns = YawTurns()
+    private var walkOnUntilMs = 0L
 
     /** Recording now, paused or not: the pose-free take, or the ARCore recorder's. */
     private val isRecording: Boolean get() = if (poseFreeRecorder != null) inTake else recorder.isRecording
@@ -312,6 +364,7 @@ class CaptureViewModel @Inject constructor(
                 cancel()
                 leaveRequests.trySend(Unit)
             }
+            is CaptureIntent.SelectMode -> selectMode(intent.mode)
         }
     }
 
@@ -372,6 +425,13 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
+    /** Takes [mode] while the switch shows (pose-free, no recording under way) and remembers it. */
+    private fun selectMode(mode: ScanMode) {
+        if (poseFreeRecorder == null || live.value.takeOn) return
+        capturePreferences.setScanMode(mode.key)
+        live.update { it.copy(mode = mode) }
+    }
+
     private fun record() {
         if (subject == null) mapping()?.let { setSubject(it.centre) }
         if (!recorder.start(subject)) return
@@ -384,7 +444,7 @@ class CaptureViewModel @Inject constructor(
     }
 
     private fun recordPoseFree(pf: PoseFreeRecorder) {
-        if (!pf.start()) {
+        if (!pf.start(live.value.mode)) {
             // The camera went (lost mid-recording): show the failure, whose Try again opens it again.
             (pf.state.value as? PoseFreeState.Failed)?.let { poseFreeStatus.value = PoseSourceStatus.Failed(it.reason) }
             return
@@ -397,7 +457,11 @@ class CaptureViewModel @Inject constructor(
         arbiter.reset()
         elapsedNs = 0
         wasReady = false
-        live.update { it.copy(paused = false, warning = null, cells = CoverageCells(), elapsedMs = 0) }
+        yawTurns.reset()
+        walkOnUntilMs = 0L
+        live.update {
+            it.copy(paused = false, warning = null, cells = CoverageCells(), elapsedMs = 0, takeOn = true, walkOn = false)
+        }
         haptic(CaptureHaptic.CONFIRM)
     }
 
@@ -423,7 +487,9 @@ class CaptureViewModel @Inject constructor(
             recorder.cancel()
         }
         arbiter.reset()
-        live.update { it.copy(paused = false, warning = null, confirmDiscard = false, cells = CoverageCells()) }
+        live.update {
+            it.copy(paused = false, warning = null, confirmDiscard = false, cells = CoverageCells(), takeOn = false)
+        }
     }
 
     private suspend fun onPoseFreeState(state: PoseFreeState) {
@@ -431,6 +497,7 @@ class CaptureViewModel @Inject constructor(
             is PoseFreeState.Recording -> if (inTake) onPoseFreeFrame(state)
             is PoseFreeState.Saved -> {
                 stopping = false
+                live.update { it.copy(takeOn = false) }
                 savedScans.send(state.scanId)
             }
             is PoseFreeState.Failed -> onPoseFreeFailed(state.reason)
@@ -442,6 +509,7 @@ class CaptureViewModel @Inject constructor(
         when {
             stopping -> {
                 stopping = false
+                live.update { it.copy(takeOn = false) }
                 poseFreeOutcome.value =
                     if (lastKeyframes == 0) RecorderState.NothingRecorded else RecorderState.Failed(reason)
             }
@@ -449,7 +517,7 @@ class CaptureViewModel @Inject constructor(
                 // The camera was lost or a write failed while recording; a Record then shows which.
                 inTake = false
                 arbiter.reset()
-                live.update { it.copy(paused = false, warning = null, confirmDiscard = false) }
+                live.update { it.copy(paused = false, warning = null, confirmDiscard = false, takeOn = false) }
                 poseFreeOutcome.value = RecorderState.Failed(reason)
             }
             poseFreeStatus.value == PoseSourceStatus.Running || poseFreeStatus.value == PoseSourceStatus.Paused ->
@@ -473,12 +541,22 @@ class CaptureViewModel @Inject constructor(
             warning = arbiter.update(state.warnings, now / NS_PER_MS)
             if (warning != null && warning != before) haptic(CaptureHaptic.REJECT)
         }
-        if (state.cells.ready && !wasReady) {
+        val room = live.value.mode == ScanMode.ROOM
+        val nowMs = now / NS_PER_MS
+        if (yawTurns.add(state.facingSegment) && room && !paused) walkOnUntilMs = nowMs + PoseFreeRoom.WALK_ON_SHOW_MS
+        val ready = if (room) PoseFreeRoom.ready(state.cells, state.keyframes, hasGyroscope) else state.cells.ready
+        if (ready && !wasReady) {
             wasReady = true
             haptic(CaptureHaptic.CONFIRM)
         }
         live.update {
-            it.copy(hasFrame = true, warning = warning, cells = state.cells, elapsedMs = elapsedNs / NS_PER_MS)
+            it.copy(
+                hasFrame = true,
+                warning = warning,
+                cells = state.cells,
+                elapsedMs = elapsedNs / NS_PER_MS,
+                walkOn = nowMs < walkOnUntilMs,
+            )
         }
     }
 

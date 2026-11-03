@@ -1,12 +1,19 @@
 package com.huntercoles.splatman.capture.presentation.capture
 
+import com.huntercoles.splatman.capture.recording.Coverage
+import com.huntercoles.splatman.capture.recording.CoverageBand
 import com.huntercoles.splatman.capture.recording.CoverageCells
 import com.huntercoles.splatman.capture.recording.RecorderState
+import com.huntercoles.splatman.capture.recording.RoomCells
+import com.huntercoles.splatman.capture.recording.RoomCoverage
 import com.huntercoles.splatman.capture.tracking.PoseSourceStatus
 import com.huntercoles.splatman.capture.tracking.TrackingAvailability
 import com.huntercoles.splatman.capture.tracking.TrackingCheck
 import com.huntercoles.splatman.capture.tracking.TrackingFailure
 import com.huntercoles.splatman.capture.tracking.TrackingState
+import com.huntercoles.splatman.splat.capture.PoseFreeKeyframePolicy
+import com.huntercoles.splatman.splat.capture.ScanMode
+import kotlin.math.abs
 
 /** What the user or the screen's lifecycle did. */
 sealed interface CaptureIntent {
@@ -51,6 +58,12 @@ sealed interface CaptureIntent {
 
     /** The discard dialog's Discard: keeps nothing and leaves. */
     data object Discard : CaptureIntent
+
+    /**
+     * The Object/Room switch: taken only while no recording is under way (Aim), so never once a frame is kept, and
+     * remembered as the next scan's mode. Ignored otherwise.
+     */
+    data class SelectMode(val mode: ScanMode) : CaptureIntent
 }
 
 /** Where the live capture is (docs/design/screens/capture.md, States). */
@@ -123,6 +136,12 @@ sealed interface CapturePhase {
  * [facingSegment] is the coverage segment the phone is in; [ready] unlocks Finish. [poseFree]: the scan records
  * without tracking (foss, PoseFreeRecorder present): no subject tap or reticle, the pose-free aim copy, the READY and
  * RECORDING pills, and Finish usable as soon as recording starts (filled once [ready]).
+ *
+ * Room mode (pose-free only, ADR 0015 section 5): [mode] is the scan's mode; [modeSwitchVisible] while the switch can
+ * change it (no recording under way, so false from the first kept frame until the next scan); [roomCells] the room
+ * gauge in Room mode (null in Object mode): on the pose-free path only Seen cells, from the gyro coverage, never
+ * Covered, and [roomPercent] is Seen / [Coverage.CELLS]; [noGauge] when the phone has no gyroscope (hide the gauge);
+ * [budgetReached] once the keyframe budget is used up ([PoseFreeRoom.BUDGET]), which also unlocks Finish.
  */
 data class CaptureUiState(
     val phase: CapturePhase = CapturePhase.Checking,
@@ -141,7 +160,135 @@ data class CaptureUiState(
     val framesKept: Int = 0,
     val confirmDiscard: Boolean = false,
     val poseFree: Boolean = false,
+    val mode: ScanMode = ScanMode.OBJECT,
+    val modeSwitchVisible: Boolean = true,
+    val roomCells: RoomCells? = null,
+    val roomPercent: Int = 0,
+    val noGauge: Boolean = false,
+    val budgetReached: Boolean = false,
 )
+
+/**
+ * The pose-free Room Finish rule and guidance (ADR 0015 section 5): without poses only gyro Seen cells exist, so
+ * Finish unlocks at [READY_SEEN] Seen cells with [WALLS_SEEN] of them LEVEL and [MIN_KEYFRAMES] kept frames, at
+ * [MIN_KEYFRAMES] alone on a phone without a gyroscope, and always at the keyframe [BUDGET].
+ */
+object PoseFreeRoom {
+    /** Seen cells of the 72 that unlock Finish (70 %, as Room's Covered rule asks of 29 Covered plus walls). */
+    const val READY_SEEN = 51
+
+    /** Of them, Seen LEVEL (wall) cells. */
+    const val WALLS_SEEN = RoomCoverage.WALLS_DONE
+
+    /** Kept frames before Finish unlocks, whatever the gauge says. */
+    const val MIN_KEYFRAMES = 120
+
+    /** The pose-free keyframe budget: at it nothing more is kept, the instruction is ROOM_FULL and Finish unlocks. */
+    val BUDGET: Int = PoseFreeKeyframePolicy().maxKeyframes
+
+    /** Seen cells per band before the guidance moves on (walls, then ceiling, then floor). */
+    const val STEP_BAND = RoomCoverage.STEP_BAND
+
+    /** Gyro yaw, one way, after which ROOM_WALK_ON shows again. */
+    const val TURN_DEG = 360f
+
+    /** How long ROOM_WALK_ON stays up, milliseconds. */
+    const val WALK_ON_SHOW_MS = 3_000L
+
+    /** True once [keyframes] reached the budget. */
+    fun budgetReached(keyframes: Int): Boolean = keyframes >= BUDGET
+
+    /** True once Finish unlocks for [seen] cells and [keyframes] kept frames, with or without a gyroscope. */
+    fun ready(seen: CoverageCells, keyframes: Int, hasGyroscope: Boolean): Boolean = budgetReached(keyframes) ||
+        keyframes >= MIN_KEYFRAMES &&
+        (!hasGyroscope || seen.total >= READY_SEEN && seen.count(CoverageBand.LEVEL) >= WALLS_SEEN)
+
+    /** The next step while not ready: walls until [STEP_BAND] are Seen, then the ceiling, then the floor. */
+    fun step(seen: CoverageCells, hasGyroscope: Boolean): Instruction = when {
+        !hasGyroscope -> Instruction.ROOM_WALK
+        seen.count(CoverageBand.LEVEL) < STEP_BAND -> Instruction.ROOM_WALK
+        seen.count(CoverageBand.HIGH) < STEP_BAND -> Instruction.ROOM_LOOK_UP
+        seen.count(CoverageBand.LOW) < STEP_BAND -> Instruction.ROOM_LOOK_DOWN
+        else -> Instruction.ROOM_WALK
+    }
+}
+
+/** What the Room instruction line needs of the pose-free recording beside the stage. */
+data class RoomProgress(
+    val seen: CoverageCells,
+    val keyframes: Int,
+    val hasGyroscope: Boolean,
+    val walkOn: Boolean,
+) {
+    val budgetReached: Boolean get() = PoseFreeRoom.budgetReached(keyframes)
+    val ready: Boolean get() = PoseFreeRoom.ready(seen, keyframes, hasGyroscope)
+}
+
+/** The Room instruction line for [stage]; null while a [warning] replaces it or while finishing. */
+fun roomInstructionFor(
+    stage: CaptureStage,
+    progress: RoomProgress,
+    warning: GuidanceWarning?,
+    recorder: RecorderState,
+): Instruction? = when (stage) {
+    CaptureStage.STARTING -> Instruction.STARTING
+    CaptureStage.FINDING_SURFACES -> Instruction.FIND_SURFACE
+    CaptureStage.AIM -> when (recorder) {
+        RecorderState.NothingRecorded -> Instruction.NOTHING_RECORDED
+        is RecorderState.Failed -> Instruction.SAVE_FAILED
+        else -> Instruction.ROOM_AIM
+    }
+    CaptureStage.CAPTURING -> when {
+        warning != null -> null
+        progress.budgetReached -> Instruction.ROOM_FULL
+        progress.ready -> Instruction.READY
+        progress.walkOn -> Instruction.ROOM_WALK_ON
+        else -> PoseFreeRoom.step(progress.seen, progress.hasGyroscope)
+    }
+    CaptureStage.PAUSED -> when {
+        progress.budgetReached -> Instruction.ROOM_FULL
+        progress.ready -> Instruction.READY
+        else -> Instruction.PAUSED
+    }
+    CaptureStage.FINISHING -> null
+}
+
+/**
+ * Counts full turns of gyro yaw from the coverage ring's facing segment, frame by frame: each step to a neighbouring
+ * segment adds or takes off 360 / [Coverage.SEGMENTS] degrees (the shorter way round), so looking left and right
+ * cancels out. A turn completes once the net yaw is a further [PoseFreeRoom.TURN_DEG], either way, from where the last
+ * one completed (or the start). Not thread-safe.
+ */
+class YawTurns {
+    private var last: Int? = null
+    private var steps = 0
+    private var anchor = 0
+
+    /** Whole turns so far. */
+    var turns: Int = 0
+        private set
+
+    /** Takes the facing [segment] of the latest frame; true when it completes a further turn. */
+    fun add(segment: Int): Boolean {
+        val n = Coverage.SEGMENTS
+        val prev = last
+        last = segment
+        if (prev == null) return false
+        steps += (segment - prev + n + n / 2).mod(n) - n / 2
+        if (abs(steps - anchor) < n) return false
+        anchor = steps
+        turns++
+        return true
+    }
+
+    /** Forgets the yaw. */
+    fun reset() {
+        last = null
+        steps = 0
+        anchor = 0
+        turns = 0
+    }
+}
 
 /** The stage for the [recorder], whether the user [paused], whether any frame came yet and the latest [hint]. */
 fun captureStage(recorder: RecorderState, paused: Boolean, hasFrame: Boolean, hint: TrackingHint): CaptureStage =

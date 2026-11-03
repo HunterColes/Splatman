@@ -376,6 +376,12 @@ private fun Instruction.label(): Int = when (this) {
     Instruction.READY -> R.string.cap_ready
     Instruction.NOTHING_RECORDED -> R.string.capture_nothing_recorded
     Instruction.SAVE_FAILED -> R.string.capture_save_failed
+    // TODO(#291): the room strings (cap_room_*); until then the nearest Object line.
+    Instruction.ROOM_AIM -> R.string.cap_pf_aim
+    Instruction.ROOM_WALK, Instruction.ROOM_WALK_ON -> R.string.cap_walk
+    Instruction.ROOM_LOOK_UP -> R.string.cap_go_higher
+    Instruction.ROOM_LOOK_DOWN -> R.string.cap_go_lower
+    Instruction.ROOM_FULL -> R.string.cap_ready
 }
 
 @Composable

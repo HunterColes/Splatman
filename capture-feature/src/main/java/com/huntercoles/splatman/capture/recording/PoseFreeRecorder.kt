@@ -2,6 +2,7 @@ package com.huntercoles.splatman.capture.recording
 
 import com.huntercoles.splatman.capture.presentation.capture.GuidanceWarning
 import com.huntercoles.splatman.capture.preview.PreviewTarget
+import com.huntercoles.splatman.splat.capture.ScanMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 
@@ -60,6 +61,12 @@ interface PoseFreeRecorder {
 
     /** Starts a recording; false while not previewing (closed, recording or saving). */
     fun start(): Boolean
+
+    /**
+     * Starts a recording of a [mode] scan; false as [start]. The default records as [start] does, without the mode;
+     * a recorder that writes the mode into capture.json overrides it (#292).
+     */
+    fun start(mode: ScanMode): Boolean = start()
 
     /** While recording, [paused] true keeps no keyframes (the sensors keep recording); false takes them again. */
     fun pause(paused: Boolean)

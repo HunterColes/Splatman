@@ -193,6 +193,24 @@ enum class Instruction {
 
     /** Back to aiming after a save that failed. */
     SAVE_FAILED,
+
+    /** Room mode, before recording: stand in the room and press record. */
+    ROOM_AIM,
+
+    /** Room mode: walk round the room facing the walls. */
+    ROOM_WALK,
+
+    /** Room mode: the walls are seen, now the ceiling. */
+    ROOM_LOOK_UP,
+
+    /** Room mode: the walls and ceiling are seen, now the floor. */
+    ROOM_LOOK_DOWN,
+
+    /** Room mode: a full turn on the spot; walk on to the next part of the room. */
+    ROOM_WALK_ON,
+
+    /** Room mode: the keyframe budget is used up; Finish. */
+    ROOM_FULL,
 }
 
 /**
