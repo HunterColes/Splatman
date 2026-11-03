@@ -116,7 +116,9 @@ class CovarianceTest {
     fun `project writes at the offsets and allocates nothing per call`() {
         val means = FloatArray(3 * 64) { i -> if (i % 3 == 2) 1f + i * 0.01f else (i % 5) * 0.1f }
         val covs = FloatArray(6 * 64)
-        for (i in 0 until 64) Covariance.world(floatArrayOf(-2f, -2.5f, -3f), 0, floatArrayOf(1f, 0.1f, 0.2f, 0.3f), 0, covs, i * 6)
+        for (i in 0 until 64) {
+            Covariance.world(floatArrayOf(-2f, -2.5f, -3f), 0, floatArrayOf(1f, 0.1f, 0.2f, 0.3f), 0, covs, i * 6)
+        }
         val out = FloatArray(4 * 64)
         val rot = Mat3.identity()
         fun pass() {

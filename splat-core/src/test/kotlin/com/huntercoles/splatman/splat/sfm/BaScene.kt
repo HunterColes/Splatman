@@ -49,6 +49,7 @@ val BA_K_ODD = CameraIntrinsics(620f, 615f, 330f, 236f, 640, 480)
  * lines, so moving the point cannot hide it). The start rotates every registered camera but the first by [rotDeg]
  * about a random axis, shifts its t by [transFrac] |t| and every point by [pointFrac] (the cube's half size is 1).
  */
+@Suppress("LongParameterList") // a fixture builder: every knob has a default and tests name only the ones they turn
 fun baScene(
     cameras: Int = 20,
     points: Int = 500,
@@ -286,7 +287,8 @@ private fun lookAt(c: DoubleArray, target: DoubleArray): DoubleArray {
     return doubleArrayOf(x[0], x[1], x[2], y[0], y[1], y[2], z[0], z[1], z[2])
 }
 
-private fun mulMat(r: DoubleArray, v: DoubleArray) = DoubleArray(3) { i -> r[3 * i] * v[0] + r[3 * i + 1] * v[1] + r[3 * i + 2] * v[2] }
+private fun mulMat(r: DoubleArray, v: DoubleArray) =
+    DoubleArray(3) { i -> r[3 * i] * v[0] + r[3 * i + 1] * v[1] + r[3 * i + 2] * v[2] }
 
 private fun mulMatMat(a: DoubleArray, b: DoubleArray) =
     DoubleArray(9) { idx -> val i = idx / 3; val j = idx % 3; (0..2).sumOf { a[3 * i + it] * b[3 * it + j] } }
@@ -304,7 +306,10 @@ private fun rodrigues(axis: DoubleArray, angle: Double): DoubleArray {
 }
 
 private fun quatToMat(q: DoubleArray): DoubleArray {
-    val (w, x, y, z) = q
+    val w = q[0]
+    val x = q[1]
+    val y = q[2]
+    val z = q[3]
     return doubleArrayOf(
         1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
         2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x),

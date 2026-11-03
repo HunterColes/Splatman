@@ -36,8 +36,8 @@ import kotlin.math.sqrt
  *
  * The frame is F, the PLY file frame (RDF, +Y down; ADR 0003 rule 5): tools that convert PLY to SPZ store the
  * coordinates as they are (the bundled cactus.spz, #154). Positions, quaternions and SH signs go W <-> F through
- * [FrameConversions], per splat and in place, as the sections stream. Reads versions 2 and 3, writes version 3. The stream is decoded section by section through
- * one fixed-size buffer; no full decompressed copy is held.
+ * [FrameConversions], per splat and in place, as the sections stream. Reads versions 2 and 3, writes version 3.
+ * The stream is decoded section by section through one fixed-size buffer; no full decompressed copy is held.
  *
  * Deviation from the reference: alpha bytes 0 and 255 decode to finite logits (alpha 0.25/255 and 254.75/255,
  * which re-encode to the same bytes) rather than -inf and +inf; positions beyond the 24-bit range are clamped on

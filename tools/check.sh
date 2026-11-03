@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The gate a card must pass, on this checkout (a worktree is fine):
-#   ./gradlew assembleDebug testDebugUnitTest lintDebug   (detekt is left out: 69 open findings, the app is being rewritten)
+#   ./gradlew assembleDebug testDebugUnitTest lintDebug detekt   (detekt blocks with zero findings and no baseline, #64)
 # The device tour, monkey and mutation runs are not part of it (CLAUDE.md).
 #   tools/check.sh            the whole gate
 #   tools/check.sh <tasks>    other Gradle tasks under the same lock and caps (e.g. assembleDebug)
@@ -82,7 +82,7 @@ main_root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 if [[ "$main_root" != "$PWD" && ! -e build-cache && -d "$main_root/build-cache" ]]; then
   ln -s "$main_root/build-cache" build-cache
 fi
-tasks=("$@"); ((${#tasks[@]})) || tasks=(assembleDebug testDebugUnitTest lintDebug)
+tasks=("$@"); ((${#tasks[@]})) || tasks=(assembleDebug testDebugUnitTest lintDebug detekt)
 # This repo is public (GitHub mirrors master): no private host name in a tracked file. The pattern is local git config
 # (company.private, company.private-allow), set in each checkout and never committed.
 if ((! $#)) && pat="$(git config --get company.private)"; then
@@ -99,7 +99,9 @@ flock -w "${GATE_LOCK_WAIT:-3600}" /tmp/splatman-gradle.lock \
   > >(tee "$log") 2>&1 || rc=$?
 wait
 if ((rc)); then
-  why="$(grep -E '^(> |e: |FAILED|.*tests completed, [0-9]+ failed|Lint found)' "$log" | tail -3 | paste -sd';' -)" || true
+  # Gradle's own advice lines (`> Run with ...`, `> Get more help ...`) are not a reason.
+  why="$(grep -E '^(> |e: |FAILED|.*tests completed, [0-9]+ failed|Lint found)' "$log" |
+    grep -vE '^> (Run with|Get more help)' | tail -3 | paste -sd';' -)" || true
   printf '\ngate: RED: %s\n' "${why:-$(grep -v '^[[:space:]]*$' "$log" | tail -1)}"
   exit "$rc"
 fi

@@ -162,11 +162,12 @@ class GlesCompute private constructor() : AutoCloseable {
             val gl = GlesCompute()
             try {
                 gl.executor.submit {
+                    var ready = false
                     try {
                         gl.initEgl()
-                    } catch (e: Throwable) {
-                        gl.teardown()
-                        throw e
+                        ready = true
+                    } finally {
+                        if (!ready) gl.teardown()
                     }
                 }.get()
             } catch (e: ExecutionException) {

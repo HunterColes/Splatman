@@ -8,8 +8,9 @@ import java.util.Random
 
 /**
  * The ADR 0005 optimiser recovers a known scene (ADR 0009): 8 views (64 px, 0.5 rad field of view, so the cloud
- * fills the frame) of a seeded 50-splat cloud rendered by the forward pass are the targets; a perturbed copy (positions +-5 cm, log-scales +-0.2, opacity logits +-0.5,
- * colours +-0.5 SH, rotations +-0.05) must reach PSNR > 28 dB over the 8 views within 500 iterations, under 60 s.
+ * fills the frame) of a seeded 50-splat cloud rendered by the forward pass are the targets; a perturbed copy
+ * (positions +-5 cm, log-scales +-0.2, opacity logits +-0.5, colours +-0.5 SH, rotations +-0.05) must reach
+ * PSNR > 28 dB over the 8 views within 500 iterations, under 60 s.
  * The run keeps the default schedule, so it densifies at iteration 300; `maxSplats` is the true count, so the cap
  * stops that from growing a cloud that already has every splat it needs (prune still runs).
  */

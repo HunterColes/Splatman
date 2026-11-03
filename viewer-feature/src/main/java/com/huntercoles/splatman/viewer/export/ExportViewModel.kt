@@ -176,9 +176,9 @@ class ExportViewModel @Inject constructor(
             try {
                 val uris = names.map(target::shareUri)
                 _uiState.update { it.copy(share = ShareRequest(uris, names)) }
-            } catch (e: IllegalArgumentException) {
+            } catch (ignored: IllegalArgumentException) {
                 _uiState.update { it.copy(status = ExportStatus.Failed(ExportUseCase.WRITE_ERROR)) }
-            } catch (e: IOException) {
+            } catch (ignored: IOException) {
                 _uiState.update { it.copy(status = ExportStatus.Failed(ExportUseCase.WRITE_ERROR)) }
             }
         }

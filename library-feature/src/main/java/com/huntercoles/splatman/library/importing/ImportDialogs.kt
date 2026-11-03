@@ -70,6 +70,7 @@ private fun ErrorDialog(message: ImportMessage, onOk: () -> Unit) {
 }
 
 /** The message with its counts and sizes formatted for the user's locale. */
+@Suppress("SpreadOperator") // getString takes varargs; the array is built here, so the copy is the only way in.
 fun ImportMessage.format(context: Context): String {
     val formatted = args.map { arg ->
         when (arg) {

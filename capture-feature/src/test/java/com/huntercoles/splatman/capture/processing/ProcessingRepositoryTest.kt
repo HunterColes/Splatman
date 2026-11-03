@@ -113,7 +113,7 @@ class ProcessingRepositoryTest {
         val throwing = ThumbnailEncoder { _, _, _, out ->
             out.write(byteArrayOf(1, 2, 3))
             out.flush()
-            throw IllegalStateException("encoder broke")
+            error("encoder broke")
         }
         val result = repository(StepTrainer(), encoder = throwing).process(scan)
 

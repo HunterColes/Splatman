@@ -407,6 +407,18 @@ object BundleAdjuster {
 
         /** Solves the damped system for the step and writes the candidate parameters; false when it is singular. */
         private fun step(): Boolean {
+            fillCameraBlocks()
+            // Eliminate the points: S -= W V^-1 W^T, rhs += W V^-1 gp.
+            for (p in 0 until np) if (!eliminatePoint(p)) return false
+            if (!cholesky()) return false
+            // rhs now holds the camera step; back-substitute the points: dp = V^-1 (-gp - W^T dc).
+            for (p in 0 until np) backSubstitute(p)
+            applyStep()
+            return true
+        }
+
+        /** S and rhs from the camera blocks of U and gc, with the damping on S's diagonal. */
+        private fun fillCameraBlocks() {
             s.fill(0.0)
             for (f in 0 until nf) {
                 val d = dim[f]
@@ -419,85 +431,88 @@ object BundleAdjuster {
                     s[(o + a) * n + o + a] += damp(u[ub + 7 * a])
                 }
             }
-            // Eliminate the points: S -= W V^-1 W^T, rhs += W V^-1 gp.
-            for (p in 0 until np) {
-                val start = ptStart[p]
-                val end = ptStart[p + 1]
-                if (!alive[p] || start == end) continue
-                val vb = 9 * p
-                for (k in 0 until 9) tmp[k] = v[vb + k]
-                tmp[0] += damp(v[vb]); tmp[4] += damp(v[vb + 4]); tmp[8] += damp(v[vb + 8])
-                if (!invert3(tmp, vInv, vb)) return false
-                for (a in 0..2) {
-                    vg[3 * p + a] = vInv[vb + 3 * a] * gp[3 * p] + vInv[vb + 3 * a + 1] * gp[3 * p + 1] +
-                        vInv[vb + 3 * a + 2] * gp[3 * p + 2]
-                }
-                for (i in start until end) {
-                    val o = ptObs[i]
-                    val d = dim[obsF[o]]
-                    if (d == 0 || wgt[o] == 0.0) continue
-                    val yb = 18 * (i - start)
-                    val wb = 18 * o
-                    val ro = off[obsF[o]]
-                    for (a in 0 until d) {
-                        for (c in 0..2) {
-                            y[yb + 3 * a + c] = wo[wb + 3 * a] * vInv[vb + c] + wo[wb + 3 * a + 1] * vInv[vb + 3 + c] +
-                                wo[wb + 3 * a + 2] * vInv[vb + 6 + c]
-                        }
-                        rhs[ro + a] += wo[wb + 3 * a] * vg[3 * p] + wo[wb + 3 * a + 1] * vg[3 * p + 1] +
-                            wo[wb + 3 * a + 2] * vg[3 * p + 2]
+        }
+
+        /** Point [p] eliminated from S and rhs (its damped V inverted into vInv); false when V is singular. */
+        private fun eliminatePoint(p: Int): Boolean {
+            val start = ptStart[p]
+            val end = ptStart[p + 1]
+            if (!alive[p] || start == end) return true
+            val vb = 9 * p
+            for (k in 0 until 9) tmp[k] = v[vb + k]
+            tmp[0] += damp(v[vb]); tmp[4] += damp(v[vb + 4]); tmp[8] += damp(v[vb + 8])
+            if (!invert3(tmp, vInv, vb)) return false
+            for (a in 0..2) {
+                vg[3 * p + a] = vInv[vb + 3 * a] * gp[3 * p] + vInv[vb + 3 * a + 1] * gp[3 * p + 1] +
+                    vInv[vb + 3 * a + 2] * gp[3 * p + 2]
+            }
+            for (i in start until end) {
+                val o = ptObs[i]
+                val d = dim[obsF[o]]
+                if (d == 0 || wgt[o] == 0.0) continue
+                val yb = 18 * (i - start)
+                val wb = 18 * o
+                val ro = off[obsF[o]]
+                for (a in 0 until d) {
+                    for (c in 0..2) {
+                        y[yb + 3 * a + c] = wo[wb + 3 * a] * vInv[vb + c] + wo[wb + 3 * a + 1] * vInv[vb + 3 + c] +
+                            wo[wb + 3 * a + 2] * vInv[vb + 6 + c]
                     }
-                }
-                for (i in start until end) {
-                    val oi = ptObs[i]
-                    val fi = obsF[oi]
-                    val di = dim[fi]
-                    if (di == 0 || wgt[oi] == 0.0) continue
-                    val yb = 18 * (i - start)
-                    val ri = off[fi]
-                    for (j in start until end) {
-                        val oj = ptObs[j]
-                        val fj = obsF[oj]
-                        val dj = dim[fj]
-                        if (dj == 0 || wgt[oj] == 0.0 || off[fj] > ri) continue
-                        val wb = 18 * oj
-                        val rj = off[fj]
-                        for (a in 0 until di) {
-                            val row = (ri + a) * n + rj
-                            val y0 = y[yb + 3 * a]; val y1 = y[yb + 3 * a + 1]; val y2 = y[yb + 3 * a + 2]
-                            for (c in 0 until dj) {
-                                s[row + c] -= y0 * wo[wb + 3 * c] + y1 * wo[wb + 3 * c + 1] + y2 * wo[wb + 3 * c + 2]
-                            }
-                        }
-                    }
+                    rhs[ro + a] += wo[wb + 3 * a] * vg[3 * p] + wo[wb + 3 * a + 1] * vg[3 * p + 1] +
+                        wo[wb + 3 * a + 2] * vg[3 * p + 2]
                 }
             }
-            if (!cholesky()) return false
-            // rhs now holds the camera step; back-substitute the points: dp = V^-1 (-gp - W^T dc).
-            for (p in 0 until np) {
-                val start = ptStart[p]
-                val end = ptStart[p + 1]
-                if (!alive[p] || start == end) {
-                    dp[3 * p] = 0.0; dp[3 * p + 1] = 0.0; dp[3 * p + 2] = 0.0
-                    continue
-                }
-                var b0 = -gp[3 * p]; var b1 = -gp[3 * p + 1]; var b2 = -gp[3 * p + 2]
-                for (i in start until end) {
-                    val o = ptObs[i]
-                    val d = dim[obsF[o]]
-                    if (d == 0 || wgt[o] == 0.0) continue
-                    val ro = off[obsF[o]]
-                    val wb = 18 * o
-                    for (a in 0 until d) {
-                        val dc = rhs[ro + a]
-                        b0 -= wo[wb + 3 * a] * dc; b1 -= wo[wb + 3 * a + 1] * dc; b2 -= wo[wb + 3 * a + 2] * dc
-                    }
-                }
-                val vb = 9 * p
-                for (a in 0..2) dp[3 * p + a] = vInv[vb + 3 * a] * b0 + vInv[vb + 3 * a + 1] * b1 + vInv[vb + 3 * a + 2] * b2
-            }
-            applyStep()
+            for (i in start until end) schurUpdate(i, start, end)
             return true
+        }
+
+        /** S -= Y_i W_j^T for observation [i] of a point and every observation j in [start, end) left of it in S. */
+        private fun schurUpdate(i: Int, start: Int, end: Int) {
+            val oi = ptObs[i]
+            val fi = obsF[oi]
+            val di = dim[fi]
+            if (di == 0 || wgt[oi] == 0.0) return
+            val yb = 18 * (i - start)
+            val ri = off[fi]
+            for (j in start until end) {
+                val oj = ptObs[j]
+                val fj = obsF[oj]
+                val dj = dim[fj]
+                if (dj == 0 || wgt[oj] == 0.0 || off[fj] > ri) continue
+                val wb = 18 * oj
+                val rj = off[fj]
+                for (a in 0 until di) {
+                    val row = (ri + a) * n + rj
+                    val y0 = y[yb + 3 * a]; val y1 = y[yb + 3 * a + 1]; val y2 = y[yb + 3 * a + 2]
+                    for (c in 0 until dj) {
+                        s[row + c] -= y0 * wo[wb + 3 * c] + y1 * wo[wb + 3 * c + 1] + y2 * wo[wb + 3 * c + 2]
+                    }
+                }
+            }
+        }
+
+        /** dp of point [p] from the solved camera step in rhs: V^-1 (-gp - W^T dc); 0 for a dead or unseen point. */
+        private fun backSubstitute(p: Int) {
+            val start = ptStart[p]
+            val end = ptStart[p + 1]
+            if (!alive[p] || start == end) {
+                dp[3 * p] = 0.0; dp[3 * p + 1] = 0.0; dp[3 * p + 2] = 0.0
+                return
+            }
+            var b0 = -gp[3 * p]; var b1 = -gp[3 * p + 1]; var b2 = -gp[3 * p + 2]
+            for (i in start until end) {
+                val o = ptObs[i]
+                val d = dim[obsF[o]]
+                if (d == 0 || wgt[o] == 0.0) continue
+                val ro = off[obsF[o]]
+                val wb = 18 * o
+                for (a in 0 until d) {
+                    val dc = rhs[ro + a]
+                    b0 -= wo[wb + 3 * a] * dc; b1 -= wo[wb + 3 * a + 1] * dc; b2 -= wo[wb + 3 * a + 2] * dc
+                }
+            }
+            val vb = 9 * p
+            for (a in 0..2) dp[3 * p + a] = vInv[vb + 3 * a] * b0 + vInv[vb + 3 * a + 1] * b1 + vInv[vb + 3 * a + 2] * b2
         }
 
         private fun applyStep() {

@@ -30,7 +30,13 @@ class CaptureScreenGoldenTest {
 
     private val state = CaptureUiState(
         phase = CapturePhase.Preview(TrackingHint.TRACKING, paused = false),
-        recorder = RecorderState.Recording(keyframes = 24, coverage = 0.25f, seedPoints = 4_096, droppedFrames = 0, cells = cells),
+        recorder = RecorderState.Recording(
+            keyframes = 24,
+            coverage = 0.25f,
+            seedPoints = 4_096,
+            droppedFrames = 0,
+            cells = cells,
+        ),
         stage = CaptureStage.CAPTURING,
         status = StatusPill.TRACKING,
         instruction = Instruction.WALK,

@@ -194,7 +194,7 @@ class TrackerDriver(
         if (open != null) {
             try {
                 open.pause()
-            } catch (e: Exception) {
+            } catch (ignored: Exception) {
                 // Closing anyway: a pause failure must not leak the session.
             } finally {
                 open.close()
@@ -209,7 +209,7 @@ class TrackerDriver(
     private fun applyPreview(open: TrackerSession, target: PreviewTarget?) {
         try {
             open.setPreview(target)
-        } catch (e: Exception) {
+        } catch (ignored: Exception) {
             // No preview is better than no tracking: the frames keep flowing.
         }
     }

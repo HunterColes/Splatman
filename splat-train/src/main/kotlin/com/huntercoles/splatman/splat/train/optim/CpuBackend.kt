@@ -31,7 +31,8 @@ class CpuBackend(
     private var lens: Lens? = null
 
     /** The live working cloud, written in place by [step]; [SplatOptimizer] checks it without a copy. */
-    internal var cloud: SplatCloud = SplatCloud(0, 0, FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0))
+    internal var cloud: SplatCloud =
+        SplatCloud(0, 0, FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0), FloatArray(0))
         private set
 
     override val learnsLens: Boolean get() = true

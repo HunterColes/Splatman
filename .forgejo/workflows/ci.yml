@@ -1,7 +1,7 @@
 name: ci
 # The forge gate (#61): every PR, every push to master and a manual dispatch get one `gate` job on the `splatman`
 # runner (deploy/forgejo-runner/, #60), which runs what tools/check.sh runs: assembleDebug, testDebugUnitTest with the
-# unit-test floor (tools/test-count.min, #59) and lintDebug, plus detekt last and non-blocking.
+# unit-test floor (tools/test-count.min, #59), lintDebug and detekt (blocking: zero findings, no baseline, #64).
 # Supply chain: no `uses:` at all, so no action is fetched at job time from GitHub, code.forgejo.org or any
 # marketplace. Checkout is plain git with the job token; there is no upload action (failed test and lint reports are
 # printed to the job log instead). No `container:` or `services:`: the job runs in the runner image itself (host mode).
@@ -111,12 +111,12 @@ jobs:
           rm -rf -- "$home/init.d" "$home/init.gradle" "$home/init.gradle.kts" "$home/gradle.properties"
           echo "gradle hooks: none left in $home"
       - name: gate
-        # tools/check.sh's own run: assembleDebug testDebugUnitTest lintDebug under its lock and memory caps, then the
-        # `unit tests: N` line and the floor. Its last line is `gate: green` or `gate: RED: <why>`.
+        # tools/check.sh's own run: assembleDebug testDebugUnitTest lintDebug detekt under its lock and memory caps, then
+        # the `unit tests: N` line and the floor. Detekt is blocking here (#64): one finding fails the job. Its last line is `gate: green` or `gate: RED: <why>`.
         if: steps.kind.outputs.kind != 'docs'
         run: bash tools/check.sh
       - name: reports on failure
-        # No upload action: each failed unit-test report and the lint text reports go to this log.
+        # No upload action: each failed unit-test report and the lint and detekt text reports go to this log.
         if: failure() && steps.kind.outputs.kind != 'docs'
         run: |
           shopt -s globstar nullglob
@@ -124,9 +124,6 @@ jobs:
             if grep -qE '<(failure|error)[ >]' "$f"; then echo "::group::$f"; head -c 200000 "$f"; echo; echo "::endgroup::"; fi
           done
           for f in **/build/reports/lint-results-*[dD]ebug.txt; do echo "::group::$f"; head -c 200000 "$f"; echo "::endgroup::"; done
-      - name: detekt (non-blocking)
-        # Last, and never fails the job: it has open findings until they are paid down; then drop continue-on-error
-        # and add it to tools/check.sh.
-        if: steps.kind.outputs.kind != 'docs'
-        continue-on-error: true
-        run: bash tools/check.sh detekt
+          for f in **/build/reports/detekt/detekt.txt; do
+            if [[ -s "$f" ]]; then echo "::group::$f"; head -c 200000 "$f"; echo "::endgroup::"; fi
+          done

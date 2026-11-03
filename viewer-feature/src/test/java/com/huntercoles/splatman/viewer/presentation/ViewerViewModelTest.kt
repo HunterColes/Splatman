@@ -115,7 +115,8 @@ class ViewerViewModelTest {
         val args = SavedStateHandle(if (scanId == null) emptyMap() else mapOf(ViewerViewModel.ARG_SCAN_ID to scanId))
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = ViewerViewModel(loader, scans, hints, settings, args) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                ViewerViewModel(loader, scans, hints, settings, args) as T
         }
         return ViewModelProvider(store, factory)[ViewerViewModel::class.java]
     }

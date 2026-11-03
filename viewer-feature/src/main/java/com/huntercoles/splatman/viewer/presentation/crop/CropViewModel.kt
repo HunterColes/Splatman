@@ -143,7 +143,7 @@ class CropViewModel @Inject constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (ignored: Exception) {
                 _uiState.value = CropUiState.Refused(box, selected, canRevert, CropMessage.SAVE_ERROR)
                 return@launch
             }
@@ -164,7 +164,7 @@ class CropViewModel @Inject constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (ignored: Exception) {
                 _effects.send(CropEffect.RevertFailed)
                 return@launch
             }

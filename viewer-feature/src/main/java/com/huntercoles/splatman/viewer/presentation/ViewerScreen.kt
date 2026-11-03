@@ -565,7 +565,11 @@ private fun ImmersiveWhileHidden(hidden: Boolean) {
 
 private fun android.view.View.confirm() {
     performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.LONG_PRESS,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackConstants.CONFIRM
+        } else {
+            HapticFeedbackConstants.LONG_PRESS
+        },
     )
 }
 

@@ -176,7 +176,7 @@ private fun NavHostController.navigateStep(step: ScanFlow.Step) {
 }
 
 private fun NavOptionsBuilder.popUpToReplaced(step: ScanFlow.Step) {
-    when (val replaced = step.replaces) {
+    when (step.replaces) {
         Capture -> popUpTo<Capture> { inclusive = true }
         is Processing -> popUpTo<Processing> { inclusive = true }
         else -> Unit

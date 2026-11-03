@@ -138,7 +138,9 @@ class SeedAccumulatorTest {
     @Test
     fun `rgb must match its intrinsics`() {
         assertThrows<IllegalArgumentException> {
-            SeedAccumulator().addPoints(floatArrayOf(0f, 0f, -1f), floatArrayOf(1f), 1, rgbK, identity, RgbImage(2, 2, ByteArray(16)))
+            SeedAccumulator().addPoints(
+                floatArrayOf(0f, 0f, -1f), floatArrayOf(1f), 1, rgbK, identity, RgbImage(2, 2, ByteArray(16)),
+            )
         }
     }
 }

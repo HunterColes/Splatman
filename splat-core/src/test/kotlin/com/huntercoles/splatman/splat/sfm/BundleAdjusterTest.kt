@@ -264,7 +264,8 @@ class BundleAdjusterTest {
         assertTrue(file.isFile, "missing ${file.path}")
         val sources = dir.listFiles { f -> f.extension == "kt" }!!.filter { "BundleAdjuster" in it.readText() }
         for (f in sources) {
-            assertFalse(Regex("""^\s*import\s+(android|androidx)\.""", RegexOption.MULTILINE).containsMatchIn(f.readText()), f.path)
+            val androidImport = Regex("""^\s*import\s+(android|androidx)\.""", RegexOption.MULTILINE)
+            assertFalse(androidImport.containsMatchIn(f.readText()), f.path)
         }
     }
 

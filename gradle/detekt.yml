@@ -1,3 +1,12 @@
+# Detekt blocks the gate (tools/check.sh) with zero findings and no baseline (#64). Changed from detekt's defaults:
+# - off: MagicNumber (1305 findings; the code is graphics and numerics: shader sizes, SH coefficients, byte layouts,
+#   test fixtures, where a named constant per literal hides the formula), ReturnCount, ThrowsCount and
+#   LoopWithTooManyJumpStatements (they forbid guard clauses and early `continue`, the style the parsers and the
+#   rasterizer use on purpose), TooManyFunctions (a Compose file or a math object is many small functions by design).
+# - ceilings at today's worst, so nothing grows past them: LongMethod 120 lines, CyclomaticComplexMethod 30,
+#   NestedBlockDepth 7, ComplexCondition 8, LongParameterList 9 (functions) and 10 (constructors),
+#   with @Composable functions exempt: a screen takes its state and every callback as parameters, by Compose design.
+# Anything else is fixed in the code, or suppressed in place with `@Suppress("Rule")` and a one-line reason.
 build:
   maxIssues: 0
   excludeCorrectable: false
@@ -97,7 +106,7 @@ complexity:
     threshold: 15
   ComplexCondition:
     active: true
-    threshold: 4
+    threshold: 8
   ComplexInterface:
     active: false
     threshold: 10
@@ -106,7 +115,7 @@ complexity:
     ignoreOverloaded: false
   CyclomaticComplexMethod:
     active: true
-    threshold: 15
+    threshold: 30
     ignoreSingleWhenExpression: false
     ignoreSimpleWhenEntries: false
     ignoreNestingFunctions: false
@@ -128,14 +137,15 @@ complexity:
     threshold: 600
   LongMethod:
     active: true
-    threshold: 60
+    threshold: 120
   LongParameterList:
     active: true
-    functionThreshold: 6
-    constructorThreshold: 7
+    functionThreshold: 9
+    constructorThreshold: 10
     ignoreDefaultParameters: false
     ignoreDataClasses: true
     ignoreAnnotatedParameter: []
+    ignoreAnnotated: [Composable]
   MethodOverloading:
     active: false
     threshold: 6
@@ -145,7 +155,7 @@ complexity:
     ignoreArgumentsMatchingNames: false
   NestedBlockDepth:
     active: true
-    threshold: 4
+    threshold: 7
   NestedScopeFunctions:
     active: false
     threshold: 1
@@ -165,7 +175,7 @@ complexity:
     excludeStringsWithLessThan5Characters: true
     ignoreStringsRegex: '$^'
   TooManyFunctions:
-    active: true
+    active: false
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
     thresholdInFiles: 11
     thresholdInClasses: 11
@@ -604,10 +614,10 @@ style:
     ignoreActualFunction: true
     excludedFunctions: []
   LoopWithTooManyJumpStatements:
-    active: true
+    active: false
     maxJumpCount: 1
   MagicNumber:
-    active: true
+    active: false
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/*.kts']
     ignoreNumbers:
       - '-1'
@@ -673,7 +683,7 @@ style:
   RedundantVisibilityModifierRule:
     active: false
   ReturnCount:
-    active: true
+    active: false
     max: 2
     excludedFunctions:
       - 'equals'
@@ -691,7 +701,7 @@ style:
     maxEscapedCharacterCount: 2
     ignoredCharacters: []
   ThrowsCount:
-    active: true
+    active: false
     max: 2
     excludeGuardClauses: false
   TrailingWhitespace:

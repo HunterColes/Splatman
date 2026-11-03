@@ -84,6 +84,7 @@ class FileCropStore(
         val currentTmp = tmpOf(current)
         val original = File(folder, CropPaths.UNCROPPED_FILE)
         val originalTmp = tmpOf(original)
+        var committed = false
         try {
             // 1. The cropped cloud, beside the current splat.
             ops.write(currentTmp, cloud)
@@ -96,10 +97,12 @@ class FileCropStore(
             currentCoroutineContext().ensureActive()
             // 3. The commit.
             ops.rename(currentTmp, current)
-        } catch (t: Throwable) {
-            originalTmp.delete()
-            currentTmp.delete()
-            throw t
+            committed = true
+        } finally {
+            if (!committed) {
+                originalTmp.delete()
+                currentTmp.delete()
+            }
         }
     }
 
@@ -108,13 +111,14 @@ class FileCropStore(
         if (!dir.isDirectory && !dir.mkdirs()) throw FileNotFoundException("Could not make ${dir.name}.")
         val tmp = tmpOf(target)
         tmp.delete()
+        var committed = false
         try {
             ops.write(tmp, cloud)
             currentCoroutineContext().ensureActive()
             ops.rename(tmp, target)
-        } catch (t: Throwable) {
-            tmp.delete()
-            throw t
+            committed = true
+        } finally {
+            if (!committed) tmp.delete()
         }
     }
 

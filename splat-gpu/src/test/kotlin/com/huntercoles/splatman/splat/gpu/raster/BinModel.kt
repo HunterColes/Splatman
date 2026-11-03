@@ -100,7 +100,14 @@ internal object BinModel {
     }
 
     /** COUNT, scan, EMIT, sort, TILE_START over a projection: (tileStart, tileSplats). */
-    fun bin(radii: IntArray, means2d: FloatArray, depths: FloatArray, n: Int, tilesX: Int, tilesY: Int): Pair<IntArray, IntArray> {
+    fun bin(
+        radii: IntArray,
+        means2d: FloatArray,
+        depths: FloatArray,
+        n: Int,
+        tilesX: Int,
+        tilesY: Int,
+    ): Pair<IntArray, IntArray> {
         val tileCount = tilesX * tilesY
         val offsets = IntArray(n + 1)
         for (i in 0 until n) {

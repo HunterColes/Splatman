@@ -129,7 +129,9 @@ class RasterizerGradientTest {
      * the whole footprint of splat 4, so splat 4 is never reached.
      */
     private val walled = params(
-        List(4) { S(d(0.0, 0.0, 2.0 + 0.1 * it), d(2.0 + 0.1 * it, 2.0 + 0.1 * it, 0.5), d(1.0, 0.0, 0.0, 0.0), 0.95, d(0.6, 0.5, 0.4)) } +
+        List(4) {
+            S(d(0.0, 0.0, 2.0 + 0.1 * it), d(2.0 + 0.1 * it, 2.0 + 0.1 * it, 0.5), d(1.0, 0.0, 0.0, 0.0), 0.95, d(0.6, 0.5, 0.4))
+        } +
             S(d(0.05, -0.05, 4.0), d(0.05, 0.05, 0.05), d(1.0, 0.0, 0.0, 0.0), 0.9, d(0.9, 0.1, 0.1)),
     )
 
@@ -179,7 +181,8 @@ class RasterizerGradientTest {
             )
             // T = J W, row-major 2x3; W(r, c) = w[c * 3 + r].
             val tm = DoubleArray(6) { (0 until 3).sumOf { j -> jac[(it / 3) * 3 + j] * w[(it % 3) * 3 + j] } }
-            fun quad(r0: Int, r1: Int) = (0 until 3).sumOf { a -> (0 until 3).sumOf { b -> tm[r0 * 3 + a] * sigma[a * 3 + b] * tm[r1 * 3 + b] } }
+            fun quad(r0: Int, r1: Int) =
+                (0 until 3).sumOf { a -> (0 until 3).sumOf { b -> tm[r0 * 3 + a] * sigma[a * 3 + b] * tm[r1 * 3 + b] } }
             val a = quad(0, 0) + 0.3
             val b = quad(0, 1)
             val c = quad(1, 1) + 0.3
@@ -357,7 +360,8 @@ class RasterizerGradientTest {
             List(60) {
                 S(
                     d(u(-0.6, 0.6), u(-0.5, 0.5), u(1.5, 3.0)), d(u(0.03, 0.15), u(0.03, 0.15), u(0.03, 0.15)),
-                    d(u(-1.0, 1.0), u(-1.0, 1.0), u(-1.0, 1.0), u(-1.0, 1.0)), u(0.2, 0.95), d(u(0.0, 1.0), u(0.0, 1.0), u(0.0, 1.0)),
+                    d(u(-1.0, 1.0), u(-1.0, 1.0), u(-1.0, 1.0), u(-1.0, 1.0)), u(0.2, 0.95),
+                    d(u(0.0, 1.0), u(0.0, 1.0), u(0.0, 1.0)),
                 )
             },
         )
@@ -454,7 +458,12 @@ class RasterizerGradientTest {
         Rasterizer(1).use { r ->
             r.forward(cloud, k, pose, out)
             assertThrows(IllegalArgumentException::class.java) {
-                r.backward(walled.cloud().let { c -> SplatCloud(4, 0, c.positions.copyOf(12), c.logScales.copyOf(12), c.rotations.copyOf(16), c.opacityLogits.copyOf(4), c.shDc.copyOf(12), FloatArray(0)) }, k, pose, out, FloatArray(3 * 256), SplatGrads())
+                val c = walled.cloud()
+                val four = SplatCloud(
+                    4, 0, c.positions.copyOf(12), c.logScales.copyOf(12), c.rotations.copyOf(16),
+                    c.opacityLogits.copyOf(4), c.shDc.copyOf(12), FloatArray(0),
+                )
+                r.backward(four, k, pose, out, FloatArray(3 * 256), SplatGrads())
             }
             assertThrows(IllegalArgumentException::class.java) {
                 r.backward(cloud, k, pose, out, FloatArray(3), SplatGrads())

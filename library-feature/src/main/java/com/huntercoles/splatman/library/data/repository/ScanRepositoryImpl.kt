@@ -67,6 +67,7 @@ class ScanRepositoryImpl(
     ): Scan {
         val id = UUID.randomUUID().toString()
         val folder = folderOf(id)
+        var imported = false
         try {
             withContext(io) {
                 if (!folder.mkdirs()) throw IOException("Could not create the scan folder $id")
@@ -76,10 +77,11 @@ class ScanRepositoryImpl(
             }
             val row = ScanEntity(id, name, createdAtMs, ScanStatus.READY, splatCount, 0, id, imported = true)
             dao.insert(row)
-            return withContext(io) { row.toScan().onDisk() }
-        } catch (e: Throwable) {
-            withContext(NonCancellable + io) { folder.deleteRecursively() }
-            throw e
+            val scan = withContext(io) { row.toScan().onDisk() }
+            imported = true
+            return scan
+        } finally {
+            if (!imported) withContext(NonCancellable + io) { folder.deleteRecursively() }
         }
     }
 
@@ -153,7 +155,8 @@ class ScanRepositoryImpl(
             splatCount = splatCount ?: 0,
             keyframeCount = keyframes,
             folder = folder.name,
-            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists() && !File(folder, CAPTURE_FILE).exists(),
+            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists() &&
+                !File(folder, CAPTURE_FILE).exists(),
         )
     }
 

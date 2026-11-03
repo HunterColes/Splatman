@@ -87,8 +87,7 @@ class GyroIntegrator {
         var sz = 0.0
         var n = 0
         var i = (ringNext - 1 + RING) % RING
-        for (k in 0 until ringSize) {
-            if (lastNs - ringT[i] > RATE_WINDOW_NS) break
+        while (n < ringSize && lastNs - ringT[i] <= RATE_WINDOW_NS) {
             sx += ringX[i]
             sy += ringY[i]
             sz += ringZ[i]

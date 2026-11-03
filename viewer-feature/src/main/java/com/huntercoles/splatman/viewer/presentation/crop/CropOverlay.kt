@@ -779,7 +779,11 @@ private fun View.announce(text: String) = announceForAccessibility(text)
 
 private fun View.reject() {
     performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackConstants.REJECT
+        } else {
+            HapticFeedbackConstants.LONG_PRESS
+        },
     )
 }
 

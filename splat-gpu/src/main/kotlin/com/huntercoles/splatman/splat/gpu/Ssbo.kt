@@ -102,11 +102,11 @@ class Ssbo internal constructor(private val compute: GlesCompute, sizeBytes: Int
             compute.checkError("glMapBufferRange")
             throw GpuException("glMapBufferRange returned null")
         }
-        try {
-            copy(mapped.order(ByteOrder.nativeOrder()))
-        } finally {
-            if (!GLES30.glUnmapBuffer(GLES31.GL_SHADER_STORAGE_BUFFER)) throw GpuException("SSBO contents lost on unmap")
-        }
+        // Unmapped whether or not the copy throws; a copy failure wins over a lost-contents unmap.
+        val copied = runCatching { copy(mapped.order(ByteOrder.nativeOrder())) }
+        val unmapped = GLES30.glUnmapBuffer(GLES31.GL_SHADER_STORAGE_BUFFER)
+        copied.getOrThrow()
+        if (!unmapped) throw GpuException("SSBO contents lost on unmap")
     }
 
     private fun checkRange(bytes: Int, byteOffset: Int) {

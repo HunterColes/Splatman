@@ -81,7 +81,7 @@ void main() {
 """
 
     /** tileStart[t] = the first sorted entry whose tile is >= t (a lower bound), for t in 0..tileCount. */
-    val TILE_START = HEADER + """
+    const val TILE_START = HEADER + """
 layout(std430, binding = 0) readonly buffer Keys { uvec2 keys[]; };
 layout(std430, binding = 1) writeonly buffer Starts { int tileStart[]; };
 uniform uint total;

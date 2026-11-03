@@ -25,7 +25,11 @@ class CaptureBundleTest {
 
     private val colour = CameraIntrinsics(500f, 500.5f, 319.5f, 239.5f, 640, 480)
     private val depthK = CameraIntrinsics(3f, 3f, 0.5f, 0.5f, 2, 2)
-    private val seed = SeedPoints(2, floatArrayOf(0.1f, -0.2f, 1.5f, 2f, 3f, -4f), byteArrayOf(255.toByte(), 0, 17, 1, 2, 200.toByte()))
+    private val seed = SeedPoints(
+        2,
+        floatArrayOf(0.1f, -0.2f, 1.5f, 2f, 3f, -4f),
+        byteArrayOf(255.toByte(), 0, 17, 1, 2, 200.toByte()),
+    )
 
     /** Exact poses (no rounding in their matrices) so the golden file is readable. */
     private fun goldenFrames() = listOf(
@@ -43,7 +47,12 @@ class CaptureBundleTest {
     fun `write then read gives the same frames, seed and depth`() {
         val axis = Vec3(0.3f, -0.8f, 0.52f)
         val frames = listOf(
-            BundleFrameInput(7L, colour, CameraPose(Quat.fromAxisAngle(axis.normalized(), 1.1f), Vec3(0.25f, -1f, 3f)), byteArrayOf(9)),
+            BundleFrameInput(
+                7L,
+                colour,
+                CameraPose(Quat.fromAxisAngle(axis.normalized(), 1.1f), Vec3(0.25f, -1f, 3f)),
+                byteArrayOf(9),
+            ),
             BundleFrameInput(
                 8L,
                 colour.scaled(320, 240),
@@ -116,7 +125,9 @@ class CaptureBundleTest {
         val dir = File(tmp, "badsubject")
         CaptureBundleWriter.write(dir, goldenFrames(), seed)
         val json = File(dir, "transforms.json")
-        json.writeText(json.readText().replace("\"splatman_version\": 1", "\"splatman_version\": 1, \"splatman_subject\": [1, 2]"))
+        json.writeText(
+            json.readText().replace("\"splatman_version\": 1", "\"splatman_version\": 1, \"splatman_subject\": [1, 2]"),
+        )
         val e = assertThrows<CaptureBundleException> { CaptureBundleReader.read(dir) }
         assertTrue(e.message!!.contains("splatman_subject"), e.message)
     }
@@ -186,7 +197,8 @@ class CaptureBundleTest {
     }
 
     private fun assertPoseEquals(want: CameraPose, got: CameraPose) {
-        val w = if (want.rotation.w < 0) Quat(-want.rotation.w, -want.rotation.x, -want.rotation.y, -want.rotation.z) else want.rotation
+        val r = want.rotation
+        val w = if (r.w < 0) Quat(-r.w, -r.x, -r.y, -r.z) else r
         val g = got.rotation
         val sign = if (w.w == 0f && g.w == 0f && dot(w, g) < 0) -1f else 1f
         val tol = 1e-6f

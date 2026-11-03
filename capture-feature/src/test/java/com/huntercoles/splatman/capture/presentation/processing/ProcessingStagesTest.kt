@@ -83,7 +83,10 @@ class ProcessingStagesTest {
         assertEquals(FailureReason.FRAMES, FailureReasons.of(IllegalArgumentException("no keyframes to train on")))
         assertEquals(FailureReason.MEMORY, FailureReasons.of(IOException("wrapped", OutOfMemoryError())))
         assertEquals(FailureReason.UNKNOWN, FailureReasons.of(IllegalStateException("diverged")))
-        assertEquals(ProcessingState.Failed("x", FailureReason.STORAGE, 7), FailureReasons.failed(LowStorageException(7)).copy(message = "x"))
+        assertEquals(
+            ProcessingState.Failed("x", FailureReason.STORAGE, 7),
+            FailureReasons.failed(LowStorageException(7)).copy(message = "x"),
+        )
     }
 
     @Test

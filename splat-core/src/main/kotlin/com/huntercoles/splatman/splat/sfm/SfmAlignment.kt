@@ -77,7 +77,9 @@ object SfmAlignment {
             median(rotated.map { it.y }),
             median(rotated.map { it.z }),
         )
-        val posesV = registered.associateWith { FrameConversions.poseFromOpenCv(rotations.getValue(it), translations.getValue(it)) }
+        val posesV = registered.associateWith {
+            FrameConversions.poseFromOpenCv(rotations.getValue(it), translations.getValue(it))
+        }
         val centres = posesV.mapValues { (_, p) -> tilt.rotate(p.translationM) - origin }
         val radius = median(centres.values.map { it.length() })
         require(radius > 0f && radius.isFinite()) { "median camera distance from the median point is $radius" }
