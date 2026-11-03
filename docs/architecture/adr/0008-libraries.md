@@ -15,7 +15,7 @@ and must not require Google Play Services unless it is optional and confined to 
 | PLY / `.splat` / SPZ codecs | our own `splat-io` | MIT | **write** from the specs |
 | Rasteriser forward/backward | our own `splat-train/raster` | MIT | **write**; maths cross-checked against gsplat's docs and code |
 | GL renderer | our own `viewer-feature/rendering` | MIT | **write** |
-| Calibration (later) | OpenCV for Android | Apache-2.0 | see #3; not in v1 |
+| Pose recovery (`foss`) | OpenCV `org.opencv:opencv` (Maven Central, newest 4.x, prefab) | Apache-2.0 | **adopt**, in `splat-sfm` only, `foss` flavour ([ADR 0012](0012-foss-pose-source.md)); release needs it built from source for F-Droid |
 
 ## References (read, port with attribution where allowed, never vendor)
 

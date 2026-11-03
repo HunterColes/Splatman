@@ -12,6 +12,7 @@ imports) hold everything that is maths or bytes:
 | `splat-core` | `com.huntercoles.splatman.splat` | `math` (Vec3, Quat, Mat3, Mat4), `frames` (FrameConversions), `model` (SplatCloud, CameraIntrinsics, CameraPose, Keyframe, SeedPoints), `packet` (stage packets), `sh`, `projection`, `sort`, `capture` (keyframe selection, seed accumulation) | nothing |
 | `splat-io` | `com.huntercoles.splatman.splat.io` | `ply`, `splat` (.splat), `spz`, `bundle` (capture bundle) | `splat-core`, kotlinx.serialization |
 | `splat-train` | `com.huntercoles.splatman.splat.train` | `init` (seed to SplatCloud), `raster` (CPU forward/backward), `optim` (Adam, densify), `Trainer` interface | `splat-core` |
+| `splat-sfm` | `com.huntercoles.splatman.splat.sfm` (native) | NDK + CMake, C++17, arm64-v8a and x86_64: OpenCV features, matching, verification, two-view init, PnP, triangulation; `fossImplementation` only ([ADR 0012](0012-foss-pose-source.md)) | `splat-core`, OpenCV |
 
 The Android modules wrap them:
 

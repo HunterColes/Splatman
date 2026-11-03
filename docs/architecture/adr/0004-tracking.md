@@ -31,6 +31,7 @@ library is a binary under Google's terms, so an F-Droid build cannot contain it.
 (with ARCore) and `foss` (no ARCore module, capture hidden, viewer/import/export intact), a later card. A free
 tracker for `foss` is out of scope: the off-the-shelf VIO systems (OpenVINS, ORB-SLAM3) are GPL-3, which would
 relicense the `foss` APK; that needs Hunter's decision.
+foss recovers poses after capture instead, with SfM: see [ADR 0012](0012-foss-pose-source.md).
 
 ## Rejected
 
