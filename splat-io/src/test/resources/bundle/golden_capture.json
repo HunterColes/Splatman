@@ -1,0 +1,28 @@
+{
+    "splatman_capture_version": 1,
+    "poses": "none",
+    "imu_file_path": "imu.csv",
+    "calibration_file_path": "calibration.json",
+    "timestamp_source": "REALTIME",
+    "frames": [
+        {
+            "file_path": "images/frame_00001.jpg",
+            "timestamp_ns": 81234567890123,
+            "w": 1920,
+            "h": 1080,
+            "sharpness": 412.7,
+            "fl_x": 1498.2,
+            "fl_y": 1497.9,
+            "cx": 961.4,
+            "cy": 539.0,
+            "exposure_ns": 8333333
+        },
+        {
+            "file_path": "images/frame_00002.jpg",
+            "timestamp_ns": 81234901223456,
+            "w": 1920,
+            "h": 1080,
+            "sharpness": 398.1
+        }
+    ]
+}

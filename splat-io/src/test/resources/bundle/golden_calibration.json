@@ -1,0 +1,44 @@
+{
+    "camera_id": "0",
+    "sensor_orientation_deg": 90,
+    "timestamp_source": "REALTIME",
+    "pixel_array_size": [
+        4032,
+        3024
+    ],
+    "active_array": [
+        0,
+        0,
+        4032,
+        3024
+    ],
+    "pre_correction_active_array": [
+        0,
+        0,
+        4032,
+        3024
+    ],
+    "physical_size_mm": [
+        5.645,
+        4.234
+    ],
+    "focal_lengths_mm": [
+        4.38
+    ],
+    "lens_intrinsic_calibration": null,
+    "lens_distortion": null,
+    "lens_pose_rotation": null,
+    "lens_pose_translation": null,
+    "lens_pose_reference": null,
+    "image": {
+        "w": 1920,
+        "h": 1080
+    },
+    "intrinsics": {
+        "fl_x": 1489.6,
+        "fl_y": 1489.6,
+        "cx": 960.0,
+        "cy": 540.0,
+        "source": "FOCAL_LENGTH"
+    }
+}
