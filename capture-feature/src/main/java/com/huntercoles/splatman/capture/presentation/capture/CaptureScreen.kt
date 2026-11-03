@@ -68,6 +68,7 @@ import com.huntercoles.splatman.capture.tracking.FlavourTracking
 import com.huntercoles.splatman.capture.tracking.rememberCameraPermissionRequest
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
+import com.huntercoles.splatman.splat.capture.ScanMode
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -229,7 +230,7 @@ private fun CaptureContent(
         }
     }
     if (help) {
-        ModalBottomSheet(onDismissRequest = { help = false }) { Tips() }
+        ModalBottomSheet(onDismissRequest = { help = false }) { Tips(room = state.mode == ScanMode.ROOM) }
     }
     if (state.confirmDiscard) {
         AlertDialog(
@@ -250,9 +251,9 @@ private fun CaptureContent(
     }
 }
 
-/** The help sheet: the three onboarding tips. */
+/** The help sheet: the three onboarding tips, or in Room mode the three room tips. */
 @Composable
-private fun Tips() {
+internal fun Tips(room: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -261,10 +262,17 @@ private fun Tips() {
         verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingDefault),
     ) {
         Text(stringResource(R.string.onb_tips_title), style = MaterialTheme.typography.titleLarge)
-        for (tip in listOf(R.string.onb_tip_slow, R.string.onb_tip_around, R.string.onb_tip_light)) {
+        for (tip in tipLines(room)) {
             Text(stringResource(tip), style = MaterialTheme.typography.bodyLarge)
         }
     }
+}
+
+/** The help sheet's three rows for Object or Room mode. */
+internal fun tipLines(room: Boolean): List<Int> = if (room) {
+    listOf(R.string.cap_room_tip_1, R.string.cap_room_tip_2, R.string.cap_room_tip_3)
+} else {
+    listOf(R.string.onb_tip_slow, R.string.onb_tip_around, R.string.onb_tip_light)
 }
 
 @Composable

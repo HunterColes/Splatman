@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.capture.presentation.capture
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -21,25 +22,33 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
@@ -65,8 +74,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -78,41 +89,54 @@ import com.huntercoles.splatman.capture.recording.Coverage
 import com.huntercoles.splatman.capture.recording.CoverageBand
 import com.huntercoles.splatman.capture.recording.CoverageCells
 import com.huntercoles.splatman.capture.recording.RecorderState
+import com.huntercoles.splatman.capture.recording.RoomCells
+import com.huntercoles.splatman.capture.recording.RoomDescription
+import com.huntercoles.splatman.capture.recording.RoomSide
 import com.huntercoles.splatman.capture.recording.ringDescription
+import com.huntercoles.splatman.capture.recording.roomDescription
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.core.design.SplatMotion
 import com.huntercoles.splatman.core.design.numeral
 import com.huntercoles.splatman.core.design.splatDuration
+import com.huntercoles.splatman.splat.capture.ScanMode
 import kotlin.math.roundToInt
 
 private val ScrimPill = RoundedCornerShape(SplatDimens.CornerDefault)
 private val Reticle = 64.dp
 private val RingLarge = 200.dp
 private val WideLayout = 600.dp
+private val ModeSegment = 120.dp
 
-/** Everything drawn over the live camera (docs/design/screens/capture.md, Layout). */
+/**
+ * Everything drawn over the live camera (docs/design/screens/capture.md, Layout and Room mode). [largeRingOpen]: the
+ * large gauge shows from the start (the goldens; the user opens it with a tap on the gauge).
+ */
 @Composable
 internal fun CaptureOverlay(
     state: CaptureUiState,
     fontScale: Float,
     onIntent: (CaptureIntent) -> Unit,
     onHelp: () -> Unit,
+    largeRingOpen: Boolean = false,
 ) {
-    var largeRing by rememberSaveable { mutableStateOf(false) }
+    var largeRing by rememberSaveable { mutableStateOf(largeRingOpen) }
     val finishing = state.stage == CaptureStage.FINISHING
     val controlsShown = state.stage != CaptureStage.STARTING && !finishing
     val dropExtras = fontScale >= 2f
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    val room = state.mode == ScanMode.ROOM
+    // Focus order Close, Help, Mode switch, Gauge, Capture, Finish: on a wide screen the side column sits above the
+    // switch, so it is put last explicitly.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
         val wide = maxWidth >= WideLayout
         if (state.stage == CaptureStage.PAUSED) {
             Box(Modifier.fillMaxSize().background(SplatColors.OverlayScrim))
         }
-        // Pose-free: no subject to aim at, so no reticle (the whole frame is the scan).
-        if (!finishing && !state.poseFree) ReticleMark(state.reticle, state.subjectSet)
+        // Pose-free or Room mode: no subject to aim at, so no reticle (the whole frame is the scan).
+        if (!finishing && !state.poseFree && !room) ReticleMark(state.reticle, state.subjectSet)
 
         Column(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(SplatDimens.SpacingSmall)) {
-            TopBar(state.status, onClose = { onIntent(CaptureIntent.Close) }, onHelp = onHelp)
+            TopBar(state.status, room, onClose = { onIntent(CaptureIntent.Close) }, onHelp = onHelp)
             WarningBanner(state.warning)
         }
 
@@ -126,7 +150,19 @@ internal fun CaptureOverlay(
             verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingDefault),
         ) {
             state.instruction?.let {
-                InstructionPill(it, showHint = !dropExtras, recorder = state.recorder, poseFree = state.poseFree)
+                InstructionPill(it, showHint = !dropExtras, state = state)
+            }
+            AnimatedVisibility(
+                visible = modeSwitchShown(state),
+                enter = fadeIn(tween(splatDuration(SplatMotion.DurationShort))),
+                exit = fadeOut(tween(splatDuration(SplatMotion.DurationShort))),
+            ) {
+                ModeSwitch(
+                    mode = state.mode,
+                    enabled = state.stage == CaptureStage.AIM,
+                    showIcons = !dropExtras,
+                    onSelect = { onIntent(CaptureIntent.SelectMode(it)) },
+                )
             }
             if (!wide) {
                 Row(
@@ -152,7 +188,11 @@ internal fun CaptureOverlay(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .navigationBarsPadding()
-                    .padding(SplatDimens.SpacingLarge),
+                    .padding(SplatDimens.SpacingLarge)
+                    .semantics {
+                        isTraversalGroup = true
+                        traversalIndex = 1f
+                    },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingLarge),
             ) {
@@ -165,11 +205,101 @@ internal fun CaptureOverlay(
                 }
             }
         }
-        if (largeRing && !finishing && state.stage != CaptureStage.STARTING) {
+        if (largeRing && !finishing && state.stage != CaptureStage.STARTING && !(room && state.noGauge)) {
             Box(Modifier.align(Alignment.Center)) {
-                CoverageRing(state.cells, state.facingSegment, RingLarge) { largeRing = false }
+                Gauge(state, RingLarge) { largeRing = false }
+            }
+            // Back closes the large view before it reaches Close.
+            BackHandler { largeRing = false }
+        }
+    }
+}
+
+/** The mode switch shows on the pose-free path while it may change the mode: in Aim (and, disabled, Finding). */
+internal fun modeSwitchShown(state: CaptureUiState): Boolean =
+    state.poseFree &&
+        state.modeSwitchVisible &&
+        (state.stage == CaptureStage.AIM || state.stage == CaptureStage.FINDING_SURFACES)
+
+/**
+ * Object | Room, an M3 segmented row on a scrim pill; each segment [SplatDimens.TouchTarget] tall and [ModeSegment]
+ * wide at least; selected `primary` with the M3 check in place of the icon. 38% while not [enabled]. At 200% font the
+ * icons go first ([showIcons] false). The sizes go on the row, not the segments: a height on a segment moves its
+ * click area off its bounds (M3 1.3.1's interactive-size padding), so taps miss it; the row's equal weights give each
+ * segment half its width.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModeSwitch(mode: ScanMode, enabled: Boolean, showIcons: Boolean, onSelect: (ScanMode) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val label = stringResource(R.string.cap_mode_label)
+    val colors = SegmentedButtonDefaults.colors(
+        activeContainerColor = scheme.primary,
+        activeContentColor = scheme.onPrimary,
+        activeBorderColor = scheme.outline,
+        inactiveContainerColor = Color.Transparent,
+        inactiveContentColor = SplatColors.OverlayOnScrim,
+        inactiveBorderColor = scheme.outline,
+        disabledActiveContainerColor = scheme.primary,
+        disabledActiveContentColor = scheme.onPrimary,
+        disabledActiveBorderColor = scheme.outline,
+        disabledInactiveContainerColor = Color.Transparent,
+        disabledInactiveContentColor = SplatColors.OverlayOnScrim,
+        disabledInactiveBorderColor = scheme.outline,
+    )
+    Box(
+        modifier = Modifier
+            .alpha(if (enabled) 1f else 0.38f)
+            .background(SplatColors.OverlayScrim, ScrimPill)
+            .padding(SplatDimens.SpacingSmall),
+    ) {
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier
+                .widthIn(min = ModeSegment * ScanMode.entries.size)
+                .heightIn(min = SplatDimens.TouchTarget)
+                .semantics { contentDescription = label },
+        ) {
+            val modes = ScanMode.entries
+            modes.forEachIndexed { i, m ->
+                val selected = m == mode
+                SegmentedButton(
+                    selected = selected,
+                    onClick = { onSelect(m) },
+                    shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                    enabled = enabled,
+                    colors = colors,
+                    icon = {
+                        if (showIcons) {
+                            SegmentedButtonDefaults.Icon(active = selected) {
+                                Icon(
+                                    if (m == ScanMode.ROOM) Icons.Rounded.MeetingRoom else Icons.Rounded.CropFree,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
+                                )
+                            }
+                        }
+                    },
+                    label = { Text(stringResource(m.label())) },
+                )
             }
         }
+    }
+}
+
+@StringRes
+private fun ScanMode.label(): Int = when (this) {
+    ScanMode.OBJECT -> R.string.cap_mode_object
+    ScanMode.ROOM -> R.string.cap_mode_room
+}
+
+/** The Object coverage ring or, in Room mode, the room gauge. */
+@Composable
+private fun Gauge(state: CaptureUiState, size: Dp, onToggle: () -> Unit) {
+    val roomCells = state.roomCells
+    if (state.mode == ScanMode.ROOM && roomCells != null) {
+        RoomGauge(roomCells, state.roomPercent, state.facingSegment, estimate = state.poseFree, size, onToggle)
+    } else {
+        CoverageRing(state.cells, state.facingSegment, size, onToggle)
     }
 }
 
@@ -182,7 +312,8 @@ private fun Fade(visible: Boolean, content: @Composable () -> Unit) {
 /** The small ring, hidden while starting and while the large one shows; shrinks away while finishing. */
 @Composable
 private fun RingSlot(state: CaptureUiState, size: Dp, large: Boolean, finishing: Boolean, onToggle: () -> Unit) {
-    if (state.stage == CaptureStage.STARTING) {
+    // Room mode without a gyroscope: no gauge (cap_room_no_gauge says why); the slot keeps the layout.
+    if (state.stage == CaptureStage.STARTING || state.mode == ScanMode.ROOM && state.noGauge) {
         Spacer(Modifier.size(size))
         return
     }
@@ -192,17 +323,17 @@ private fun RingSlot(state: CaptureUiState, size: Dp, large: Boolean, finishing:
         label = "ringShrink",
     )
     Box(Modifier.size(size).scale(shrink).alpha(if (large) 0f else 1f)) {
-        CoverageRing(state.cells, state.facingSegment, size, onToggle)
+        Gauge(state, size, onToggle)
     }
 }
 
 @Composable
-private fun TopBar(status: StatusPill, onClose: () -> Unit, onHelp: () -> Unit) {
+private fun TopBar(status: StatusPill, room: Boolean, onClose: () -> Unit, onHelp: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ScrimIconButton(onClose) {
             Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.cap_close))
         }
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { StatusPillView(status) }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { StatusPillView(status, room) }
         ScrimIconButton(onHelp) {
             Icon(Icons.AutoMirrored.Rounded.HelpOutline, contentDescription = stringResource(R.string.cap_help))
         }
@@ -220,15 +351,16 @@ private fun ScrimIconButton(onClick: () -> Unit, icon: @Composable () -> Unit) {
 }
 
 @Composable
-private fun StatusPillView(status: StatusPill) {
+private fun StatusPillView(status: StatusPill, room: Boolean) {
     val scheme = MaterialTheme.colorScheme
     val (dot, label) = when (status) {
+        // Room mode on the pose-free path: the camera is open, nothing tracks (screens/capture.md, foss column).
+        StatusPill.READY -> scheme.secondary to if (room) R.string.cap_status_recording_only else R.string.cap_status_ready
         StatusPill.STARTING -> scheme.tertiary to R.string.cap_status_starting
         StatusPill.TRACKING -> scheme.secondary to R.string.cap_status_tracking
         StatusPill.LIMITED -> scheme.tertiary to R.string.cap_status_limited
         StatusPill.LOST -> scheme.error to R.string.cap_status_lost
         StatusPill.PAUSED -> scheme.tertiary to R.string.cap_paused
-        StatusPill.READY -> scheme.secondary to R.string.cap_status_ready
         StatusPill.RECORDING -> SplatColors.RecordRed to R.string.cap_status_recording
     }
     Row(
@@ -328,16 +460,30 @@ private fun ReticleMark(at: ScreenPoint?, subjectSet: Boolean) {
     }
 }
 
+/** The instruction line's text for [instruction] (Room's ROOM_WALK reads `cap_room_no_gauge` without a gyroscope). */
+@StringRes
+internal fun instructionText(instruction: Instruction, poseFree: Boolean, noGauge: Boolean): Int = when {
+    instruction == Instruction.AIM && poseFree -> R.string.cap_pf_aim
+    instruction == Instruction.ROOM_WALK && noGauge -> R.string.cap_room_no_gauge
+    else -> instruction.label()
+}
+
+/** The smaller line under [instruction], or null. */
+@StringRes
+internal fun instructionHint(instruction: Instruction, poseFree: Boolean): Int? = when (instruction) {
+    Instruction.AIM -> if (poseFree) R.string.cap_pf_aim_hint else R.string.cap_aim_hint
+    Instruction.ROOM_AIM -> R.string.cap_room_aim_hint
+    else -> null
+}
+
 @Composable
-private fun InstructionPill(instruction: Instruction, showHint: Boolean, recorder: RecorderState, poseFree: Boolean) {
-    val text = when {
-        instruction == Instruction.AIM && poseFree -> stringResource(R.string.cap_pf_aim)
-        instruction == Instruction.SAVE_FAILED -> stringResource(
-            R.string.capture_save_failed,
-            (recorder as? RecorderState.Failed)?.reason.orEmpty(),
-        )
-        else -> stringResource(instruction.label())
+private fun InstructionPill(instruction: Instruction, showHint: Boolean, state: CaptureUiState) {
+    val text = if (instruction == Instruction.SAVE_FAILED) {
+        stringResource(R.string.capture_save_failed, (state.recorder as? RecorderState.Failed)?.reason.orEmpty())
+    } else {
+        stringResource(instructionText(instruction, state.poseFree, state.noGauge))
     }
+    val hint = instructionHint(instruction, state.poseFree)?.takeIf { showHint }
     Column(
         modifier = Modifier
             .background(SplatColors.OverlayScrim, ScrimPill)
@@ -353,9 +499,9 @@ private fun InstructionPill(instruction: Instruction, showHint: Boolean, recorde
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        if (instruction == Instruction.AIM && showHint) {
+        if (hint != null) {
             Text(
-                stringResource(if (poseFree) R.string.cap_pf_aim_hint else R.string.cap_aim_hint),
+                stringResource(hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = SplatColors.OverlayOnScrim,
                 textAlign = TextAlign.Center,
@@ -376,12 +522,12 @@ private fun Instruction.label(): Int = when (this) {
     Instruction.READY -> R.string.cap_ready
     Instruction.NOTHING_RECORDED -> R.string.capture_nothing_recorded
     Instruction.SAVE_FAILED -> R.string.capture_save_failed
-    // TODO(#291): the room strings (cap_room_*); until then the nearest Object line.
-    Instruction.ROOM_AIM -> R.string.cap_pf_aim
-    Instruction.ROOM_WALK, Instruction.ROOM_WALK_ON -> R.string.cap_walk
-    Instruction.ROOM_LOOK_UP -> R.string.cap_go_higher
-    Instruction.ROOM_LOOK_DOWN -> R.string.cap_go_lower
-    Instruction.ROOM_FULL -> R.string.cap_ready
+    Instruction.ROOM_AIM -> R.string.cap_room_aim
+    Instruction.ROOM_WALK -> R.string.cap_room_walk
+    Instruction.ROOM_WALK_ON -> R.string.cap_room_walk_on
+    Instruction.ROOM_LOOK_UP -> R.string.cap_room_look_up
+    Instruction.ROOM_LOOK_DOWN -> R.string.cap_room_look_down
+    Instruction.ROOM_FULL -> R.string.cap_room_full
 }
 
 @Composable
@@ -486,8 +632,70 @@ private fun FinishButton(ready: Boolean, enabled: Boolean, onFinish: () -> Unit)
  */
 @Composable
 internal fun CoverageRing(cells: CoverageCells, facing: Int, size: Dp, onToggle: () -> Unit) {
-    val description = ringDescriptionText(cells, facing)
+    Ring(
+        fill = { b, seg -> if (cells.covered(b, seg)) RingFill.FULL else RingFill.NONE },
+        facing = facing,
+        size = size,
+        percent = cells.percent,
+        description = ringDescriptionText(cells, facing),
+        caption = null,
+        onToggle = onToggle,
+    )
+}
+
+/** How much of a ring cell's stroke is filled. */
+internal enum class RingFill { NONE, HALF, FULL }
+
+/** A room gauge cell: Covered fills the whole stroke, Seen only its inner half, else the outline. */
+internal fun roomFill(cells: RoomCells, band: CoverageBand, segment: Int): RingFill = when {
+    cells.covered.covered(band, segment) -> RingFill.FULL
+    cells.seen.covered(band, segment) -> RingFill.HALF
+    else -> RingFill.NONE
+}
+
+/**
+ * The room gauge's description parts. With poses (Covered exists) a Seen-only cell counts as missing; on the
+ * pose-free path ([estimate]) nothing is ever Covered, so the percent and the missing arc come from the Seen cells,
+ * as the gauge shows them.
+ */
+internal fun roomGaugeDescription(cells: RoomCells, percent: Int, facing: Int, estimate: Boolean): RoomDescription {
+    val counted = if (estimate) RoomCells(seen = cells.seen, covered = cells.seen) else cells
+    return roomDescription(counted, facing).copy(percent = percent)
+}
+
+/**
+ * The room gauge (screens/capture.md, The room gauge): the coverage ring's chrome with outward-looking cells (outer
+ * floor, middle walls, inner ceiling), Seen as a half fill, Covered as a full one, the [percent] in the centre and,
+ * on the pose-free path ([estimate]), `cap_room_estimate` under it. Tap toggles the large version (no walked path:
+ * the pose-free path has no positions).
+ */
+@Composable
+internal fun RoomGauge(cells: RoomCells, percent: Int, facing: Int, estimate: Boolean, size: Dp, onToggle: () -> Unit) {
+    Ring(
+        fill = { b, seg -> roomFill(cells, b, seg) },
+        facing = facing,
+        size = size,
+        percent = percent,
+        description = roomDescriptionText(roomGaugeDescription(cells, percent, facing, estimate)),
+        caption = if (estimate) stringResource(R.string.cap_room_estimate) else null,
+        onToggle = onToggle,
+    )
+}
+
+@Composable
+private fun Ring(
+    fill: (CoverageBand, Int) -> RingFill,
+    facing: Int,
+    size: Dp,
+    percent: Int,
+    description: String,
+    caption: String?,
+    onToggle: () -> Unit,
+) {
     val toggle = stringResource(R.string.cap_ring_toggle)
+    // The ring is a fixed-size picture: its text scales with the ring, not the font setting (else 200% clips it; the
+    // description carries the words at any size).
+    val scale = (size / SplatDimens.CoverageRing) / LocalDensity.current.fontScale
     val scheme = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
@@ -511,10 +719,24 @@ internal fun CoverageRing(cells: CoverageCells, facing: Int, size: Dp, onToggle:
                 for (seg in 0 until Coverage.SEGMENTS) {
                     // Canvas angles run clockwise from +x; 90 is the bottom.
                     val start = 90f - (seg + 1) * sweep
-                    if (cells.covered(b, seg)) {
-                        drawArc(scheme.secondary, start + 1f, sweep - 2f, false, topLeft, arcSize, style = Stroke(band))
-                    } else {
-                        drawArc(scheme.outline, start + 1f, sweep - 2f, false, topLeft, arcSize, style = Stroke(1.dp.toPx()))
+                    when (fill(b, seg)) {
+                        RingFill.FULL ->
+                            drawArc(scheme.secondary, start + 1f, sweep - 2f, false, topLeft, arcSize, style = Stroke(band))
+                        RingFill.HALF -> {
+                            // The inner half of the stroke: centred a quarter band in from the cell's radius.
+                            val r = radius - band / 4
+                            drawArc(
+                                scheme.secondary,
+                                start + 1f,
+                                sweep - 2f,
+                                false,
+                                Offset(center.x - r, center.y - r),
+                                Size(r * 2, r * 2),
+                                style = Stroke(band / 2),
+                            )
+                        }
+                        RingFill.NONE ->
+                            drawArc(scheme.outline, start + 1f, sweep - 2f, false, topLeft, arcSize, style = Stroke(1.dp.toPx()))
                     }
                 }
             }
@@ -529,18 +751,54 @@ internal fun CoverageRing(cells: CoverageCells, facing: Int, size: Dp, onToggle:
                 StrokeCap.Round,
             )
         }
-        Text(
-            stringResource(R.string.cap_coverage, cells.percent),
-            style = MaterialTheme.typography.numeral.copy(
-                fontSize = MaterialTheme.typography.labelSmall.fontSize * (size / SplatDimens.CoverageRing),
-                lineHeight = MaterialTheme.typography.labelSmall.lineHeight * (size / SplatDimens.CoverageRing),
-            ),
-            color = SplatColors.OverlayOnScrim,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            modifier = Modifier.width(size * 0.45f),
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                stringResource(R.string.cap_coverage, percent),
+                style = MaterialTheme.typography.numeral.copy(
+                    fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
+                    lineHeight = MaterialTheme.typography.labelSmall.lineHeight * scale,
+                ),
+                color = SplatColors.OverlayOnScrim,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                modifier = Modifier.width(size * 0.45f),
+            )
+            if (caption != null) {
+                Text(
+                    caption,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = MaterialTheme.typography.labelSmall.fontSize * scale,
+                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight * scale,
+                    ),
+                    color = SplatColors.OverlayOnScrim,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun roomDescriptionText(d: RoomDescription): String {
+    val gap = d.missing ?: return stringResource(R.string.cap_ring_complete, d.percent)
+    val band = stringResource(
+        when (gap.band) {
+            CoverageBand.LOW -> R.string.cap_room_band_floor
+            CoverageBand.LEVEL -> R.string.cap_room_band_walls
+            CoverageBand.HIGH -> R.string.cap_room_band_ceiling
+        },
+    )
+    val side = stringResource(
+        when (gap.side) {
+            RoomSide.AHEAD -> R.string.cap_room_side_ahead
+            RoomSide.LEFT -> R.string.cap_room_side_left
+            RoomSide.RIGHT -> R.string.cap_room_side_right
+            RoomSide.BEHIND -> R.string.cap_room_side_behind
+            RoomSide.ALL_ROUND -> R.string.cap_room_side_all
+        },
+    )
+    return stringResource(R.string.cap_ring_missing, d.percent, band, side)
 }
 
 @Composable
