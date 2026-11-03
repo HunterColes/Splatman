@@ -1,8 +1,12 @@
 package com.huntercoles.splatman.viewer.rendering.gl
 
 /**
- * GLSL ES 3.00 sources of the splat program (ADR 0006). One instance per splat, a 4-vertex triangle strip per
- * instance; `a_index` is the instanced `u32` from the back-to-front order buffer.
+ * GLSL ES 3.00 sources of the splat program (ADR 0006). Four vertices per splat, no instancing: the renderer
+ * draws [CHUNK] splats per indexed draw ([chunkIndices]: two triangles per quad) with `u_base` the chunk's first
+ * slot, so `gl_VertexID` (the element index) is `4 * (slot - u_base) + corner`. The splat drawn in a slot is read
+ * from `u_order`, the back-to-front order as an R32UI texture [ORDER_WIDTH] texels wide (slot `s` at
+ * `(s % ORDER_WIDTH, s / ORDER_WIDTH)`). Instancing is avoided because SwiftShader (the emulator's GL) runs each
+ * instance as a draw of its own: 450k splats took about 10 s a frame at any size (#262).
  *
  * The vertex shader fetches the two texels of [com.huntercoles.splatman.viewer.rendering.pack.PackedSplats], moves
  * the world covariance into the GL camera frame (`W Sigma W^T`), projects it with the EWA Jacobian of
@@ -17,8 +21,22 @@ package com.huntercoles.splatman.viewer.rendering.gl
  * the renderer sets `u_cropDim = 1.0` and the test is skipped, so the output is unchanged.
  */
 object SplatShaders {
-    const val ATTR_CORNER = 0
-    const val ATTR_INDEX = 1
+    /** Splats per indexed draw: the largest whose four vertices per splat fit `GL_UNSIGNED_SHORT` indices. */
+    const val CHUNK = 16384
+
+    /** Texels per row of the order texture (`slot & 2047`, `slot >> 11` in [VERTEX]). */
+    const val ORDER_WIDTH = 2048
+
+    /** Indices per splat in [chunkIndices]. */
+    const val INDICES_PER_SPLAT = 6
+
+    /** The element indices of one chunk: splat `s` is the triangles (4s, 4s+1, 4s+2) and (4s+2, 4s+1, 4s+3). */
+    fun chunkIndices(): ShortArray = ShortArray(CHUNK * INDICES_PER_SPLAT) { i ->
+        val v = 4 * (i / INDICES_PER_SPLAT)
+        (v + CORNERS[i % INDICES_PER_SPLAT]).toShort()
+    }
+
+    private val CORNERS = intArrayOf(0, 1, 2, 2, 1, 3)
 
     val VERTEX = """
         #version 300 es
@@ -27,6 +45,8 @@ object SplatShaders {
         precision highp usampler2D;
 
         uniform usampler2D u_splats;
+        uniform usampler2D u_order;
+        uniform int u_base;
         uniform mat4 u_view;
         uniform mat4 u_proj;
         uniform vec2 u_focal;
@@ -35,9 +55,6 @@ object SplatShaders {
         uniform vec3 u_cropCentre;
         uniform mat3 u_cropAxes;
         uniform vec3 u_cropHalf;
-
-        layout(location = 0) in vec2 a_corner;
-        layout(location = 1) in uint a_index;
 
         out vec4 v_color;
         out vec2 v_pos;
@@ -49,7 +66,11 @@ object SplatShaders {
         }
 
         void main() {
-            uint texel = a_index * 2u;
+            int corner = gl_VertexID & 3;
+            int slot = u_base + (gl_VertexID >> 2);
+            vec2 cornerXy = vec2((corner & 1) == 0 ? -1.0 : 1.0, (corner & 2) == 0 ? -1.0 : 1.0);
+            uint splat = texelFetch(u_order, ivec2(slot & 2047, slot >> 11), 0).r;
+            uint texel = splat * 2u;
             ivec2 t0 = ivec2(int(texel & 2047u), int(texel >> 11u));
             uvec4 c = texelFetch(u_splats, t0, 0);
             uvec4 s = texelFetch(u_splats, ivec2(t0.x + 1, t0.y), 0);
@@ -100,11 +121,11 @@ object SplatShaders {
             float sigma2 = sqrt(lambda2);
             float r1 = min(3.0 * sigma1, 1024.0);
             float r2 = min(3.0 * sigma2, 1024.0);
-            vec2 offsetPx = a_corner.x * r1 * axis + a_corner.y * r2 * vec2(-axis.y, axis.x);
+            vec2 offsetPx = cornerXy.x * r1 * axis + cornerXy.y * r2 * vec2(-axis.y, axis.x);
             vec2 ndc = clip.xy / clip.w + offsetPx * 2.0 / u_viewport;
             gl_Position = vec4(ndc, clip.z / clip.w, 1.0);
 
-            v_pos = a_corner * vec2(r1 / sigma1, r2 / sigma2);
+            v_pos = cornerXy * vec2(r1 / sigma1, r2 / sigma2);
             v_color = vec4(
                 float(c.w & 255u), float((c.w >> 8u) & 255u), float((c.w >> 16u) & 255u), float(c.w >> 24u)
             ) / 255.0;
@@ -129,7 +150,4 @@ object SplatShaders {
             fragColor = vec4(v_color.rgb * alpha, alpha);
         }
     """.trimIndent()
-
-    /** Triangle-strip corners of the unit quad, in units of the quad's half-axes. */
-    val QUAD = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
 }

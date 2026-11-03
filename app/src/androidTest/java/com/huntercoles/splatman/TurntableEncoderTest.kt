@@ -34,6 +34,9 @@ import kotlin.math.abs
  * #262: the cactus sample encodes into a looping orbit MP4 that MediaExtractor reads back as one H.264 track of
  * [OrbitPath.FRAMES] frames lasting about [OrbitPath.SECONDS] s; a cancelled encode leaves no file. Skipped (not
  * failed) on a device without an H.264 surface encoder.
+ *
+ * Progress must keep moving: no frame may take [MAX_FRAME_GAP_MS] (the input dispatch timeout). A frame that long
+ * holds the emulator's shared GL renderer, and the app's windows stop answering input (keyDispatchingTimedOut).
  */
 @RunWith(AndroidJUnit4::class)
 class TurntableEncoderTest {
@@ -63,12 +66,21 @@ class TurntableEncoderTest {
     @Test
     fun cactusEncodesToALoopingH264Orbit() = runBlocking {
         val progress = mutableListOf<Float>()
+        val stamps = mutableListOf<Long>()
         val started = System.nanoTime()
         val result = withTimeout(TIMEOUT_MS) {
-            TurntableEncoder().encode(scene, path, choice, out) { progress += it }
+            TurntableEncoder().encode(scene, path, choice, out) {
+                progress += it
+                stamps += System.nanoTime()
+            }
         }
         val seconds = (System.nanoTime() - started) / 1e9
-        android.util.Log.i("TurntableEncoderTest", "encoded ${choice.spec.size}px in %.1f s".format(seconds))
+        val gapsMs = (listOf(started) + stamps).zipWithNext { a, b -> (b - a) / 1_000_000 }
+        android.util.Log.i(
+            "TurntableEncoderTest",
+            "encoded ${choice.spec.size}px in %.1f s, slowest frame %d ms".format(seconds, gapsMs.max()),
+        )
+        assertTrue("a frame took ${gapsMs.max()} ms", gapsMs.max() < MAX_FRAME_GAP_MS)
         assertEquals(TurntableResult.Done(out, OrbitPath.FRAMES), result)
         assertEquals(OrbitPath.FRAMES, progress.size)
         assertEquals(1f, progress.last(), 0f)
@@ -117,5 +129,6 @@ class TurntableEncoderTest {
         const val SAMPLE = "samples/cactus.spz"
         const val TIMEOUT_MS = 10 * 60_000L
         const val CANCEL_AT = 0.25f
+        const val MAX_FRAME_GAP_MS = 5_000L
     }
 }

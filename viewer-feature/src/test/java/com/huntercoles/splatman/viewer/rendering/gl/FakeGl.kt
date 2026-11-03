@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.viewer.rendering.gl
 
 import java.nio.Buffer
+import java.nio.ByteBuffer
 import java.nio.IntBuffer
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -12,9 +13,14 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     val calls = CopyOnWriteArrayList<Call>()
     private var nextName = 1
 
-    /** The order uploaded by each `bufferData` of `count * 4` bytes into an order VBO, decoded. */
+    /**
+     * Each order upload (an R32UI `texImage2D`): the texture bound on unit 1 and every texel uploaded, whole rows, so
+     * the order is the first `count` of them.
+     */
     val orderUploads = CopyOnWriteArrayList<Pair<Int, IntArray>>()
     private var boundArray = 0
+    private var activeUnit = GlConst.TEXTURE0
+    private val boundTextures = mutableMapOf<Int, Int>()
 
     private fun rec(name: String, vararg args: Any?) {
         calls += Call(name, Thread.currentThread(), args.toList())
@@ -51,8 +57,14 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     override fun uniformMatrix4fv(location: Int, values: FloatArray) = rec("uniformMatrix4fv", location)
     override fun genTexture() = gen("genTexture")
     override fun deleteTexture(texture: Int) = rec("deleteTexture", texture)
-    override fun activeTexture(unit: Int) = rec("activeTexture", unit)
-    override fun bindTexture(target: Int, texture: Int) = rec("bindTexture", texture)
+    override fun activeTexture(unit: Int) {
+        activeUnit = unit
+        rec("activeTexture", unit)
+    }
+    override fun bindTexture(target: Int, texture: Int) {
+        boundTextures[activeUnit] = texture
+        rec("bindTexture", texture)
+    }
     override fun texParameteri(target: Int, pname: Int, value: Int) = rec("texParameteri", pname, value)
     override fun texImage2D(
         target: Int,
@@ -62,7 +74,13 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
         format: Int,
         type: Int,
         data: Buffer?,
-    ) = rec("texImage2D", internalFormat, width, height, data?.remaining())
+    ) {
+        rec("texImage2D", internalFormat, width, height, data?.remaining(), format, type)
+        if (internalFormat == GlConst.R32UI && data is IntBuffer) {
+            val d = data.duplicate()
+            orderUploads += (boundTextures[activeUnit] ?: 0) to IntArray(d.remaining()).also { d.get(it) }
+        }
+    }
     override fun pixelStorei(pname: Int, value: Int) = rec("pixelStorei", pname, value)
     override fun getInteger(pname: Int) =
         (if (pname == GlConst.MAX_TEXTURE_SIZE) maxTextureSize else 0).also { rec("getInteger", pname) }
@@ -73,11 +91,12 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
         rec("bindBuffer", buffer)
     }
     override fun bufferData(target: Int, bytes: Int, data: Buffer?, usage: Int) {
-        rec("bufferData", boundArray, bytes, usage)
-        if (usage == GlConst.DYNAMIC_DRAW && data is IntBuffer) {
-            val d = data.duplicate()
-            orderUploads += boundArray to IntArray(d.remaining()).also { d.get(it) }
-        }
+        rec("bufferData", boundArray, bytes, usage, target, (data as? ByteBuffer)?.let { decodeShorts(it) })
+    }
+
+    private fun decodeShorts(data: ByteBuffer): ShortArray {
+        val d = data.duplicate().order(data.order()).asShortBuffer()
+        return ShortArray(d.remaining()).also { d.get(it) }
     }
     override fun genVertexArray() = gen("genVertexArray")
     override fun deleteVertexArray(vao: Int) = rec("deleteVertexArray", vao)
@@ -85,9 +104,6 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     override fun enableVertexAttribArray(index: Int) = rec("enableVertexAttribArray", index)
     override fun vertexAttribPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int) =
         rec("vertexAttribPointer", index)
-    override fun vertexAttribIPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int) =
-        rec("vertexAttribIPointer", index, boundArray)
-    override fun vertexAttribDivisor(index: Int, divisor: Int) = rec("vertexAttribDivisor", index, divisor)
     override fun genFramebuffer() = gen("genFramebuffer")
     override fun deleteFramebuffer(framebuffer: Int) = rec("deleteFramebuffer", framebuffer)
     override fun bindFramebuffer(target: Int, framebuffer: Int) = rec("bindFramebuffer", target, framebuffer)
@@ -103,7 +119,8 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     override fun enable(cap: Int) = rec("enable", cap)
     override fun disable(cap: Int) = rec("disable", cap)
     override fun blendFunc(src: Int, dst: Int) = rec("blendFunc", src, dst)
-    override fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int) =
-        rec("drawArraysInstanced", mode, count, instances)
+    /** Recorded with the texture bound on unit 1 (the order texture) at the time of the draw. */
+    override fun drawElements(mode: Int, count: Int, type: Int, offset: Int) =
+        rec("drawElements", mode, count, type, offset, boundTextures[GlConst.TEXTURE1])
     override fun drawArrays(mode: Int, first: Int, count: Int) = rec("drawArrays", mode, first, count)
 }

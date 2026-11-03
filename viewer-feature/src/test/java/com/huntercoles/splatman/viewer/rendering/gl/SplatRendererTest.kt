@@ -58,10 +58,14 @@ class SplatRendererTest {
         renderer.onDrawFrame(null)
     }
 
-    private fun draws() = gl.named("drawArraysInstanced")
+    private fun draws() = gl.named("drawElements")
     private fun splatUploads() = gl.named("texImage2D").filter { it.args[0] == GlConst.RGBA32UI }
 
-    private fun assertBackToFront(scene: RenderScene, order: IntArray) {
+    /** The order in [upload]: its first `count` texels (the rest of the last row is padding). */
+    private fun orderOf(scene: RenderScene, upload: Pair<Int, IntArray>) = upload.second.copyOf(scene.packed.count)
+
+    private fun assertBackToFront(scene: RenderScene, upload: Pair<Int, IntArray>) {
+        val order = orderOf(scene, upload)
         val view = camera.getViewMatrix().values
         val depths = FloatArray(scene.packed.count)
         ResortPolicy.depths(view, scene.positions, scene.packed.count, depths)
@@ -76,14 +80,15 @@ class SplatRendererTest {
         renderer.setScene(s)
         repeat(3) { frame() }
         assertEquals(1, splatUploads().size)
-        assertEquals(listOf(2048, 1, 2048 * 16), splatUploads().single().args.drop(1))
+        assertEquals(listOf(2048, 1, 2048 * 16), splatUploads().single().args.subList(1, 4))
         assertTrue(draws().isEmpty(), "no order yet, nothing drawn")
 
         scheduler.advanceUntilIdle()
         frame()
         assertEquals(1, gl.orderUploads.size)
-        assertBackToFront(s, gl.orderUploads.single().second)
-        assertEquals(listOf(GlConst.TRIANGLE_STRIP, 4, 8), draws().single().args)
+        assertBackToFront(s, gl.orderUploads.single())
+        val orderTexture = gl.orderUploads.single().first
+        assertEquals(listOf(GlConst.TRIANGLES, 8 * 6, GlConst.UNSIGNED_SHORT, 0, orderTexture), draws().single().args)
     }
 
     @Test
@@ -102,8 +107,8 @@ class SplatRendererTest {
         assertEquals(2, gl.orderUploads.size)
         val (first, second) = gl.orderUploads.map { it.first }
         assertNotEquals(first, second)
-        assertEquals(second, gl.named("vertexAttribIPointer").last().args[1])
-        assertBackToFront(s, gl.orderUploads.last().second)
+        assertEquals(second, draws().last().args[4])
+        assertBackToFront(s, gl.orderUploads.last())
         // The frame after the turn drew with the old order instead of waiting for the new one.
         assertEquals(3, draws().size)
     }
@@ -158,10 +163,10 @@ class SplatRendererTest {
             assertEquals(before, realGl.calls.size)
 
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-            while (realGl.count("drawArraysInstanced") == 0 && System.nanoTime() < deadline) {
+            while (realGl.count("drawElements") == 0 && System.nanoTime() < deadline) {
                 glThread.submit { r.onDrawFrame(null) }.get()
             }
-            assertEquals(64, realGl.named("drawArraysInstanced").first().args[2])
+            assertEquals(64 * 6, realGl.named("drawElements").first().args[1])
             val threads = realGl.calls.map { it.thread.name }.toSet()
             assertEquals(setOf("gl"), threads)
         } finally {
@@ -176,15 +181,15 @@ class SplatRendererTest {
         start()
         renderer.setScene(scene(4))
         frame()
-        val oldTexture = gl.named("genTexture").single().args[0]
+        val oldTexture = gl.named("genTexture").last().args[0]
         renderer.setScene(scene(6))
         frame()
         assertEquals(listOf(oldTexture), gl.named("deleteTexture").map { it.args[0] })
         assertEquals(2, splatUploads().size)
         scheduler.advanceUntilIdle()
         frame()
-        assertEquals(6, gl.orderUploads.last().second.size)
-        assertEquals(6, draws().last().args[2])
+        assertEquals(SplatShaders.ORDER_WIDTH, gl.orderUploads.last().second.size, "one whole row")
+        assertEquals(6 * 6, draws().last().args[1])
     }
 
     @Test
@@ -213,11 +218,49 @@ class SplatRendererTest {
             r.onDrawFrame(null)
             scheduler.advanceUntilIdle()
             r.onDrawFrame(null)
-            assertTrue(small.named("texImage2D").isEmpty())
-            assertTrue(small.named("drawArraysInstanced").isEmpty())
+            assertTrue(small.named("texImage2D").none { it.args[0] == GlConst.RGBA32UI })
+            assertTrue(small.named("drawElements").isEmpty())
         } finally {
             r.dispose()
         }
+    }
+
+    @Test
+    fun `a scene over one chunk is drawn in chunks, each from its first slot, with no instancing`() {
+        val n = SplatShaders.CHUNK + 5
+        val s = scene(n)
+        start()
+        renderer.setScene(s)
+        frame()
+        scheduler.advanceUntilIdle()
+        frame()
+
+        val upload = gl.orderUploads.single()
+        assertBackToFront(s, upload)
+        val rows = (n + SplatShaders.ORDER_WIDTH - 1) / SplatShaders.ORDER_WIDTH
+        val orderTex = gl.named("texImage2D").single { it.args[0] == GlConst.R32UI }
+        assertEquals(
+            listOf<Any?>(GlConst.R32UI, SplatShaders.ORDER_WIDTH, rows, rows * SplatShaders.ORDER_WIDTH),
+            orderTex.args.take(4),
+        )
+        assertEquals(listOf(SplatShaders.CHUNK * 6, 5 * 6), draws().map { it.args[1] })
+        val drawCalls = gl.calls.filter { it.name == "drawElements" || it.args.firstOrNull() == "u_base".hashCode() }
+        assertEquals(
+            listOf("uniform1i" to 0, "drawElements" to null, "uniform1i" to SplatShaders.CHUNK, "drawElements" to null),
+            drawCalls.map { it.name to (if (it.name == "uniform1i") it.args[1] else null) },
+        )
+    }
+
+    @Test
+    fun `the index buffer holds one chunk of two-triangle quads`() {
+        start()
+        val upload = gl.named("bufferData").single { it.args[3] == GlConst.ELEMENT_ARRAY_BUFFER }
+        val indices = upload.args[4] as ShortArray
+        assertEquals(SplatShaders.CHUNK * 6, indices.size)
+        assertEquals(listOf<Short>(0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7), indices.take(12))
+        val vertices = indices.map { it.toInt() and 0xFFFF }
+        assertEquals((0 until SplatShaders.CHUNK * 4).toSet(), vertices.toSet(), "every vertex of the chunk, once")
+        assertEquals(GlConst.STATIC_DRAW, upload.args[2])
     }
 
     @Test

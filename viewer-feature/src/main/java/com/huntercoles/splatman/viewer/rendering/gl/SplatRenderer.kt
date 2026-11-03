@@ -29,12 +29,13 @@ class RenderScene(val packed: PackedSplats, val positions: FloatArray, val radiu
 data class RenderStats(val fps: Float, val frameMs: Float, val scale: Float, val splats: Int, val sorts: Int)
 
 /**
- * Draws a [RenderScene] as sorted instanced Gaussian quads (ADR 0006).
+ * Draws a [RenderScene] as sorted Gaussian quads (ADR 0006), [SplatShaders.CHUNK] splats per indexed draw with the
+ * back-to-front order in a texture (see [SplatShaders]; no instancing, which the emulator's GL runs per instance).
  *
  * Threads: [setScene] may be called from any thread and only hands the scene over; every [gl] call happens inside
  * the three [GLSurfaceView.Renderer] callbacks, on the GL thread. Sorting runs on [sortDispatcher] through
  * [SplatSortWorker]; a frame never waits for it: it draws with the last finished order and uploads a new one into
- * the idle half of a double-buffered order VBO when it arrives.
+ * the idle one of two order textures when it arrives.
  *
  * Context loss: [onSurfaceCreated] runs again on a new context, so it drops every old GL name, rebuilds the
  * program and buffers and marks the scene's texture and order for upload on the next frame.
@@ -74,6 +75,8 @@ class SplatRenderer(
 
     private var program = 0
     private var uSplats = -1
+    private var uOrder = -1
+    private var uBase = -1
     private var uView = -1
     private var uProj = -1
     private var uFocal = -1
@@ -87,8 +90,8 @@ class SplatRenderer(
     private val cropAxes = FloatArray(9)
     private var cropModel = FloatArray(16)
     private var vao = 0
-    private var quadVbo = 0
-    private val orderVbos = IntArray(2)
+    private var indexBuffer = 0
+    private val orderTextures = IntArray(2)
     private var activeOrder = -1
     private var orderCount = 0
     private var orderBytes: IntBuffer? = null
@@ -148,6 +151,8 @@ class SplatRenderer(
 
         program = buildProgram()
         uSplats = gl.getUniformLocation(program, "u_splats")
+        uOrder = gl.getUniformLocation(program, "u_order")
+        uBase = gl.getUniformLocation(program, "u_base")
         uView = gl.getUniformLocation(program, "u_view")
         uProj = gl.getUniformLocation(program, "u_proj")
         uFocal = gl.getUniformLocation(program, "u_focal")
@@ -160,19 +165,23 @@ class SplatRenderer(
 
         vao = gl.genVertexArray()
         gl.bindVertexArray(vao)
-        quadVbo = gl.genBuffer()
-        gl.bindBuffer(GlConst.ARRAY_BUFFER, quadVbo)
-        val quad = ByteBuffer.allocateDirect(SplatShaders.QUAD.size * 4).order(ByteOrder.nativeOrder())
-        quad.asFloatBuffer().put(SplatShaders.QUAD)
-        gl.bufferData(GlConst.ARRAY_BUFFER, SplatShaders.QUAD.size * 4, quad, GlConst.STATIC_DRAW)
-        gl.enableVertexAttribArray(SplatShaders.ATTR_CORNER)
-        gl.vertexAttribPointer(SplatShaders.ATTR_CORNER, 2, GlConst.FLOAT, 0, 0)
-        orderVbos[0] = gl.genBuffer()
-        orderVbos[1] = gl.genBuffer()
-        gl.enableVertexAttribArray(SplatShaders.ATTR_INDEX)
-        gl.vertexAttribDivisor(SplatShaders.ATTR_INDEX, 1)
+        indexBuffer = gl.genBuffer()
+        gl.bindBuffer(GlConst.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        val indices = SplatShaders.chunkIndices()
+        val bytes = ByteBuffer.allocateDirect(indices.size * 2).order(ByteOrder.nativeOrder())
+        bytes.asShortBuffer().put(indices)
+        gl.bufferData(GlConst.ELEMENT_ARRAY_BUFFER, indices.size * 2, bytes, GlConst.STATIC_DRAW)
         gl.bindVertexArray(0)
-        gl.bindBuffer(GlConst.ARRAY_BUFFER, 0)
+        gl.bindBuffer(GlConst.ELEMENT_ARRAY_BUFFER, 0)
+        for (k in orderTextures.indices) {
+            orderTextures[k] = gl.genTexture()
+            gl.bindTexture(GlConst.TEXTURE_2D, orderTextures[k])
+            gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_MIN_FILTER, GlConst.NEAREST)
+            gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_MAG_FILTER, GlConst.NEAREST)
+            gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_WRAP_S, GlConst.CLAMP_TO_EDGE)
+            gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_WRAP_T, GlConst.CLAMP_TO_EDGE)
+        }
+        gl.bindTexture(GlConst.TEXTURE_2D, 0)
         overlay.create()
 
         gl.disable(GlConst.DEPTH_TEST)
@@ -285,23 +294,29 @@ class SplatRenderer(
         textureReady = true
     }
 
+    /** Writes [order] into the idle order texture, whole rows of [SplatShaders.ORDER_WIDTH] (the tail is unread). */
     private fun uploadOrder(order: IntArray, count: Int) {
         if (count == 0) return
-        if (orderCapacity < count) {
-            orderBytes = ByteBuffer.allocateDirect(count * 4).order(ByteOrder.nativeOrder()).asIntBuffer()
-            orderCapacity = count
+        val rows = (count + SplatShaders.ORDER_WIDTH - 1) / SplatShaders.ORDER_WIDTH
+        val texels = rows * SplatShaders.ORDER_WIDTH
+        if (orderCapacity < texels) {
+            orderBytes = ByteBuffer.allocateDirect(texels * 4).order(ByteOrder.nativeOrder()).asIntBuffer()
+            orderCapacity = texels
         }
         val buf = requireNotNull(orderBytes)
         buf.clear()
         buf.put(order, 0, count)
-        buf.flip()
+        buf.position(0)
+        buf.limit(texels)
         val back = if (activeOrder == 0) 1 else 0
-        gl.bindBuffer(GlConst.ARRAY_BUFFER, orderVbos[back])
-        gl.bufferData(GlConst.ARRAY_BUFFER, count * 4, buf, GlConst.DYNAMIC_DRAW)
-        gl.bindVertexArray(vao)
-        gl.vertexAttribIPointer(SplatShaders.ATTR_INDEX, 1, GlConst.UNSIGNED_INT, 0, 0)
-        gl.bindVertexArray(0)
-        gl.bindBuffer(GlConst.ARRAY_BUFFER, 0)
+        gl.activeTexture(GlConst.TEXTURE1)
+        gl.bindTexture(GlConst.TEXTURE_2D, orderTextures[back])
+        gl.pixelStorei(GlConst.UNPACK_ALIGNMENT, 4)
+        gl.texImage2D(
+            GlConst.TEXTURE_2D, GlConst.R32UI, SplatShaders.ORDER_WIDTH, rows,
+            GlConst.RED_INTEGER, GlConst.UNSIGNED_INT, buf,
+        )
+        gl.activeTexture(GlConst.TEXTURE0)
         activeOrder = back
         orderCount = count
     }
@@ -311,6 +326,10 @@ class SplatRenderer(
         gl.activeTexture(GlConst.TEXTURE0)
         gl.bindTexture(GlConst.TEXTURE_2D, texture)
         gl.uniform1i(uSplats, 0)
+        gl.activeTexture(GlConst.TEXTURE1)
+        gl.bindTexture(GlConst.TEXTURE_2D, orderTextures[activeOrder])
+        gl.uniform1i(uOrder, 1)
+        gl.activeTexture(GlConst.TEXTURE0)
         gl.uniformMatrix4fv(uView, view)
         gl.uniformMatrix4fv(uProj, proj)
         gl.uniform2f(uFocal, proj[0] * targetW / 2f, proj[5] * targetH / 2f)
@@ -325,7 +344,13 @@ class SplatRenderer(
             gl.uniform3f(uCropHalf, box.halfExtents.x, box.halfExtents.y, box.halfExtents.z)
         }
         gl.bindVertexArray(vao)
-        gl.drawArraysInstanced(GlConst.TRIANGLE_STRIP, 0, 4, orderCount)
+        var base = 0
+        while (base < orderCount) {
+            val splats = minOf(SplatShaders.CHUNK, orderCount - base)
+            gl.uniform1i(uBase, base)
+            gl.drawElements(GlConst.TRIANGLES, splats * SplatShaders.INDICES_PER_SPLAT, GlConst.UNSIGNED_SHORT, 0)
+            base += splats
+        }
         gl.bindVertexArray(0)
     }
 
@@ -366,8 +391,6 @@ class SplatRenderer(
         val p = gl.createProgram()
         gl.attachShader(p, vs)
         gl.attachShader(p, fs)
-        gl.bindAttribLocation(p, SplatShaders.ATTR_CORNER, "a_corner")
-        gl.bindAttribLocation(p, SplatShaders.ATTR_INDEX, "a_index")
         gl.linkProgram(p)
         gl.deleteShader(vs)
         gl.deleteShader(fs)

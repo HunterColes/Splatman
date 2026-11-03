@@ -25,6 +25,11 @@ declares `<uses-feature android:glEsVersion="0x00030000" android:required="true"
 - **Render scale**: draw into an FBO at 0.5-1.0 of screen resolution, chosen by frame time (drop when the last 30
   frames average > 20 ms, rise when < 12 ms).
 - The existing `GaussianCameraController` (orbit, pan, zoom) stays and is rebased on `splat-core/math`.
+- **Amendment (2026-11-03, #262): no instancing.** SwiftShader (the emulator's GL) runs every instance as a draw of
+  its own, so 450k splats took about 10 s a frame at any resolution. The order is now an `R32UI` texture (width
+  2048) instead of a `u32` vertex buffer, and the quads are drawn 16384 splats per `glDrawElements` from one static
+  `u16` index buffer (two triangles per quad), `u_base` the chunk's first slot; the vertex shader takes its corner
+  and slot from `gl_VertexID`. Same vertices per splat, same memory (4 B/splat order), a few draws per frame.
 
 ## Budget (2022 mid-range phone, e.g. Adreno 642L / Mali-G68, 1080p screen)
 

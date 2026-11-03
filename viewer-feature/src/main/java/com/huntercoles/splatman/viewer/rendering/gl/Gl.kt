@@ -51,8 +51,6 @@ interface Gl {
     fun bindVertexArray(vao: Int)
     fun enableVertexAttribArray(index: Int)
     fun vertexAttribPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int)
-    fun vertexAttribIPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int)
-    fun vertexAttribDivisor(index: Int, divisor: Int)
 
     fun genFramebuffer(): Int
     fun deleteFramebuffer(framebuffer: Int)
@@ -67,7 +65,7 @@ interface Gl {
     fun enable(cap: Int)
     fun disable(cap: Int)
     fun blendFunc(src: Int, dst: Int)
-    fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int)
+    fun drawElements(mode: Int, count: Int, type: Int, offset: Int)
     fun drawArrays(mode: Int, first: Int, count: Int)
 }
 
@@ -158,9 +156,6 @@ object AndroidGl : Gl {
     override fun enableVertexAttribArray(index: Int) = GLES30.glEnableVertexAttribArray(index)
     override fun vertexAttribPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int) =
         GLES30.glVertexAttribPointer(index, size, type, false, stride, offset)
-    override fun vertexAttribIPointer(index: Int, size: Int, type: Int, stride: Int, offset: Int) =
-        GLES30.glVertexAttribIPointer(index, size, type, stride, offset)
-    override fun vertexAttribDivisor(index: Int, divisor: Int) = GLES30.glVertexAttribDivisor(index, divisor)
 
     override fun genFramebuffer(): Int {
         GLES30.glGenFramebuffers(1, one, 0)
@@ -184,8 +179,8 @@ object AndroidGl : Gl {
     override fun enable(cap: Int) = GLES30.glEnable(cap)
     override fun disable(cap: Int) = GLES30.glDisable(cap)
     override fun blendFunc(src: Int, dst: Int) = GLES30.glBlendFunc(src, dst)
-    override fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int) =
-        GLES30.glDrawArraysInstanced(mode, first, count, instances)
+    override fun drawElements(mode: Int, count: Int, type: Int, offset: Int) =
+        GLES30.glDrawElements(mode, count, type, offset)
     override fun drawArrays(mode: Int, first: Int, count: Int) = GLES30.glDrawArrays(mode, first, count)
 }
 
@@ -200,6 +195,7 @@ object GlConst {
     const val LINK_STATUS = 0x8B82
     const val TEXTURE_2D = 0x0DE1
     const val TEXTURE0 = 0x84C0
+    const val TEXTURE1 = 0x84C1
     const val TEXTURE_MIN_FILTER = 0x2801
     const val TEXTURE_MAG_FILTER = 0x2800
     const val TEXTURE_WRAP_S = 0x2802
@@ -209,14 +205,18 @@ object GlConst {
     const val CLAMP_TO_EDGE = 0x812F
     const val RGBA32UI = 0x8D70
     const val RGBA_INTEGER = 0x8D99
+    const val R32UI = 0x8236
+    const val RED_INTEGER = 0x8D94
     const val RGBA8 = 0x8058
     const val RGBA = 0x1908
     const val UNSIGNED_INT = 0x1405
     const val UNSIGNED_BYTE = 0x1401
+    const val UNSIGNED_SHORT = 0x1403
     const val FLOAT = 0x1406
     const val UNPACK_ALIGNMENT = 0x0CF5
     const val MAX_TEXTURE_SIZE = 0x0D33
     const val ARRAY_BUFFER = 0x8892
+    const val ELEMENT_ARRAY_BUFFER = 0x8893
     const val STATIC_DRAW = 0x88E4
     const val DYNAMIC_DRAW = 0x88E8
     const val FRAMEBUFFER = 0x8D40
