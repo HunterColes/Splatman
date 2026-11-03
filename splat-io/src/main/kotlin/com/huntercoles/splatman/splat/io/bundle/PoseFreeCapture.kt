@@ -2,6 +2,8 @@ package com.huntercoles.splatman.splat.io.bundle
 
 import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -55,6 +57,10 @@ data class PoseFreeFrameInput(
     val intrinsics: CameraIntrinsics?,
     /** `SENSOR_EXPOSURE_TIME`, nanoseconds, when reported. */
     val exposureNs: Long?,
+    /** `SENSOR_ROLLING_SHUTTER_SKEW`, nanoseconds, when reported. */
+    val rollingShutterSkewNs: Long? = null,
+    /** `LENS_FOCUS_DISTANCE`, diopters, when reported; finite. */
+    val focusDistanceDpt: Float? = null,
 )
 
 /**
@@ -76,6 +82,10 @@ data class FrameEntry(
     val intrinsics: CameraIntrinsics?,
     /** Exposure time, nanoseconds, or null. */
     val exposureNs: Long?,
+    /** Rolling-shutter skew, nanoseconds, or null. */
+    val rollingShutterSkewNs: Long? = null,
+    /** Focus distance, diopters, or null. */
+    val focusDistanceDpt: Float? = null,
 )
 
 /** A pose-free frame read back by [PoseFreeCaptureReader]; its image file was checked to exist. */
@@ -102,6 +112,10 @@ data class PoseFreeCapture(
     val calibration: CameraCalibration,
     /** Object or room scan (`mode`); OBJECT when the key is absent or unknown. */
     val mode: ScanMode = ScanMode.OBJECT,
+    /** The tracking stream, checked to be whole (both files, `stream.y8` = rows * w * h bytes); else null. */
+    val stream: TrackingStreamInfo? = null,
+    /** Why a `stream` listed in `capture.json` was dropped, or null. */
+    val streamProblem: String? = null,
 )
 
 /** `image` of `calibration.json`: the JPEG size, pixels. */
@@ -144,6 +158,14 @@ data class CameraCalibration(
     @SerialName("lens_pose_reference") val lensPoseReference: Int?,
     val image: ImageSize,
     val intrinsics: CalibrationIntrinsics,
+    /**
+     * Camera2 `LENS_INFO_FOCUS_DISTANCE_CALIBRATION`: "UNCALIBRATED", "APPROXIMATE" or "CALIBRATED". Written only
+     * when known, so older files stay byte-identical.
+     */
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("focus_distance_calibration")
+    val focusDistanceCalibration: String? = null,
 )
 
 /** On-disk `capture.json`; field order is the file's key order. */
@@ -157,6 +179,8 @@ internal data class CaptureJson(
     /** The [ScanMode] key; written only for a room scan, absent means object. */
     val mode: String? = null,
     val frames: List<CaptureFrameJson>,
+    /** The optional tracking stream (ADR 0016); absent when not recorded. */
+    val stream: TrackingStreamInfo? = null,
 )
 
 @Serializable
@@ -171,6 +195,8 @@ internal data class CaptureFrameJson(
     val cx: Float? = null,
     val cy: Float? = null,
     @SerialName("exposure_ns") val exposureNs: Long? = null,
+    @SerialName("rolling_shutter_skew_ns") val rollingShutterSkewNs: Long? = null,
+    @SerialName("focus_distance_dpt") val focusDistanceDpt: Float? = null,
 )
 
 internal const val POSES_NONE = "none"

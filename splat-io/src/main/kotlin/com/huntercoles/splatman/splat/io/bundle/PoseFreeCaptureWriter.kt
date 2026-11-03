@@ -19,6 +19,7 @@ object PoseFreeCaptureWriter {
         require(index >= 0) { "index must be >= 0, got $index" }
         require(frame.sharpness.isFinite()) { "sharpness must be finite, got ${frame.sharpness}" }
         require(frame.width > 0 && frame.height > 0) { "size must be positive, got ${frame.width}x${frame.height}" }
+        require(frame.focusDistanceDpt?.isFinite() != false) { "focus distance must be finite" }
         prepare(directory)
         val path = String.format(Locale.ROOT, "images/frame_%05d.jpg", index + 1)
         CaptureBundleWriter.writeAtomic(File(directory, path), frame.jpeg)
@@ -30,6 +31,8 @@ object PoseFreeCaptureWriter {
             sharpness = frame.sharpness,
             intrinsics = frame.intrinsics,
             exposureNs = frame.exposureNs,
+            rollingShutterSkewNs = frame.rollingShutterSkewNs,
+            focusDistanceDpt = frame.focusDistanceDpt,
         )
     }
 
@@ -45,7 +48,7 @@ object PoseFreeCaptureWriter {
 
     /**
      * Writes `capture.json` listing [frames], last; the folder is a capture from here on. [mode] is written as `mode`
-     * only when it is not OBJECT.
+     * only when it is not OBJECT; [stream] (from [TrackingStreamWriter.info]) as `stream` only when given.
      */
     @Throws(IOException::class)
     fun finish(
@@ -53,6 +56,7 @@ object PoseFreeCaptureWriter {
         frames: List<FrameEntry>,
         timestampSource: TimestampSource,
         mode: ScanMode = ScanMode.OBJECT,
+        stream: TrackingStreamInfo? = null,
     ) {
         frames.forEach { require(it.sharpness.isFinite()) { "${it.filePath}: sharpness must be finite" } }
         prepare(directory)
@@ -73,8 +77,11 @@ object PoseFreeCaptureWriter {
                     cx = k?.cx,
                     cy = k?.cy,
                     exposureNs = f.exposureNs,
+                    rollingShutterSkewNs = f.rollingShutterSkewNs,
+                    focusDistanceDpt = f.focusDistanceDpt,
                 )
             },
+            stream = stream,
         )
         CaptureBundleWriter.writeAtomic(File(directory, CAPTURE_FILE), encodeCapture(doc).toByteArray(Charsets.UTF_8))
     }

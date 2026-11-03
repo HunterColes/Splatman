@@ -7,6 +7,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import java.io.File
+import java.io.IOException
+import java.util.logging.Logger
 
 /**
  * Reads a pose-free capture (ADR 0007). Unknown keys are ignored; a `splatman_capture_version` other than
@@ -37,6 +39,8 @@ object PoseFreeCaptureReader {
         val calibration = decode(doc.calibrationFilePath) {
             calibrationJson.decodeFromString(CameraCalibration.serializer(), calFile.readText(Charsets.UTF_8))
         }
+        val streamProblem = doc.stream?.let { streamProblem(directory, it) }
+        if (streamProblem != null) log.warning("${directory.path}: stream dropped: $streamProblem")
         return PoseFreeCapture(
             directory,
             doc.version,
@@ -45,8 +49,23 @@ object PoseFreeCaptureReader {
             imu,
             calibration,
             ScanMode.fromKey(doc.mode),
+            stream = doc.stream.takeIf { streamProblem == null },
+            streamProblem = streamProblem,
         )
     }
+
+    private val log: Logger = Logger.getLogger(PoseFreeCaptureReader::class.java.name)
+
+    /** Null when [info]'s files are whole, else why not; the capture reads either way. */
+    private fun streamProblem(directory: File, info: TrackingStreamInfo): String? =
+        try {
+            TrackingStreamReader(directory, info).close()
+            null
+        } catch (e: CaptureBundleException) {
+            e.message ?: "stream unreadable"
+        } catch (e: IOException) {
+            "stream: ${e.message}"
+        }
 
     private fun checkVersion(root: JsonObject?) {
         val key = "splatman_capture_version"
@@ -89,7 +108,12 @@ object PoseFreeCaptureReader {
             null
         }
         val image = existing(directory, f.filePath, "$where file_path")
-        val entry = FrameEntry(f.filePath, f.timestampNs, f.w, f.h, f.sharpness, intrinsics, f.exposureNs)
+        val focus = f.focusDistanceDpt
+        if (focus != null && !focus.isFinite()) throw CaptureBundleException("$where: focus_distance_dpt must be finite")
+        val entry = FrameEntry(
+            f.filePath, f.timestampNs, f.w, f.h, f.sharpness, intrinsics, f.exposureNs,
+            f.rollingShutterSkewNs, focus,
+        )
         return PoseFreeFrame(entry, image)
     }
 
