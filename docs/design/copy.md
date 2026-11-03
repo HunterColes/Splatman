@@ -150,6 +150,52 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `view_error_body` | The file may be damaged or in a format Splatman doesn't read. |
 | `view_error_memory` | This splat is too big for this phone's memory. |
 
+## Crop
+
+Viewer crop mode ([screens/crop.md](screens/crop.md)). Counts use the localized number formatter.
+
+| Key | Text | When |
+|---|---|---|
+| `crop_action` | Crop | Viewer bottom bar icon, content description |
+| `crop_title` | Crop | crop mode top bar |
+| `crop_hint` | Drag a dot to move a side. The dim part gets cut. | editing |
+| `crop_size` | %1$s × %2$s × %3$s | size pill: wide × deep × tall, each `42 cm` or `1.20 m` |
+| `crop_size_desc` | Box %1$s wide, %2$s deep, %3$s tall | size pill, TalkBack |
+| `crop_face_picker` | Side to move | chip group, TalkBack |
+| `crop_face_top` | Top | chip |
+| `crop_face_bottom` | Bottom | chip |
+| `crop_face_front` | Front | chip |
+| `crop_face_back` | Back | chip |
+| `crop_face_left` | Left | chip |
+| `crop_face_right` | Right | chip |
+| `crop_face_top_desc` | Top face | handle, TalkBack |
+| `crop_face_bottom_desc` | Bottom face | handle, TalkBack |
+| `crop_face_front_desc` | Front face | handle, TalkBack |
+| `crop_face_back_desc` | Back face | handle, TalkBack |
+| `crop_face_left_desc` | Left face | handle, TalkBack |
+| `crop_face_right_desc` | Right face | handle, TalkBack |
+| `crop_in` | In | nudge button; handle custom action |
+| `crop_out` | Out | nudge button; handle custom action |
+| `crop_in_desc` | Move %1$s in 1 cm | TalkBack, %1$s = a `crop_face_*_desc` |
+| `crop_out_desc` | Move %1$s out 1 cm | TalkBack |
+| `crop_limit` | This side can't move further | announced at a limit |
+| `crop_reset` | Reset box | |
+| `crop_cancel` | Cancel | button; Close (×) content description |
+| `crop_apply` | Apply | |
+| `crop_render_desc` | 3D view of %1$s with a crop box | render, TalkBack |
+| `crop_applying` | Cropping… | applying |
+| `crop_empty` | Nothing is inside the box. Make it bigger and try again. | refused: empty result |
+| `crop_nothing` | Everything is inside the box, so nothing was cut. | snackbar |
+| `crop_error` | Couldn't save the crop. Check free space and try again. | save error |
+| `crop_done` | Cropped. %1$s splats left | snackbar after Apply |
+| `crop_revert` | Revert crop | overflow item, only when an original is kept |
+| `crop_revert_title` | Go back to the original? | confirm dialog |
+| `crop_revert_body` | This undoes every crop on this scan, not just the last one. | confirm dialog |
+| `crop_revert_confirm` | Revert | confirm dialog button (beside `crop_cancel`) |
+| `crop_reverting` | Restoring the original… | reverting |
+| `crop_reverted` | Original restored | snackbar |
+| `crop_revert_error` | Couldn't restore the original. Try again. | snackbar |
+
 ## Export
 
 | Key | Text |

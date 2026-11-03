@@ -14,14 +14,14 @@ single tap. Copy keys: `view_*`.
 │                              │
 │                              │
 │                              │
-│  (⟲)   (360)        [ Share ]│  bottom bar on a bottom gradient: Reset view, Auto-rotate
-└──────────────────────────────┘  toggle (icon buttons 48 dp), Share as a filled button
+│  (⟲)  (360)  (⌗)    [ Share ]│  bottom bar on a bottom gradient: Reset view, Auto-rotate
+└──────────────────────────────┘  toggle, Crop (icon buttons 48 dp), Share as a filled button
 ```
 
 - **Top bar**: Back, the scan name (`titleLarge`, one line, ellipsis; tap to rename), Details (Info icon), overflow
-  (Rename, Delete).
+  (Rename, Revert crop, Delete; Revert crop only while a crop's original is kept, see [crop mode](crop.md#revert-crop)).
 - **Bottom bar**: Reset view (`view_reset`), Auto-rotate toggle (`view_autorotate`, filled when on, off by default),
-  Share (`view_share`) opens the [export sheet](export.md).
+  Crop (`crop_action`) opens [crop mode](crop.md), Share (`view_share`) opens the [export sheet](export.md).
 - **Gestures**: one finger drag orbits around the scan's centre; two fingers pan; pinch zooms (clamped so the scan
   cannot vanish or be passed through); double-tap animates back to the initial view (`DurationLong`,
   emphasized); single tap toggles chrome. Fling continues the orbit with friction.
