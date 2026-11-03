@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,6 +51,7 @@ import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.core.preferences.ExportFormat
 import com.huntercoles.splatman.core.preferences.ThemeMode
 import com.huntercoles.splatman.library.R
+import com.huntercoles.splatman.library.data.storage.StorageSummary
 
 private enum class SettingsDialog { Theme, ExportFormat, ClearFrames }
 
@@ -100,10 +102,15 @@ fun SettingsFeature(
             headlineContent = { Text(stringResource(R.string.set_storage)) },
             supportingContent = {
                 Text(
-                    if (storage == null) {
-                        stringResource(R.string.set_storage_counting)
-                    } else {
-                        stringResource(R.string.set_storage_body, formatBytes(storage.usedBytes), storage.scanCount)
+                    when (val line = storageLine(storage)) {
+                        StorageLine.Counting -> stringResource(R.string.set_storage_counting)
+                        StorageLine.Empty -> stringResource(R.string.set_storage_empty)
+                        is StorageLine.Used -> pluralStringResource(
+                            R.plurals.set_storage_body,
+                            line.scanCount,
+                            formatBytes(line.usedBytes),
+                            line.scanCount,
+                        )
                     },
                 )
             },
@@ -173,6 +180,19 @@ fun SettingsFeature(
     }
 }
 
+/** Which storage line Settings shows: still counting, no scans yet, or the plural "used by n scans". */
+internal sealed interface StorageLine {
+    data object Counting : StorageLine
+    data object Empty : StorageLine
+    data class Used(val usedBytes: Long, val scanCount: Int) : StorageLine
+}
+
+internal fun storageLine(summary: StorageSummary?): StorageLine = when {
+    summary == null -> StorageLine.Counting
+    summary.scanCount <= 0 -> StorageLine.Empty
+    else -> StorageLine.Used(summary.usedBytes, summary.scanCount)
+}
+
 private const val DISABLED_ALPHA = 0.38f
 
 @StringRes
@@ -227,8 +247,9 @@ internal fun SettingsScaffold(
     }
 }
 
+/** A group's `titleSmall` header in `primary`, shared by Settings and About. */
 @Composable
-private fun GroupHeader(@StringRes text: Int) {
+internal fun GroupHeader(@StringRes text: Int) {
     Text(
         text = stringResource(text),
         style = MaterialTheme.typography.titleSmall,

@@ -68,7 +68,11 @@
     <string name="set_keep_frames_body">Lets you rebuild a scan later. Uses more space.</string>
     <string name="set_haptics">Vibration feedback</string>
     <string name="set_storage">Storage</string>
-    <string name="set_storage_body">%1$s used by %2$d scans</string>
+    <plurals name="set_storage_body">
+        <item quantity="one">%1$s used by %2$d scan</item>
+        <item quantity="other">%1$s used by %2$d scans</item>
+    </plurals>
+    <string name="set_storage_empty">No scans yet</string>
     <string name="set_storage_counting">Counting…</string>
     <string name="set_clear_frames">Clear capture frames</string>
     <string name="set_clear_frames_body">Frees %1$s. Scans stay; you just can\'t rebuild them.</string>
@@ -87,4 +91,7 @@
     <string name="about_licences">Open-source licences</string>
     <string name="about_samples">Sample scans</string>
     <string name="about_sample_credit">%1$s · %2$s</string>
+    <string name="about_open_link">Open in browser</string>
+    <string name="about_no_browser">No app on this phone can open links</string>
+    <string name="about_licences_missing">The licence list is missing from this build.</string>
 </resources>

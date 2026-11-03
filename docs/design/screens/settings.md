@@ -38,4 +38,14 @@ items:
 | Default | as above |
 | Storage counting | `set_storage` supporting text shows "Counting…" until known |
 | Nothing to clear | `set_clear_frames` disabled with supporting text "No frames kept" |
+| Storage empty | 0 scans: `set_storage` supporting text shows `set_storage_empty` "No scans yet"; otherwise the `set_storage_body` plural ("1 scan", "3 scans") |
 | Long text / 200% font | list items grow to fit; nothing truncates |
+| Licences loading | while the licence file is read, a centred `CircularProgressIndicator` under the top bar |
+| Licences missing | asset missing or empty: one centred `bodyLarge` line `about_licences_missing`, `onSurfaceVariant` |
+| No sample credits | the About "Sample scans" `GroupHeader`, its divider and rows are hidden |
+| No browser | a browser row that nothing can open shows the snackbar `about_no_browser` |
+
+Browser rows (Source code, sample credits with a source, each licence with a URL) carry a trailing
+`Icons.AutoMirrored.Rounded.OpenInNew` (decorative, `onSurfaceVariant`) and the click label `about_open_link`, so
+TalkBack says "double tap to open in browser". Rows with no link get neither. "Open-source licences" opens an in-app
+screen, so it gets no icon.

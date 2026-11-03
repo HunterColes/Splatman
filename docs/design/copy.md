@@ -244,7 +244,8 @@ Viewer crop mode ([screens/crop.md](screens/crop.md)). Counts use the localized 
 | `set_keep_frames_body` | Lets you rebuild a scan later. Uses more space. |
 | `set_haptics` | Vibration feedback |
 | `set_storage` | Storage |
-| `set_storage_body` | %1$s used by %2$d scans |
+| `set_storage_body` (plural) | one: %1$s used by %2$d scan; other: %1$s used by %2$d scans |
+| `set_storage_empty` | No scans yet |
 | `set_clear_frames` | Clear capture frames |
 | `set_clear_frames_body` | Frees %1$s. Scans stay; you just can't rebuild them. |
 | `set_tips` | Show scanning tips again |
@@ -255,3 +256,6 @@ Viewer crop mode ([screens/crop.md](screens/crop.md)). Counts use the localized 
 | `about_licences` | Open-source licences |
 | `about_samples` | Sample scans |
 | `about_privacy` | Splatman has no internet permission. Nothing you scan leaves your phone unless you share it. |
+| `about_open_link` | Open in browser |
+| `about_no_browser` | No app on this phone can open links |
+| `about_licences_missing` | The licence list is missing from this build. |
