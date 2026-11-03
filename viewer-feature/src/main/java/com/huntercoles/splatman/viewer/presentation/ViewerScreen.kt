@@ -30,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +88,7 @@ import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.gl.RenderStats
 import com.huntercoles.splatman.viewer.rendering.gl.SplatRenderer
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.abs
@@ -112,6 +116,8 @@ fun ViewerScreen(
     val resetMs = splatDuration(SplatMotion.DurationLong)
     val fadeMs = splatDuration(SplatMotion.DurationShort)
     var size by remember { mutableStateOf(IntSize.Zero) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.onIntent(ViewerIntent.Open(SplatSource.Document(uri.toString())))
@@ -213,6 +219,7 @@ fun ViewerScreen(
 
         if (loaded != null) {
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                SnackbarHost(snackbar, modifier = Modifier.align(Alignment.CenterHorizontally))
                 if (state.showHint) {
                     GestureHint(onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) })
                 }
@@ -252,7 +259,7 @@ fun ViewerScreen(
             onCancel = { viewModel.onIntent(ViewerIntent.CancelDelete) },
         )
     }
-    ExportSheet(exportViewModel)
+    ExportSheet(exportViewModel, onSaved = { message -> scope.launch { snackbar.showSnackbar(message) } })
 }
 
 /** Frames [scene] in the initial view for a screen of [size] (the aspect decides which edge is short). */

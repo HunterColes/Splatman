@@ -218,6 +218,10 @@ class ScanFlowNavigationTest {
                     override fun openDocument(uri: String) = throw IOException("not in tests")
                     override fun openShareFile(fileName: String) = throw IOException("not in tests")
                     override fun shareUri(fileName: String) = throw IOException("not in tests")
+                    override fun createInFolder(treeUri: String, fileName: String) = throw IOException("not in tests")
+                    override fun deleteDocument(uri: String) = Unit
+                    override fun clearShareFiles() = Unit
+                    override fun freeBytes(): Long? = null
                 },
                 SettingsPreferences(memoryStore()),
                 ScanFolders(scansRoot),

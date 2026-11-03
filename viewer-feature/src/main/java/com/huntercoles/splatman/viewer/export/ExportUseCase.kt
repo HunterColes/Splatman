@@ -2,7 +2,10 @@ package com.huntercoles.splatman.viewer.export
 
 import com.huntercoles.splatman.core.coroutines.IoDispatcher
 import com.huntercoles.splatman.splat.model.SplatCloud
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.BufferedOutputStream
@@ -18,8 +21,9 @@ sealed interface ExportResult {
 
 /**
  * Writes a cloud in an [ExportFormat] to the stream [open] gives, on [io]: the bytes are exactly the format's codec
- * output, `onProgress` gets 0..1 as they go, and a stream that cannot be opened or written ends in
- * [ExportResult.Failed] instead of an exception. The stream is closed when done.
+ * output, `onProgress` gets 0..1 as they go, and a cloud that cannot be loaded or a stream that cannot be opened or
+ * written ends in [ExportResult.Failed] instead of an exception. The stream is closed when done. Cancelling the
+ * caller stops the write at the next buffer.
  */
 class ExportUseCase @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,
@@ -33,12 +37,22 @@ class ExportUseCase @Inject constructor(
         format: ExportFormat,
         open: () -> OutputStream,
         onProgress: (Float) -> Unit = {},
+    ): ExportResult = export({ cloud }, format, open, onProgress)
+
+    suspend fun export(
+        load: suspend () -> SplatCloud,
+        format: ExportFormat,
+        open: () -> OutputStream,
+        onProgress: (Float) -> Unit = {},
     ): ExportResult = withContext(io) {
         val codec = codecs.firstOrNull { it.format == format }
             ?: return@withContext ExportResult.Failed("${format.label} export is not available yet.")
+        val job = coroutineContext[Job]
         try {
+            val cloud = load()
             open().use { raw ->
-                val out = ProgressStream(BufferedOutputStream(raw, BUFFER), codec.expectedBytes(cloud), onProgress)
+                val expected = codec.expectedBytes(cloud.count, cloud.shDegree)
+                val out = ProgressStream(BufferedOutputStream(raw, BUFFER), expected, job, onProgress)
                 codec.write(cloud, out)
                 out.flush()
             }
@@ -56,10 +70,24 @@ class ExportUseCase @Inject constructor(
         }
     }
 
-    /** Counts bytes and reports each whole percent once. */
+    /** Runs [block] on [io] even when the caller is being cancelled (removing a half-written file); errors are logged. */
+    suspend fun cleanUp(block: () -> Unit) = withContext(NonCancellable + io) {
+        try {
+            block()
+        } catch (e: IOException) {
+            Timber.w(e, "Export clean-up failed")
+        } catch (e: SecurityException) {
+            Timber.w(e, "Export clean-up refused")
+        } catch (e: IllegalArgumentException) {
+            Timber.w(e, "Export clean-up failed")
+        }
+    }
+
+    /** Counts bytes, reports each whole percent once, and stops when [job] is cancelled. */
     private class ProgressStream(
         out: OutputStream,
         private val expected: Long,
+        private val job: Job?,
         private val onProgress: (Float) -> Unit,
     ) : FilterOutputStream(out) {
         private var written = 0L
@@ -80,6 +108,7 @@ class ExportUseCase @Inject constructor(
             if (expected <= 0) return
             val percent = (written * PERCENT / expected).toInt().coerceIn(0, PERCENT)
             if (percent != lastPercent) {
+                if (job?.isActive == false) throw CancellationException("Export cancelled")
                 lastPercent = percent
                 onProgress(percent / PERCENT.toFloat())
             }

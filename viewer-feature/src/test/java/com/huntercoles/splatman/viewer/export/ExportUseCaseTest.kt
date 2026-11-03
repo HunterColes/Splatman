@@ -66,7 +66,7 @@ class ExportUseCaseTest {
         for (codec in ExportCodecs.AVAILABLE) {
             val out = ByteArrayOutputStream()
             useCase.export(cloud, codec.format, { out })
-            assertEquals(out.size().toLong(), codec.expectedBytes(cloud), "${codec.format}")
+            assertEquals(out.size().toLong(), codec.expectedBytes(cloud.count, cloud.shDegree), "${codec.format}")
         }
     }
 

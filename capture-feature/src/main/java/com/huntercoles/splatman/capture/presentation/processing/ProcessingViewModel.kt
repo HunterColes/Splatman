@@ -121,6 +121,7 @@ class ProcessingViewModel @Inject constructor(
         viewModelScope.launch {
             val uri = withContext(Dispatchers.IO) {
                 try {
+                    exportTarget.clearShareFiles()
                     exportTarget.openShareFile(name).use { out -> splat.inputStream().use { it.copyTo(out) } }
                     exportTarget.shareUri(name)
                 } catch (e: IOException) {

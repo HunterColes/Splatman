@@ -48,8 +48,25 @@
     <string name="view_a11y_zoom_in">Zoom in</string>
     <string name="view_a11y_zoom_out">Zoom out</string>
     <!-- Export -->
-    <string name="export_title">Export splat</string>
-    <string name="export_save">Save</string>
-    <string name="export_share">Share</string>
-    <string name="export_saved">Saved %1$s</string>
+    <string name="exp_title">Share or save</string>
+    <plurals name="exp_title_many">
+        <item quantity="one">Share %1$d scan</item>
+        <item quantity="other">Share %1$d scans</item>
+    </plurals>
+    <string name="exp_ply">PLY (standard 3DGS)</string>
+    <string name="exp_ply_body">Opens in most splat tools: SuperSplat, Blender add-ons, Postshot, web viewers</string>
+    <string name="exp_splat">.splat (compact)</string>
+    <string name="exp_splat_body">Smaller, loads fast in web viewers. Drops some colour detail</string>
+    <string name="exp_size">About %1$s</string>
+    <string name="exp_share">Share</string>
+    <string name="exp_save">Save to device</string>
+    <string name="exp_save_folder">Save to folder</string>
+    <string name="exp_writing">Preparing file…</string>
+    <string name="exp_saved">Saved %1$s</string>
+    <plurals name="exp_saved_many">
+        <item quantity="one">Saved %1$d scan</item>
+        <item quantity="other">Saved %1$d scans</item>
+    </plurals>
+    <string name="exp_error">Couldn\'t write the file. Check free space and try again.</string>
+    <string name="exp_low_storage">Needs %1$s free. You have %2$s.</string>
 </resources>
