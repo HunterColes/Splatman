@@ -79,8 +79,50 @@ class ProcessingRepositoryTest {
     private fun bundleSnapshot(): Map<String, List<Byte>> =
         scan.walkTopDown().filter { it.isFile }.associate { it.relativeTo(scan).path to it.readBytes().toList() }
 
-    private fun TestScope.repository(trainer: Trainer, config: TrainingConfig = TrainingConfig(imageLongSide = 320)) =
-        ProcessingRepository(trainer, decoder, thermal, config, freeSpace, StandardTestDispatcher(testScheduler))
+    /** Fake PNG encoder: writes a marker and the pixel count; records the size it was given. */
+    private val encodedSizes = mutableListOf<Pair<Int, Int>>()
+    private val fakeEncoder = ThumbnailEncoder { argb, width, height, out ->
+        encodedSizes += width to height
+        out.write("PNG ${argb.size}".toByteArray())
+    }
+
+    private fun TestScope.repository(
+        trainer: Trainer,
+        config: TrainingConfig = TrainingConfig(imageLongSide = 320),
+        encoder: ThumbnailEncoder = fakeEncoder,
+    ) = ProcessingRepository(
+        trainer, decoder, thermal, config, freeSpace, StandardTestDispatcher(testScheduler),
+        ThumbnailWriter(encoder, BACKGROUND),
+    )
+
+    @Test
+    fun `a finished run leaves splat ply and thumbnail png`() = runTest {
+        writeBundle()
+        val result = repository(StepTrainer()).process(scan)
+
+        assertEquals(ProcessingState.Done(File(scan, ProcessingRepository.SPLAT_FILE)), result)
+        assertTrue(File(scan, ProcessingRepository.SPLAT_FILE).isFile)
+        assertEquals("PNG ${256 * 320}", File(scan, ThumbnailWriter.FILE).readText())
+        assertEquals(listOf(256 to 320), encodedSizes)
+        assertFalse(File(scan, ThumbnailWriter.TEMP_FILE).exists())
+    }
+
+    @Test
+    fun `a thumbnail encoder that throws still ends Done with the splat and no temp file`() = runTest {
+        writeBundle()
+        val throwing = ThumbnailEncoder { _, _, _, out ->
+            out.write(byteArrayOf(1, 2, 3))
+            out.flush()
+            throw IllegalStateException("encoder broke")
+        }
+        val result = repository(StepTrainer(), encoder = throwing).process(scan)
+
+        assertEquals(ProcessingState.Done(File(scan, ProcessingRepository.SPLAT_FILE)), result)
+        assertTrue(File(scan, ProcessingRepository.SPLAT_FILE).isFile)
+        assertFalse(File(scan, ThumbnailWriter.TEMP_FILE).exists())
+        assertFalse(File(scan, ThumbnailWriter.FILE).exists())
+        assertFalse(File(scan, ProcessingRepository.RUNNING_MARKER).exists())
+    }
 
     @Test
     fun `forwards progress, downscales keyframes and writes splat ply`() = runTest {
@@ -288,5 +330,9 @@ class ProcessingRepositoryTest {
         assertEquals(listOf(1, 2, 3), running.filter { !it.saving }.mapNotNull { it.progress?.iteration })
         assertTrue(running.last().saving)
         assertTrue(seen.last() is ProcessingState.Done)
+    }
+
+    private companion object {
+        const val BACKGROUND = 0xFF0A0A0D.toInt()
     }
 }

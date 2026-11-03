@@ -21,6 +21,7 @@ import com.huntercoles.splatman.capture.processing.ProcessingState
 import com.huntercoles.splatman.capture.processing.ScanDeleter
 import com.huntercoles.splatman.capture.processing.ScanFolders
 import com.huntercoles.splatman.capture.processing.ThermalMonitor
+import com.huntercoles.splatman.capture.processing.ThumbnailWriter
 import com.huntercoles.splatman.capture.processing.trainingSize
 import com.huntercoles.splatman.capture.recording.CaptureRecorder
 import com.huntercoles.splatman.capture.recording.JpegEncoder
@@ -172,7 +173,7 @@ class ScanFlowNavigationTest {
 
     private fun TestScope.repository(trainer: Trainer = SeedStepTrainer()) = ProcessingRepository(
         trainer, decoder, thermal, TrainingConfig(imageLongSide = 64), FreeSpace { Long.MAX_VALUE },
-        StandardTestDispatcher(testScheduler),
+        StandardTestDispatcher(testScheduler), ThumbnailWriter({ _, _, _, _ -> }, 0),
     )
 
     /** Starts runs beside the test, as the service would (not in backgroundScope: advanceUntilIdle skips that). */

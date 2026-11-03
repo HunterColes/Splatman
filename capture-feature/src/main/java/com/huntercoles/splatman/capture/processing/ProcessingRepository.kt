@@ -37,7 +37,8 @@ import javax.inject.Singleton
  *
  * A scan is its bundle folder. The splat is written to `splat.ply.tmp`, synced, then renamed, so a reader never sees
  * a half file; a `processing.running` marker lives in the folder for the length of a run, so a run the process died in
- * reads back as [ProcessingState.Failed] and can simply be started again. The bundle itself is only read.
+ * reads back as [ProcessingState.Failed] and can simply be started again. The bundle itself is only read. A finished
+ * run also leaves a `thumbnail.png` beside the splat ([ThumbnailWriter]); a thumbnail failure never fails the run.
  */
 @Singleton
 class ProcessingRepository @Inject constructor(
@@ -47,6 +48,7 @@ class ProcessingRepository @Inject constructor(
     private val config: TrainingConfig,
     private val freeSpace: FreeSpace,
     @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
+    private val thumbnails: ThumbnailWriter,
 ) {
     private val states = ConcurrentHashMap<String, MutableStateFlow<ProcessingState>>()
     private val jobs = ConcurrentHashMap<String, Job>()
@@ -103,6 +105,8 @@ class ProcessingRepository @Inject constructor(
                 state.value = ProcessingState.Running(last, prepared = 1f, saving = true)
                 writeSplat(cloud, temp, output) { ensureActive() }
                 marker.delete()
+                // Best effort: a failed still is logged inside and the scan is Done all the same.
+                thumbnails.write(cloud, scan)
             }
             state.value = ProcessingState.Done(output)
         } catch (e: CancellationException) {
