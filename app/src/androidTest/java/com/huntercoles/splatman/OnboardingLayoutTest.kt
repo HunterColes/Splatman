@@ -1,20 +1,25 @@
 package com.huntercoles.splatman
 
-import android.content.Intent
+import android.content.res.Configuration
 import android.os.ParcelFileDescriptor
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.huntercoles.splatman.core.preferences.OnboardingPreferences
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,13 +43,28 @@ class OnboardingLayoutTest {
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private var scenario: ActivityScenario<MainActivity>? = null
+    private val onboarding by lazy { OnboardingPreferences(instrumentation.targetContext) }
+    private var onboardingWasDone = false
+
+    /**
+     * Onboarding is opened as the start destination (first run), not by EXTRA_ROUTE (#278): a global configuration
+     * change can still land just after the launch and relaunch the activity, and a relaunched MainActivity has a saved
+     * state, so it drops EXTRA_ROUTE and shows the Library. The start destination survives the relaunch.
+     */
+    @Before
+    fun firstRun() {
+        onboardingWasDone = onboarding.isOnboardingDone
+        onboarding.setOnboardingDone(false)
+    }
 
     @After
     fun reset() {
         scenario?.close()
+        onboarding.setOnboardingDone(onboardingWasDone)
         shell("wm size reset")
         shell("wm density reset")
         shell("settings put system font_scale 1.0")
+        awaitConfiguration(density = physicalDensity(), orientation = null, fontScale = 1f)
     }
 
     @Test
@@ -56,7 +76,7 @@ class OnboardingLayoutTest {
     @Test
     fun landscapeAtDoubleFontKeepsTheBars() {
         shell("settings put system font_scale 2.0")
-        openOnboarding(LANDSCAPE_SIZE)
+        openOnboarding(LANDSCAPE_SIZE, fontScale = 2f)
         compose.onNodeWithText(SKIP).assertIsDisplayed()
         compose.onNodeWithText(NEXT).assertIsDisplayed()
         screenshot("onboarding-landscape-font200.png")
@@ -82,16 +102,61 @@ class OnboardingLayoutTest {
         screenshot("onboarding-$name-3-camera.png")
     }
 
-    /** Sets the display to [size] px at [DENSITY] (so 1280x720 is 640x360 dp) and opens onboarding on top. */
-    private fun openOnboarding(size: String) {
+    /**
+     * Sets the display to [size] px at [DENSITY] (so 1280x720 is 640x360 dp) and opens the app on onboarding (see
+     * [firstRun]). `wm` returns before the app process has the new configuration, so the launch waits for it.
+     */
+    private fun openOnboarding(size: String, fontScale: Float = 1f) {
         shell("wm size $size")
         shell("wm density $DENSITY")
-        val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_ROUTE, ONBOARDING_ROUTE)
-        scenario = ActivityScenario.launch(intent)
-        compose.waitUntilAtLeastOneExists(hasText(WELCOME_TITLE), TIMEOUT_MS)
+        val (width, height) = size.split("x").map(String::toInt)
+        val orientation = if (width > height) Configuration.ORIENTATION_LANDSCAPE else Configuration.ORIENTATION_PORTRAIT
+        awaitConfiguration(DENSITY, orientation, fontScale)
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            compose.waitUntilAtLeastOneExists(hasText(WELCOME_TITLE), TIMEOUT_MS)
+        } catch (e: ComposeTimeoutException) {
+            throw AssertionError("onboarding did not open:\n${whatIsShown()}", e)
+        }
         compose.waitForIdle()
     }
+
+    /** What is up when onboarding does not open: the flag, the focused window, wakefulness, the Compose trees. */
+    private fun whatIsShown(): String {
+        screenshot("onboarding-not-opened.png")
+        val trees = runCatching {
+            val roots = compose.onAllNodes(isRoot())
+            roots.fetchSemanticsNodes().indices.joinToString("\n") { roots[it].printToString() }
+        }.getOrElse { "no compose tree: $it" }
+        val window = shell("dumpsys window").lines().filter { "mCurrentFocus" in it || "mFocusedApp" in it }
+        val power = shell("dumpsys power").lines().filter { "mWakefulness=" in it }
+        return "onboardingDone=${onboarding.isOnboardingDone} config=${appConfig()}\n" +
+            (window + power).joinToString("\n") { it.trim() } + "\n" + trees
+    }
+
+    private fun appConfig(): Configuration = instrumentation.targetContext.applicationContext.resources.configuration
+
+    /** Waits until the app process's configuration has [density], [orientation] (null: any) and [fontScale]. */
+    private fun awaitConfiguration(density: Int, orientation: Int?, fontScale: Float) {
+        val end = System.currentTimeMillis() + TIMEOUT_MS
+        while (true) {
+            val config = appConfig()
+            val settled = config.densityDpi == density &&
+                (orientation == null || config.orientation == orientation) &&
+                config.fontScale == fontScale
+            if (settled) break
+            check(System.currentTimeMillis() < end) {
+                "configuration stayed at $config, wanted density $density, orientation $orientation, font $fontScale"
+            }
+            Thread.sleep(POLL_MS)
+        }
+        instrumentation.waitForIdleSync()
+    }
+
+    /** The display's own density, from `wm density` ("Physical density: 420"). */
+    private fun physicalDensity(): Int =
+        checkNotNull(PHYSICAL_DENSITY.find(shell("wm density"))) { "no physical density from wm" }
+            .groupValues[1].toInt()
 
     private fun exists(matcher: SemanticsMatcher): Boolean =
         compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
@@ -110,7 +175,6 @@ class OnboardingLayoutTest {
     }
 
     private companion object {
-        const val ONBOARDING_ROUTE = "onboarding" // ShellRoutes.ONBOARDING
         const val LANDSCAPE_SIZE = "1280x720"
         const val PORTRAIT_SIZE = "720x1280"
         const val DENSITY = 320
@@ -129,5 +193,7 @@ class OnboardingLayoutTest {
         const val DEVICE_DIR = "/sdcard/Download/splatman-e2e"
         const val TIMEOUT_MS = 30_000L
         const val SETTLE_MS = 1_000L
+        const val POLL_MS = 50L
+        val PHYSICAL_DENSITY = Regex("Physical density: ([0-9]+)")
     }
 }
