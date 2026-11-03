@@ -30,7 +30,15 @@ fixed bottom bar.
    and launches the system permission dialog. Whatever the answer, it then goes to the Library (the user is not
    blocked; Capture handles a denial).
 
-Wide (600 dp and up): the column is max 480 dp wide, centred; the illustration sits left of the text on landscape.
+Wide (600 dp and up): the column is max 480 dp wide, centred.
+
+Landscape (measured: height under 480 dp and width greater than height, not the device orientation, so split
+screen and foldables follow the space they get): the illustration shrinks to 120 dp (icon 64 dp) and sits on the
+start side of the text column (which takes the rest of the width), 24 dp between, both vertically centred. Tips keeps
+its single column but starts at the top, under the Skip row. The bottom bar becomes one row, 16 dp top and bottom
+and 24 dp side padding: page dots at the start, the button(s) at the end (text button, then the filled button; min
+160 dp wide, 48 dp tall), which gives the page about 40 dp back. At 640×360 dp every page shows its title and first
+body line without scrolling; at 200% font the page scrolls and both bars stay fixed.
 
 ## States
 
