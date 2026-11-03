@@ -45,6 +45,7 @@ Wide (600 dp+): preview left (max 480 dp), progress column right.
 | Cancelled | back to Library; the card shows as Failed with reason "Stopped" and Try again |
 | Done | preview grows to fill the width; a `secondary` CheckCircle and `proc_done`; filled button `proc_open`, tonal button "Share"; `CONFIRM` haptic. If the user is elsewhere, the notification turns into `notif_done` and tapping it opens the Viewer |
 | Failed | preview area shows the last camera frame dimmed with an ErrorOutline in `error`; `proc_failed_title` and one reason line from `proc_failed_*`; filled button `proc_retry` (only when frames are kept), text button `proc_delete` (`error`); an expandable "Details" row with the technical message, selectable text, for bug reports |
+| Needs poses | a pose-free scan (capture.json, no transforms.json; #217): not a failure, so no `error` colour, no Retry, no Details. Preview: the last frame lightly blurred (SpacingSmall), full alpha, no icon. A PhotoLibrary icon in `onSurfaceVariant` beside `proc_needs_poses_title` (headlineSmall), then `proc_needs_poses_frames` (bodyMedium, onSurfaceVariant) with the kept frame count, read as one node by TalkBack; filled button `proc_back_library`, full width, which leaves at once (no notification ask). No notification. The SfM step (#200) later turns this into a normal run |
 | Low storage before start | Failed with `proc_failed_storage`; Try again re-checks |
 
 ## Notification

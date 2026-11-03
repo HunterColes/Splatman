@@ -28,6 +28,7 @@ sealed interface ProcessingNotice {
             is ProcessingState.Done -> Done(ShellRoutes.path(NavigationDestination.Viewer(scanId)).orEmpty())
             is ProcessingState.Failed -> Failed(ShellRoutes.path(NavigationDestination.Processing(scanId)).orEmpty())
             ProcessingState.Cancelled -> None
+            is ProcessingState.NeedsPoses -> None // nothing ran: the user is on Processing when it is decided
         }
     }
 }

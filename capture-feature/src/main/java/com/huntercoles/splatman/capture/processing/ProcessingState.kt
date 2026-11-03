@@ -24,6 +24,12 @@ sealed interface ProcessingState {
     /** The splat is written to [splat]. */
     data class Done(val splat: File) : ProcessingState
 
+    /**
+     * A pose-free capture (capture.json, no transforms.json): nothing failed, the [frames] images are kept and wait
+     * for the SfM step (#200) to recover camera positions. No splat, no marker, no Retry.
+     */
+    data class NeedsPoses(val frames: Int) : ProcessingState
+
     /** Stopped by the user; the bundle is untouched and no new splat was written. */
     data object Cancelled : ProcessingState
 

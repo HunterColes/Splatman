@@ -55,7 +55,9 @@ internal object PipelineModule {
     fun provideLibraryListener(sync: ScanStatusSync): ProcessingListener = ProcessingListener { scanId, state ->
         when (state) {
             is ProcessingState.Running -> sync.started(scanId)
-            is ProcessingState.Done, ProcessingState.Cancelled -> sync.finished(scanId, failed = false)
+            // NeedsPoses: nothing failed and no splat, so the row is read from the folder again (CAPTURED).
+            is ProcessingState.Done, ProcessingState.Cancelled, is ProcessingState.NeedsPoses ->
+                sync.finished(scanId, failed = false)
             is ProcessingState.Failed -> sync.finished(scanId, failed = true)
             ProcessingState.Idle, is ProcessingState.Paused -> Unit
         }

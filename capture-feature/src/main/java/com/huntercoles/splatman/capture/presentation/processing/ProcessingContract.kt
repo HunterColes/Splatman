@@ -76,6 +76,12 @@ data class ProcessingUiState(
 
     val done: Boolean get() = !missing && state is ProcessingState.Done
 
+    /** A pose-free scan waiting for camera positions: not a failure, so no Retry and no error colour. */
+    val needsPoses: Boolean get() = !missing && state is ProcessingState.NeedsPoses
+
+    /** The kept frame count for the [needsPoses] line; 0 otherwise. */
+    val frameCount: Int get() = (state as? ProcessingState.NeedsPoses)?.frames ?: 0
+
     /** The `proc_failed_*` line: "Stopped" after a cancel, else the failure reason's copy; null unless failed. */
     val failureCopy: Int?
         get() {

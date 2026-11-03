@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -234,6 +235,7 @@ private fun Preview(state: ProcessingUiState, modifier: Modifier) {
     ) {
         frame?.let { image ->
             val look = when {
+                state.needsPoses -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
                 state.failed -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
                 state.done -> Modifier.fillMaxSize()
                 else -> Modifier.fillMaxSize().blur(SplatDimens.SpacingLarge)
@@ -282,6 +284,7 @@ private fun Details(
         when {
             state.missing -> Text(stringResource(R.string.proc_missing), style = MaterialTheme.typography.headlineSmall)
             state.done -> Done(onIntent)
+            state.needsPoses -> NeedsPoses(state, onIntent)
             state.failed -> Failed(state, onIntent)
             else -> Running(state, onCancel)
         }
@@ -380,6 +383,40 @@ private fun Done(onIntent: (ProcessingIntent) -> Unit) {
     }
     FilledTonalButton(onClick = { onIntent(ProcessingIntent.Share) }, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.proc_share))
+    }
+}
+
+/**
+ * A pose-free scan: nothing failed, the frames are kept until camera positions can be built (#200). A neutral
+ * PhotoLibrary icon (onSurfaceVariant, never `error`), the line, the kept-frames count and one way out.
+ */
+@Composable
+private fun NeedsPoses(state: ProcessingUiState, onIntent: (ProcessingIntent) -> Unit) {
+    Column(
+        modifier = Modifier.semantics(mergeDescendants = true) {},
+        verticalArrangement = Arrangement.spacedBy(SplatDimens.SpacingSmall),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.PhotoLibrary,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(R.string.proc_needs_poses_title),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(start = SplatDimens.SpacingSmall),
+            )
+        }
+        Text(
+            pluralStringResource(R.plurals.proc_needs_poses_frames, state.frameCount, state.frameCount),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // Leave sends ProcessingEvent.Leave straight away here: canCancel is false, so no notification ask.
+    Button(onClick = { onIntent(ProcessingIntent.Leave) }, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.proc_back_library))
     }
 }
 

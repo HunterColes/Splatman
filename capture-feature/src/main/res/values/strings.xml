@@ -115,6 +115,12 @@
     <string name="proc_delete">Delete scan</string>
     <string name="proc_missing">This scan is no longer on the phone</string>
     <string name="proc_notify_ok">OK</string>
+    <string name="proc_needs_poses_title">Camera positions not built yet</string>
+    <plurals name="proc_needs_poses_frames">
+        <item quantity="one">Your %1$d frame is saved, so you can build this splat later.</item>
+        <item quantity="other">All %1$d frames are saved, so you can build this splat later.</item>
+    </plurals>
+    <string name="proc_back_library">Back to library</string>
     <string name="notif_channel">Building splats</string>
     <string name="notif_channel_result">Finished splats</string>
     <string name="notif_running">Building %1$s · %2$d%%</string>

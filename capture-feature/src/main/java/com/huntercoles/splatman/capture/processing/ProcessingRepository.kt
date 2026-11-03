@@ -1,7 +1,9 @@
 package com.huntercoles.splatman.capture.processing
 
 import com.huntercoles.splatman.core.coroutines.DefaultDispatcher
+import com.huntercoles.splatman.splat.io.bundle.CaptureBundleException
 import com.huntercoles.splatman.splat.io.bundle.CaptureBundleReader
+import com.huntercoles.splatman.splat.io.bundle.PoseFreeCaptureReader
 import com.huntercoles.splatman.splat.io.ply.PlyWriter
 import com.huntercoles.splatman.splat.model.SeedPoints
 import com.huntercoles.splatman.splat.model.SplatCloud
@@ -91,6 +93,12 @@ class ProcessingRepository @Inject constructor(
         state.value = ProcessingState.Running(null)
         var latestCloud: SplatCloud? = null
         try {
+            // A pose-free capture has no camera positions to train from yet (#200): keep it as it is, no marker.
+            val needsPoses = withContext(dispatcher) { needsPoses(scan) }
+            if (needsPoses != null) {
+                state.value = needsPoses
+                return needsPoses
+            }
             withContext(dispatcher) {
                 temp.delete()
                 val free = freeSpace.bytes(scan)
@@ -173,6 +181,20 @@ class ProcessingRepository @Inject constructor(
         }
     }
 
+    /**
+     * [ProcessingState.NeedsPoses] with the kept frame count when [scan] is a pose-free capture, else null. A
+     * `capture.json` that cannot be read throws [NoFramesException], so it fails as FRAMES.
+     */
+    private fun needsPoses(scan: File): ProcessingState.NeedsPoses? {
+        if (!PoseFreeCaptureReader.isPoseFreeCapture(scan)) return null
+        val capture = try {
+            PoseFreeCaptureReader.read(scan)
+        } catch (e: CaptureBundleException) {
+            throw NoFramesException("no frames: ${e.message}").apply { initCause(e) }
+        }
+        return ProcessingState.NeedsPoses(capture.frames.size)
+    }
+
     private fun cleanUp(temp: File, marker: File) {
         temp.delete()
         marker.delete()
@@ -186,7 +208,11 @@ class ProcessingRepository @Inject constructor(
         return when {
             File(scan, RUNNING_MARKER).exists() -> ProcessingState.Failed(INTERRUPTED)
             output.isFile -> ProcessingState.Done(output)
-            else -> ProcessingState.Idle
+            else -> try {
+                needsPoses(scan) ?: ProcessingState.Idle
+            } catch (e: NoFramesException) {
+                FailureReasons.failed(e)
+            }
         }
     }
 

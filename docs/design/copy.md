@@ -126,6 +126,9 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `proc_failed_unknown` | Something went wrong while building. Your frames are kept. |
 | `proc_retry` | Try again |
 | `proc_delete` | Delete scan |
+| `proc_needs_poses_title` | Camera positions not built yet |
+| `proc_needs_poses_frames` | All %1$d frames are saved, so you can build this splat later. (one: Your %1$d frame is saved, so you can build this splat later.) |
+| `proc_back_library` | Back to library |
 | `notif_channel` | Building splats |
 | `notif_running` | Building %1$s · %2$d%% |
 | `notif_done` | %1$s is ready to view |
