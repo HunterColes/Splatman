@@ -62,12 +62,12 @@ class ViewerViewModelTest {
         }
     }
 
-    private fun scene(name: String, count: Int = 3): LoadedScene {
+    private fun scene(name: String, count: Int = 3, sizeBytes: Long? = null): LoadedScene {
         val cloud = TestClouds.cloud(count)
         val framing = SceneFraming.of(cloud.positions, cloud.count, 60f)
         return LoadedScene(
             name, SplatFormat.PLY, cloud, RenderScene(SplatPacker().pack(cloud), cloud.positions, framing.radius),
-            framing, shDropped = false,
+            framing, shDropped = false, sizeBytes = sizeBytes,
         )
     }
 
@@ -478,6 +478,35 @@ class ViewerViewModelTest {
             vm.onIntent(ViewerIntent.ReloadShown)
             assertEquals(null, vm.uiState.value.reloaded)
         }
+
+    @Test
+    fun `#250 a sample and a picked file show their file size, and a crop reload shows the new size`() = test {
+        val doc = SplatSource.Document("content://picked/y", "Y")
+        var size = 6_000_000L
+        val vm = viewModel(
+            FakeLoader(mapOf(sample to { scene("Cactus", sizeBytes = size) }, doc to { scene("Y", sizeBytes = 900) })),
+        )
+        vm.onIntent(ViewerIntent.Open(sample))
+        advanceUntilIdle()
+        assertEquals(6_000_000L, vm.uiState.value.details?.sizeBytes)
+
+        size = 2_500_000L
+        vm.onIntent(ViewerIntent.Reload(ViewerReload.CROPPED))
+        advanceUntilIdle()
+        assertEquals(2_500_000L, vm.uiState.value.details?.sizeBytes)
+
+        vm.onIntent(ViewerIntent.Open(doc))
+        advanceUntilIdle()
+        assertEquals(900L, vm.uiState.value.details?.sizeBytes)
+    }
+
+    @Test
+    fun `#250 a scan keeps the Library's size over its file's`() = test {
+        val loader = FakeLoader(mapOf(scanSource to { scene(scanId, sizeBytes = 99) }))
+        val vm = viewModel(loader, scanId, FakeScans(mutableMapOf(scanId to record)))
+        advanceUntilIdle()
+        assertEquals(1234L, vm.uiState.value.details?.sizeBytes)
+    }
 
     @Test
     fun `#186 a revert reload is marked so the screen shows crop_reverting`() = test {

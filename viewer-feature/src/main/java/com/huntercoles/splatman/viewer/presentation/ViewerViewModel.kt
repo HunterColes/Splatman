@@ -297,7 +297,7 @@ class ViewerViewModel @Inject constructor(
                 name = name,
                 createdAtMs = record?.createdAtMs,
                 splats = scene.count,
-                sizeBytes = record?.sizeBytes,
+                sizeBytes = record?.sizeBytes ?: scene.sizeBytes,
                 frames = record?.keyframeCount?.takeIf { source is SplatSource.Scan },
                 format = scene.format,
             ),

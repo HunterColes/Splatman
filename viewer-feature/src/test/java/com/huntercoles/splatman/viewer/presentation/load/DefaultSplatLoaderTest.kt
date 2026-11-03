@@ -46,6 +46,18 @@ class DefaultSplatLoaderTest {
     }
 
     @Test
+    fun `#250 a loaded scene carries its file's size in bytes, trailing bytes included`() = runTest {
+        val bytes = TestClouds.ply(TestClouds.cloud(10, shDegree = 1)) + ByteArray(17)
+        val d = StandardTestDispatcher(testScheduler)
+        val scene = DefaultSplatLoader(BytesOpener(mapOf(sample to bytes)), d, d).load(sample)
+        assertEquals(bytes.size.toLong(), scene.sizeBytes)
+
+        val splat = TestClouds.splat(TestClouds.cloud(7))
+        val picked = DefaultSplatLoader(BytesOpener(mapOf(doc to splat)), d, d).load(doc)
+        assertEquals(splat.size.toLong(), picked.sizeBytes)
+    }
+
+    @Test
     fun `a picked splat document loads`() = runTest {
         val opener = BytesOpener(mapOf(doc to TestClouds.splat(TestClouds.cloud(7))))
         val d = StandardTestDispatcher(testScheduler)

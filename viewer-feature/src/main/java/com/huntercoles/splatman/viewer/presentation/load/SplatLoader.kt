@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import java.io.FilterInputStream
 import java.io.InputStream
 import javax.inject.Inject
 
@@ -70,7 +71,10 @@ interface SplatOpener {
     fun displayName(source: SplatSource): String = source.name
 }
 
-/** A loaded file, ready for the renderer: the decoded cloud, its packed GPU form and the starting camera. */
+/**
+ * A loaded file, ready for the renderer: the decoded cloud, its packed GPU form and the starting camera.
+ * [sizeBytes] is the file's length as read (a sample's cropped copy after a crop), for the details sheet.
+ */
 class LoadedScene(
     val name: String,
     val format: SplatFormat,
@@ -78,6 +82,7 @@ class LoadedScene(
     val render: RenderScene,
     val framing: SceneFraming,
     val shDropped: Boolean,
+    val sizeBytes: Long? = null,
 ) {
     val count: Int get() = cloud.count
 }
@@ -96,9 +101,12 @@ class DefaultSplatLoader @Inject constructor(
     private val decoder = SplatFileDecoder()
 
     override suspend fun load(source: SplatSource): LoadedScene {
-        val (name, decoded) = runInterruptible(io) {
+        val (name, decoded, size) = runInterruptible(io) {
             val name = opener.displayName(source)
-            name to opener.open(source).use { decoder.decode(it) }
+            CountingInputStream(opener.open(source)).use {
+                val decoded = decoder.decode(it)
+                Triple(name, decoded, it.drain())
+            }
         }
         return withContext(cpu) {
             val cloud = decoded.cloud
@@ -113,7 +121,43 @@ class DefaultSplatLoader @Inject constructor(
                 render = RenderScene(packed, cloud.positions, framing.radius),
                 framing = framing,
                 shDropped = decoded.shDropped,
+                sizeBytes = size,
             )
         }
+    }
+}
+
+/** Counts the bytes read; [drain] reads the rest and returns the stream's whole length. */
+private class CountingInputStream(input: InputStream) : FilterInputStream(input) {
+    private var count = 0L
+
+    override fun read(): Int = super.read().also { if (it >= 0) count++ }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int =
+        super.read(b, off, len).also { if (it > 0) count += it }
+
+    /** Skips by reading, so a skip past the end is not counted. */
+    override fun skip(n: Long): Long {
+        if (n <= 0) return 0
+        val buffer = ByteArray(minOf(n, DRAIN_BUFFER.toLong()).toInt())
+        var left = n
+        while (left > 0) {
+            val read = read(buffer, 0, minOf(left, buffer.size.toLong()).toInt())
+            if (read < 0) break
+            left -= read
+        }
+        return n - left
+    }
+
+    override fun markSupported(): Boolean = false
+
+    fun drain(): Long {
+        val buffer = ByteArray(DRAIN_BUFFER)
+        while (read(buffer, 0, buffer.size) >= 0) Unit
+        return count
+    }
+
+    private companion object {
+        const val DRAIN_BUFFER = 8192
     }
 }
