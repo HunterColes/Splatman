@@ -3,6 +3,7 @@ package com.huntercoles.splatman.viewer.presentation.load
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.huntercoles.splatman.viewer.crop.store.CropPaths
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -13,20 +14,26 @@ import java.io.FileNotFoundException
 import java.io.InputStream
 import javax.inject.Inject
 
-/** The scan folders under `filesDir` (library-feature and capture-feature `SCANS_DIR`). */
-private const val SCANS_DIR = "scans"
-
-/** Samples from the APK's assets; documents through the content resolver (the picker grants read access). */
+/**
+ * Samples from the APK's assets, or their cropped copy in `filesDir/sample-crops/` when one exists (ADR 0011);
+ * documents through the content resolver (the picker grants read access).
+ */
 class AndroidSplatOpener @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : SplatOpener {
 
     override fun open(source: SplatSource): InputStream = when (source) {
-        is SplatSource.Sample -> context.assets.open(source.assetPath)
+        is SplatSource.Sample -> openSample(source)
         is SplatSource.Document -> context.contentResolver.openInputStream(Uri.parse(source.uri))
             ?: throw FileNotFoundException("The file could not be opened.")
         is SplatSource.Scan ->
-            File(File(File(context.filesDir, SCANS_DIR), source.scanId), SplatSource.Scan.SPLAT_FILE).inputStream()
+            File(File(File(context.filesDir, CropPaths.SCANS_DIR), source.scanId), SplatSource.Scan.SPLAT_FILE)
+                .inputStream()
+    }
+
+    private fun openSample(source: SplatSource.Sample): InputStream {
+        val crop = runCatching { CropPaths.sampleCrop(context.filesDir, source) }.getOrNull()
+        return if (crop != null && crop.isFile) crop.inputStream() else context.assets.open(source.assetPath)
     }
 
     override fun displayName(source: SplatSource): String = when (source) {

@@ -10,6 +10,7 @@ import com.huntercoles.splatman.core.coroutines.IoScope
 import com.huntercoles.splatman.library.data.repository.ScanStatusSync
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
+import com.huntercoles.splatman.viewer.crop.store.ScanChangeListener
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -54,6 +55,11 @@ internal object PipelineModule {
             repository.cancel(folder)
             while (repository.isRunning(folder)) delay(CANCEL_POLL_MS)
         }
+
+    /** A crop Apply or Revert changed the scan's splat.ply: the Library recounts it. */
+    @Provides
+    fun provideScanChangeListener(scans: ScanRepository): ScanChangeListener =
+        ScanChangeListener { scanId -> scans.refresh(scanId) }
 
     @Provides
     fun provideScanNames(scans: ScanRepository): ScanNames = ScanNames { scanId -> scans.get(scanId)?.name }
