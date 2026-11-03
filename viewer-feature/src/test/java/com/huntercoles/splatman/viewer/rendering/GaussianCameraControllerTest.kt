@@ -30,6 +30,18 @@ class GaussianCameraControllerTest {
     }
     
     @Test
+    fun `setPose puts the eye exactly there, without the zoom clamps`() {
+        controller.setInitialView(Vec3.ZERO, 1f)
+        val far = controller.getMaxDistance() * 2f
+        val rotation = com.huntercoles.splatman.splat.math.Quat.fromAxisAngle(Vec3.UNIT_Y, 1f)
+        controller.setPose(rotation, Vec3(1f, 2f, 3f), far)
+        assertEquals(far, controller.getDistance(), epsilon)
+        assertEquals(Vec3(1f, 2f, 3f), controller.getTarget())
+        assertEquals(rotation.w, controller.getRotation().w, epsilon)
+        assertEquals(rotation.y, controller.getRotation().y, epsilon)
+    }
+
+    @Test
     fun `zoom in decreases distance`() {
         val initialDistance = controller.getDistance()
         

@@ -192,6 +192,17 @@ class GaussianCameraController {
         this.distance = distance.coerceIn(minDistance, maxDistance)
     }
 
+    /**
+     * Puts the camera exactly at [rotation], [target], [distance] (no clamp, no animation): an offscreen renderer
+     * driven frame by frame, such as the turntable video, sets each frame's pose with it.
+     */
+    fun setPose(rotation: Quat, target: Vec3, distance: Float) {
+        stopMotion()
+        this.rotation = rotation.normalized()
+        this.target = target
+        this.distance = distance
+    }
+
     fun getViewMatrix(): Mat4 {
         val forward = rotation.rotate(Vec3.UNIT_Z)
         val eye = target + forward * distance

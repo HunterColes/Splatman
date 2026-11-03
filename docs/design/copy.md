@@ -224,6 +224,13 @@ Viewer crop mode ([screens/crop.md](screens/crop.md)). Counts use the localized 
 | `exp_saved` | Saved %1$s |
 | `exp_error` | Couldn't write the file. Check free space and try again. |
 | `exp_low_storage` | Needs %1$s free. You have %2$s. |
+| `exp_video` | Video (MP4) |
+| `exp_video_body` | A 6-second spin of the scan. Plays in any chat app, no splat viewer needed |
+| `exp_video_writing` | Making the video… |
+| `exp_video_keep_open` | Keep Splatman open until it's done. |
+| `exp_video_cancel` | Cancel |
+| `exp_video_stopped` | The video stopped when you left Splatman. Try again. |
+| `exp_video_error` | Couldn't make a video on this phone. PLY and .splat still work. |
 
 ## Import
 
