@@ -292,6 +292,7 @@ class FossPoseFreeRecorder(
             cells = take.coverage.cells,
             warnings = warnings,
             droppedFrames = dropped.get(),
+            facingSegment = take.coverage.facingSegment,
         )
     }
 

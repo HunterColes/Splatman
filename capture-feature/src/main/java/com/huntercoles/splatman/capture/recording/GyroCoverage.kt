@@ -19,6 +19,10 @@ class GyroCoverage {
     var cells: CoverageCells = CoverageCells()
         private set
 
+    /** The segment of the latest counted frame; unchanged by a frame that falls in no cell. */
+    var facingSegment: Int = 0
+        private set
+
     /** Covered share, 0..1. */
     val fraction: Float get() = cells.fraction
 
@@ -33,6 +37,7 @@ class GyroCoverage {
         cells = CoverageCells()
         reference = null
         up = Vec3.UNIT_Y
+        facingSegment = 0
     }
 
     /**
@@ -66,7 +71,9 @@ class GyroCoverage {
         val ref = reference?.let { horizontal(it) }
         if (reference == null) reference = look
         val yawDeg = if (ref == null) 0f else atan2(up dot (ref cross view), ref dot view) * DEG
-        cells = cells.with(band, segmentOf(yawDeg))
+        val segment = segmentOf(yawDeg)
+        cells = cells.with(band, segment)
+        facingSegment = segment
         return true
     }
 

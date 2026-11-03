@@ -190,9 +190,10 @@ class CaptureViewModelPoseFreeTest {
         keyframes: Int = i,
         cells: CoverageCells = CoverageCells(),
         warnings: Set<GuidanceWarning> = emptySet(),
+        facing: Int = 0,
     ) {
         access.now = (i + 1) * 33 * ms
-        poseFree.mutableState.value = PoseFreeState.Recording(keyframes, cells.fraction, cells, warnings, i)
+        poseFree.mutableState.value = PoseFreeState.Recording(keyframes, cells.fraction, cells, warnings, i, facing)
     }
 
     private val allCells = (1 shl Coverage.SEGMENTS) - 1
@@ -214,6 +215,14 @@ class CaptureViewModelPoseFreeTest {
     fun `starting shows the starting pill until the camera is open`() {
         assertEquals(CaptureStage.STARTING, poseFreeStage(PoseFreeState.Opening, paused = false))
         assertEquals(StatusPill.STARTING, poseFreePill(CaptureStage.STARTING))
+    }
+
+    @Test
+    fun `the facing tick follows the recorder's facing segment`() {
+        val vm = viewModel()
+        vm.onIntent(CaptureIntent.Record)
+        frame(1, facing = 6)
+        assertEquals(6, vm.uiState.value.facingSegment)
     }
 
     @Test

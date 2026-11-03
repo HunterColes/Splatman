@@ -171,6 +171,7 @@ class CaptureViewModel @Inject constructor(
                 instruction = instructionFor(stage, cells, l.warning, shown),
                 warning = if (stage == CaptureStage.CAPTURING) l.warning else null,
                 cells = cells,
+                facingSegment = (s as? PoseFreeState.Recording)?.facingSegment ?: l.facingSegment,
                 ready = cells.ready && (stage == CaptureStage.CAPTURING || stage == CaptureStage.PAUSED),
                 elapsedMs = l.elapsedMs,
                 framesKept = when (shown) {

@@ -112,4 +112,17 @@ class GyroCoverageTest {
         c.frame(107f)
         assertEquals(CoverageCells(level = 1), c.cells)
     }
+
+    @Test
+    fun `B1 facingSegment follows the latest counted frame and keeps the last one for a frame in no cell`() {
+        val c = GyroCoverage()
+        c.frame(0f)
+        assertEquals(0, c.facingSegment)
+        c.frame(90f)
+        assertEquals(6, c.facingSegment)
+        assertTrue(!c.frame(90f, 85f)) // looking nearly straight up: no cell
+        assertEquals(6, c.facingSegment)
+        c.reset()
+        assertEquals(0, c.facingSegment)
+    }
 }

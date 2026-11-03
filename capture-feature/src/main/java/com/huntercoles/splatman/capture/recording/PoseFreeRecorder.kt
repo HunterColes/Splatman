@@ -26,6 +26,7 @@ sealed interface PoseFreeState {
         val cells: CoverageCells,
         val warnings: Set<GuidanceWarning>,
         val droppedFrames: Int,
+        val facingSegment: Int = 0,
     ) : PoseFreeState
 
     /** Finishing the capture of [keyframes] keyframes and moving it into `scans/`. */
