@@ -4,18 +4,22 @@ import com.huntercoles.splatman.library.domain.model.OpenTarget
 import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
+import com.huntercoles.splatman.library.domain.model.ScanThumbnail
 import com.huntercoles.splatman.library.domain.model.openTarget
 
 /** What a library card shows under its thumbnail, and how its thumbnail is drawn. */
 sealed interface CardState {
-    /** Built: "date · N splats", opens the Viewer. */
+    /** Built: "date · size", opens the Viewer. */
     data class Ready(val splatCount: Int) : CardState
 
     /** Recorded, waiting for its build. */
     data object Captured : CardState
 
-    /** Being built: a progress bar along the thumbnail and "Building…". */
-    data object Processing : CardState
+    /**
+     * Being built: a progress bar along the thumbnail and "Building… 42%"; [percent] is null (an indeterminate bar
+     * and "Building…") until the run reports progress.
+     */
+    data class Processing(val percent: Int? = null) : CardState
 
     /** The build failed: dimmed thumbnail and the "Couldn't build" badge. */
     data object Failed : CardState
@@ -31,6 +35,10 @@ data class LibraryCard(
     val selected: Boolean = false,
     /** Came from a file (the import flow): the thumbnail carries an "Imported" chip. */
     val imported: Boolean = false,
+    /** The scan folder's size, formatted ("38 MB"); the metadata line reads "date · size". */
+    val sizeText: String = "",
+    /** The scan's `thumbnail.png`, or null: a plain block shows instead. */
+    val thumbnail: ScanThumbnail? = null,
 )
 
 /** The body of the Library: placeholders on first load, the empty state, or the grid. */
@@ -53,11 +61,16 @@ data class LibraryUiState(
     val confirmDelete: Set<String>? = null,
     /** Non-null while the "Deleted n" snackbar offers Undo. */
     val undo: PendingDelete? = null,
+    /** False once the phone answered that it cannot track motion: the Scan FAB dims and explains instead. */
+    val scanAvailable: Boolean = true,
 ) {
     val selecting: Boolean get() = selectedIds.isNotEmpty()
 
     /** The empty state shows its own Start a scan button, so the FAB hides. */
     val showFab: Boolean get() = content !is LibraryContent.Empty
+
+    /** The FAB at 38 % content alpha: this phone cannot scan. */
+    val fabDimmed: Boolean get() = !scanAvailable
 
     /** The sample "Try a sample" opens, if any is bundled. */
     val firstSample: Sample? get() = samples.firstOrNull()
@@ -85,20 +98,37 @@ sealed interface LibraryIntent {
     data object CommitDelete : LibraryIntent
 
     data class Rename(val id: String, val name: String) : LibraryIntent
+
+    /** Scan (the FAB or the empty state's button): opens Capture, or explains when the phone cannot track motion. */
+    data object Scan : LibraryIntent
 }
 
-/** The card for this scan: READY carries its splat count, every other status maps to its own card state. */
-fun Scan.toCard(selected: Boolean = false): LibraryCard = LibraryCard(
+/** One-off things the Library screen does for the ViewModel. */
+sealed interface LibraryEvent {
+    /** Go to Capture. */
+    data object OpenScan : LibraryEvent
+
+    /** Show the "can't track motion" snackbar with Details (the onboarding AR page). */
+    data object ArUnsupported : LibraryEvent
+}
+
+/**
+ * The card for this scan: READY carries its splat count, PROCESSING the build [percent] (null until the run reports
+ * one), every other status maps to its own card state. [sizeText] is the folder size, already formatted.
+ */
+fun Scan.toCard(selected: Boolean = false, percent: Int? = null, sizeText: String = ""): LibraryCard = LibraryCard(
     id = id,
     name = name,
     createdAtMs = createdAtMs,
     state = when (status) {
         ScanStatus.READY -> CardState.Ready(splatCount)
         ScanStatus.CAPTURED -> CardState.Captured
-        ScanStatus.PROCESSING -> CardState.Processing
+        ScanStatus.PROCESSING -> CardState.Processing(percent)
         ScanStatus.FAILED -> CardState.Failed
     },
     target = openTarget(),
     selected = selected,
     imported = imported,
+    sizeText = sizeText,
+    thumbnail = thumbnail,
 )

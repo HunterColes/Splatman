@@ -31,6 +31,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.huntercoles.splatman.BuildConfig
 import com.huntercoles.splatman.capture.presentation.capture.CaptureScreen
+import com.huntercoles.splatman.capture.presentation.onboarding.OnboardingPage
 import com.huntercoles.splatman.capture.presentation.onboarding.OnboardingScreen
 import com.huntercoles.splatman.capture.presentation.processing.ProcessingScreen
 import com.huntercoles.splatman.core.design.SplatMotion
@@ -115,6 +116,7 @@ fun SplatmanShell(
                             onAbout = { navController.navigate(About) },
                             onOpenViewer = { scanId -> navController.navigate(Viewer(scanId)) },
                             onOpenProcessing = { scanId -> navController.navigate(Processing(scanId)) },
+                            onArDetails = { navController.navigate(Onboarding(page = OnboardingPage.CAMERA.ordinal)) },
                         )
                     }
                 }

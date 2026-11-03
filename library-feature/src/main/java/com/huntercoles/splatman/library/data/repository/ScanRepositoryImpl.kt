@@ -5,11 +5,13 @@ import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.local.ScanEntity
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
+import com.huntercoles.splatman.library.domain.model.ScanThumbnail
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -28,9 +30,13 @@ class ScanRepositoryImpl(
     private val io: CoroutineDispatcher,
 ) : ScanRepository {
 
-    override fun scans(): Flow<List<Scan>> = dao.observeAll().map { rows -> rows.map(ScanEntity::toScan) }
+    override fun scans(): Flow<List<Scan>> =
+        dao.observeAll().map { rows -> rows.map { it.toScan().onDisk() } }.flowOn(io)
 
-    override suspend fun get(id: String): Scan? = dao.byId(id)?.toScan()
+    override suspend fun get(id: String): Scan? {
+        val row = dao.byId(id) ?: return null
+        return withContext(io) { row.toScan().onDisk() }
+    }
 
     override suspend fun create(name: String, createdAtMs: Long): Scan {
         val id = UUID.randomUUID().toString()
@@ -70,7 +76,7 @@ class ScanRepositoryImpl(
             }
             val row = ScanEntity(id, name, createdAtMs, ScanStatus.READY, splatCount, 0, id, imported = true)
             dao.insert(row)
-            return row.toScan()
+            return withContext(io) { row.toScan().onDisk() }
         } catch (e: Throwable) {
             withContext(NonCancellable + io) { folder.deleteRecursively() }
             throw e
@@ -151,6 +157,20 @@ class ScanRepositoryImpl(
         )
     }
 
+    /** The scan with what its folder holds: its size in bytes and its non-empty `thumbnail.png`. Blocking. */
+    private fun Scan.onDisk(): Scan {
+        val dir = File(root, folder)
+        if (!dir.isDirectory) return this
+        val picture = File(dir, THUMBNAIL_FILE)
+        val thumbnail = if (picture.isFile && picture.length() > 0) {
+            ScanThumbnail(picture.path, picture.lastModified())
+        } else {
+            null
+        }
+        val bytes = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+        return copy(sizeBytes = bytes, thumbnail = thumbnail)
+    }
+
     /** The folder [name] under [root]; refuses a name that would leave it. */
     private fun folderOf(name: String): File {
         val folder = File(root, name)
@@ -162,5 +182,6 @@ class ScanRepositoryImpl(
         const val SPLAT_FILE = "splat.ply"
         const val TRANSFORMS_FILE = "transforms.json"
         const val IMAGES_DIR = "images"
+        const val THUMBNAIL_FILE = "thumbnail.png"
     }
 }

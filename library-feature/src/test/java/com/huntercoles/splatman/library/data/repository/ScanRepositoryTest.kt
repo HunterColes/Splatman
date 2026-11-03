@@ -203,6 +203,27 @@ class ScanRepositoryTest {
         assertNull(repository.get("nowhere"))
     }
 
+    @Test
+    fun `a scan carries its folder size and its thumbnail, and an empty thumbnail counts as none`() = runTest {
+        val scan = repository.create("s", createdAtMs = 1)
+        val folder = File(root, scan.folder)
+        File(folder, "images").mkdirs()
+        File(folder, "images/frame_00000.jpg").writeBytes(ByteArray(1_000))
+        val picture = File(folder, "thumbnail.png").apply { writeBytes(ByteArray(24)) }
+
+        repository.scans().first().single().let {
+            assertEquals(1_024L, it.sizeBytes)
+            assertEquals(picture.path, it.thumbnail?.path)
+            assertEquals(picture.lastModified(), it.thumbnail?.stamp)
+        }
+
+        picture.writeBytes(ByteArray(0))
+        repository.get(scan.id)!!.let {
+            assertNull(it.thumbnail, "a 0-byte thumbnail.png shows the placeholder")
+            assertEquals(1_000L, it.sizeBytes)
+        }
+    }
+
     private fun fixture(): ByteArray = javaClass.getResourceAsStream("/splats/tiny-sh1.ply")!!.use { it.readBytes() }
 }
 

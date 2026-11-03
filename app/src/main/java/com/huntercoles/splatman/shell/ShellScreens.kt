@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.huntercoles.splatman.R
+import com.huntercoles.splatman.capture.R as CaptureR
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.LibraryFeature
 import com.huntercoles.splatman.viewer.ViewerFeature
@@ -87,6 +88,7 @@ internal fun LibraryHome(
     onAbout: () -> Unit,
     onOpenViewer: (String) -> Unit,
     onOpenProcessing: (String) -> Unit,
+    onArDetails: () -> Unit,
 ) {
     LibraryFeature(
         onOpenViewer = onOpenViewer,
@@ -94,6 +96,8 @@ internal fun LibraryHome(
         onScan = onScan,
         onSettings = onSettings,
         onAbout = onAbout,
+        onArDetails = onArDetails,
+        arUnsupportedTitle = stringResource(CaptureR.string.ar_unsupported_title),
         modifier = Modifier.fillMaxSize(),
     )
 }

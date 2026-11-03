@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +47,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
@@ -62,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -74,7 +77,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -91,10 +98,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.R
 import com.huntercoles.splatman.library.domain.model.OpenTarget
+import com.huntercoles.splatman.library.domain.model.ScanThumbnail
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -104,9 +115,11 @@ private const val NAME_MAX_LINES = 2
 private const val PLACEHOLDER_COUNT = 4
 private const val THUMB_RATIO = 4f / 5f
 private const val FAILED_ALPHA = 0.38f
+private const val DIMMED_ALPHA = 0.38f
 private const val SHIMMER_MS = 1_200
 private const val SHIMMER_LOW = 0.4f
 private const val WIDE_MIN_DP = 600
+private const val PERCENT = 100f
 private val EmptyMaxWidth = 360.dp
 
 /** The Library's ways out: everything but opening a card goes through these. */
@@ -116,15 +129,19 @@ data class LibraryActions(
     val onOpenFile: () -> Unit,
     val onSettings: () -> Unit,
     val onAbout: () -> Unit,
+    /** The "can't track motion" snackbar's Details: the onboarding AR page. */
+    val onArDetails: () -> Unit = {},
 )
 
 /**
  * Home (docs/design/screens/library.md): the scans newest first in an adaptive grid, an empty state with Start a
  * scan, Open a file and Try a sample, selection mode with Delete and an Undo snackbar, and TalkBack actions per card.
+ * When the phone cannot track motion the Scan FAB is dimmed and a tap shows [arUnsupportedTitle] with Details.
  */
 @Composable
 fun LibraryScreen(
     actions: LibraryActions,
+    arUnsupportedTitle: String,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
@@ -135,8 +152,21 @@ fun LibraryScreen(
     val snackbar = remember { SnackbarHostState() }
     var renaming by remember { mutableStateOf<LibraryCard?>(null) }
 
+    val details = stringResource(R.string.lib_ar_details)
+
     BackHandler(enabled = state.selecting) { onIntent(LibraryIntent.ExitSelection) }
     UndoSnackbar(state.undo, snackbar, onIntent)
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                LibraryEvent.OpenScan -> actions.onScan()
+                LibraryEvent.ArUnsupported -> launch {
+                    val result = snackbar.showSnackbar(arUnsupportedTitle, actionLabel = details)
+                    if (result == SnackbarResult.ActionPerformed) actions.onArDetails()
+                }
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -154,8 +184,10 @@ fun LibraryScreen(
         floatingActionButton = {
             if (state.showFab) {
                 val scanDescription = stringResource(R.string.lib_scan_description)
+                val content = contentColorFor(FloatingActionButtonDefaults.containerColor)
                 ExtendedFloatingActionButton(
-                    onClick = actions.onScan,
+                    onClick = { onIntent(LibraryIntent.Scan) },
+                    contentColor = if (state.fabDimmed) content.copy(alpha = DIMMED_ALPHA) else content,
                     expanded = grid.isScrollingUp(),
                     icon = { Icon(Icons.Rounded.ViewInAr, contentDescription = null) },
                     text = { Text(stringResource(R.string.lib_scan)) },
@@ -169,27 +201,25 @@ fun LibraryScreen(
             val edge = if (maxWidth >= WIDE_MIN_DP.dp) SplatDimens.SpacingLarge else SplatDimens.SpacingDefault
             when (val content = state.content) {
                 LibraryContent.Empty -> EmptyState(
-                    onScan = actions.onScan,
+                    onScan = { onIntent(LibraryIntent.Scan) },
                     onOpenFile = actions.onOpenFile,
                     onSample = state.firstSample?.let { sample -> { actions.onOpen(OpenTarget.Viewer(sample.id)) } },
                 )
                 LibraryContent.Loading -> CardGrid(grid, edge) {
                     items(PLACEHOLDER_COUNT) { PlaceholderCard() }
                 }
-                is LibraryContent.Cards -> CardGrid(grid, edge) {
-                    items(content.cards, key = { it.id }) { card ->
-                        ScanCard(
-                            card = card,
-                            selecting = state.selecting,
-                            onClick = {
-                                if (state.selecting) onIntent(LibraryIntent.Toggle(card.id)) else actions.onOpen(card.target)
-                            },
-                            onLongClick = { onIntent(LibraryIntent.LongPress(card.id)) },
-                            onRename = { renaming = card },
-                            onDelete = { onIntent(LibraryIntent.RequestDelete(setOf(card.id))) },
-                        )
-                    }
-                }
+                is LibraryContent.Cards -> ScanCardGrid(
+                    cards = content.cards,
+                    grid = grid,
+                    edge = edge,
+                    selecting = state.selecting,
+                    onClick = { card ->
+                        if (state.selecting) onIntent(LibraryIntent.Toggle(card.id)) else actions.onOpen(card.target)
+                    },
+                    onLongClick = { card -> onIntent(LibraryIntent.LongPress(card.id)) },
+                    onRename = { card -> renaming = card },
+                    onDelete = { card -> onIntent(LibraryIntent.RequestDelete(setOf(card.id))) },
+                )
             }
         }
     }
@@ -258,6 +288,35 @@ private fun SelectionBar(count: Int, onIntent: (LibraryIntent) -> Unit) {
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     )
+}
+
+/** The grid of scan cards (also what the device test draws at 360 dp). */
+@Composable
+fun ScanCardGrid(
+    cards: List<LibraryCard>,
+    modifier: Modifier = Modifier,
+    grid: LazyGridState = rememberLazyGridState(),
+    edge: Dp = SplatDimens.SpacingDefault,
+    selecting: Boolean = false,
+    onClick: (LibraryCard) -> Unit = {},
+    onLongClick: (LibraryCard) -> Unit = {},
+    onRename: (LibraryCard) -> Unit = {},
+    onDelete: (LibraryCard) -> Unit = {},
+) {
+    Box(modifier) {
+        CardGrid(grid, edge) {
+            items(cards, key = { it.id }) { card ->
+                ScanCard(
+                    card = card,
+                    selecting = selecting,
+                    onClick = { onClick(card) },
+                    onLongClick = { onLongClick(card) },
+                    onRename = { onRename(card) },
+                    onDelete = { onDelete(card) },
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -358,24 +417,18 @@ private fun ScanCard(
     val shortDate = formatDate(card.createdAtMs, "d MMM", locale)
     val longDate = formatDate(card.createdAtMs, "d MMMM", locale)
     val detail = when (val s = card.state) {
-        is CardState.Ready -> stringResource(
-            R.string.lib_card_detail,
-            shortDate,
-            pluralStringResource(R.plurals.lib_splats, s.splatCount, s.splatCount),
-        )
+        is CardState.Ready -> stringResource(R.string.lib_card_detail, shortDate, card.sizeText)
         CardState.Captured -> stringResource(R.string.lib_status_captured)
-        CardState.Processing -> stringResource(R.string.lib_status_processing)
+        is CardState.Processing -> s.percent?.let { stringResource(R.string.lib_processing, it) }
+            ?: stringResource(R.string.lib_status_processing)
         CardState.Failed -> stringResource(R.string.lib_failed)
     }
     val description = when (val s = card.state) {
-        is CardState.Ready -> stringResource(
-            R.string.lib_card_description,
-            card.name,
-            longDate,
-            pluralStringResource(R.plurals.lib_splats, s.splatCount, s.splatCount),
-        )
+        is CardState.Ready -> stringResource(R.string.lib_card_description, card.name, longDate, card.sizeText)
         CardState.Captured -> stringResource(R.string.lib_card_description_captured, card.name, longDate)
-        CardState.Processing -> stringResource(R.string.lib_card_description_building, card.name, longDate)
+        is CardState.Processing -> s.percent?.let {
+            stringResource(R.string.lib_card_description_building_percent, card.name, shortDate, it)
+        } ?: stringResource(R.string.lib_card_description_building, card.name, longDate)
         CardState.Failed -> stringResource(R.string.lib_card_description_failed, card.name, longDate)
     }
     val renameLabel = stringResource(R.string.lib_rename)
@@ -398,7 +451,7 @@ private fun ScanCard(
             },
     ) {
         Column {
-            Thumbnail(card.state, selecting, card.selected, card.imported)
+            Thumbnail(card, selecting)
             Column(modifier = Modifier.padding(SplatDimens.SpacingMedium)) {
                 Text(
                     text = card.name,
@@ -417,25 +470,32 @@ private fun ScanCard(
 }
 
 @Composable
-private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean, imported: Boolean) {
-    val shape = RoundedCornerShape(topStart = SplatDimens.CornerMedium, topEnd = SplatDimens.CornerMedium)
-    val fill = when (state) {
-        is CardState.Ready -> SplatColors.ViewerBackground
-        else -> MaterialTheme.colorScheme.surfaceContainerHighest
-    }
+private fun Thumbnail(card: LibraryCard, selecting: Boolean) {
+    val state = card.state
+    val selected = card.selected
+    val shape = RoundedCornerShape(SplatDimens.CornerMedium)
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(THUMB_RATIO)) {
         Box(
             Modifier
                 .fillMaxSize()
                 .alpha(if (state == CardState.Failed) FAILED_ALPHA else 1f)
-                .background(fill, shape),
-        )
-        if (state == CardState.Processing) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter))
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            card.thumbnail?.let { ThumbnailImage(it) }
+        }
+        if (state is CardState.Processing) {
+            val bar = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+            val percent = state.percent
+            if (percent == null) {
+                LinearProgressIndicator(modifier = bar)
+            } else {
+                LinearProgressIndicator(progress = { percent / PERCENT }, modifier = bar)
+            }
         }
         if (state == CardState.Failed) {
             FailedBadge(Modifier.align(Alignment.TopStart).padding(SplatDimens.SpacingSmall))
-        } else if (imported) {
+        } else if (card.imported) {
             ImportedChip(Modifier.align(Alignment.TopStart).padding(SplatDimens.SpacingSmall))
         }
         if (selecting) {
@@ -445,6 +505,24 @@ private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean, i
                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.TopEnd).padding(SplatDimens.SpacingSmall),
             )
+        }
+    }
+}
+
+/** The scan's `thumbnail.png`, decoded off the main thread at the card's size; nothing while it decodes or fails. */
+@Composable
+private fun ThumbnailImage(thumbnail: ScanThumbnail) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        var image by remember(thumbnail, width, height) { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(thumbnail, width, height) {
+            image = withContext(Dispatchers.IO) {
+                ThumbnailDecoder.decode(File(thumbnail.path), width, height)?.asImageBitmap()
+            }
+        }
+        image?.let {
+            Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 }

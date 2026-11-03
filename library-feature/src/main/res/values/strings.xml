@@ -13,14 +13,12 @@
     <string name="lib_empty_sample">Try a sample</string>
     <string name="lib_status_captured">Waiting to build</string>
     <string name="lib_status_processing">Building…</string>
+    <string name="lib_processing">Building… %1$d%%</string>
     <string name="lib_failed">Couldn\'t build</string>
-    <plurals name="lib_splats">
-        <item quantity="one">%1$d splat</item>
-        <item quantity="other">%1$d splats</item>
-    </plurals>
     <string name="lib_card_detail">%1$s · %2$s</string>
     <string name="lib_card_description">%1$s, %2$s, %3$s</string>
     <string name="lib_card_description_building">%1$s, %2$s, building</string>
+    <string name="lib_card_description_building_percent">%1$s, %2$s, building, %3$d percent</string>
     <string name="lib_card_description_captured">%1$s, %2$s, waiting to build</string>
     <string name="lib_card_description_failed">%1$s, %2$s, couldn\'t build</string>
     <string name="lib_selected">%1$d selected</string>
@@ -38,6 +36,7 @@
     <string name="lib_delete">Delete</string>
     <string name="lib_cancel">Cancel</string>
     <string name="lib_imported">Imported</string>
+    <string name="lib_ar_details">Details</string>
     <string name="imp_validating">Reading %1$s…</string>
     <string name="imp_point_cloud">This PLY is a point cloud, not a Gaussian splat. Splatman opens splat files only.</string>
     <string name="imp_unsupported">Splatman opens .ply and .splat splat files. This one is %1$s.</string>

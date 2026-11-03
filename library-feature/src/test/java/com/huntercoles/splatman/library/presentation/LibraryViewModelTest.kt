@@ -5,11 +5,14 @@ import com.huntercoles.splatman.library.domain.model.OpenTarget
 import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
+import com.huntercoles.splatman.library.domain.model.ScanThumbnail
 import com.huntercoles.splatman.library.domain.repository.SampleRepository
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -32,13 +35,21 @@ class LibraryViewModelTest {
     val main = MainDispatcherExtension(dispatcher)
 
     private val repository = FakeScanRepository()
+    private val progress = mutableMapOf<String, MutableSharedFlow<Int?>>()
+    private var canScan = true
     private val sample = Sample.fromFileName("cactus.spz")
 
     private fun scan(id: String, status: ScanStatus = ScanStatus.READY, splats: Int = 10) =
         Scan(id, "Scan $id", createdAtMs = 1_000, status = status, splatCount = splats, keyframeCount = 3, folder = id)
 
     private fun TestScope.viewModel(): LibraryViewModel {
-        val vm = LibraryViewModel(repository, SampleRepository { listOf(sample) })
+        val vm = LibraryViewModel(
+            scanRepository = repository,
+            sampleRepository = SampleRepository { listOf(sample) },
+            buildProgress = BuildProgress { id -> progress.getOrPut(id) { MutableSharedFlow(replay = 1) } },
+            scanSupport = ScanSupport { canScan },
+            sizeText = SizeText { bytes -> "${bytes / 1_000_000} MB" },
+        )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
         return vm
@@ -79,12 +90,84 @@ class LibraryViewModelTest {
     fun `each status maps to its card state and where tapping goes`() {
         assertEquals(CardState.Ready(42), scan("r", ScanStatus.READY, 42).toCard().state)
         assertEquals(OpenTarget.Viewer("r"), scan("r").toCard().target)
-        assertEquals(CardState.Processing, scan("p", ScanStatus.PROCESSING).toCard().state)
+        assertEquals(CardState.Processing(null), scan("p", ScanStatus.PROCESSING).toCard().state)
         assertEquals(OpenTarget.Processing("p"), scan("p", ScanStatus.PROCESSING).toCard().target)
         assertEquals(CardState.Failed, scan("f", ScanStatus.FAILED).toCard().state)
         assertEquals(OpenTarget.Processing("f"), scan("f", ScanStatus.FAILED).toCard().target)
         assertEquals(CardState.Captured, scan("c", ScanStatus.CAPTURED).toCard().state)
         assertEquals(OpenTarget.Processing("c"), scan("c", ScanStatus.CAPTURED).toCard().target)
+    }
+
+    @Test
+    fun `cards carry size text, thumbnail, build percent, failed and imported`() = runTest(dispatcher) {
+        val vm = viewModel()
+        val thumb = ScanThumbnail("/scans/done/thumbnail.png", stamp = 5)
+        repository.emit(
+            listOf(
+                scan("done").copy(sizeBytes = 38_000_000, thumbnail = thumb),
+                scan("building", ScanStatus.PROCESSING),
+                scan("failed", ScanStatus.FAILED),
+                scan("imported").copy(imported = true, sizeBytes = 2_000_000),
+            ),
+        )
+        runCurrent()
+
+        val cards = vm.cards().associateBy { it.id }
+        assertEquals("38 MB", cards.getValue("done").sizeText)
+        assertEquals(thumb, cards.getValue("done").thumbnail)
+        assertEquals(CardState.Processing(null), cards.getValue("building").state, "no progress yet")
+        assertEquals(CardState.Failed, cards.getValue("failed").state)
+        assertTrue(cards.getValue("imported").imported)
+        assertEquals("2 MB", cards.getValue("imported").sizeText)
+
+        progress.getValue("building").emit(42)
+        runCurrent()
+        assertEquals(CardState.Processing(42), vm.cards().first { it.id == "building" }.state)
+        assertEquals(OpenTarget.Processing("building"), vm.cards().first { it.id == "building" }.target)
+
+        progress.getValue("building").emit(140)
+        runCurrent()
+        assertEquals(CardState.Processing(100), vm.cards().first { it.id == "building" }.state, "clamped")
+    }
+
+    @Test
+    fun `only building scans ask for progress`() = runTest(dispatcher) {
+        viewModel()
+        repository.emit(listOf(scan("done"), scan("building", ScanStatus.PROCESSING)))
+        runCurrent()
+        assertEquals(setOf("building"), progress.keys)
+    }
+
+    @Test
+    fun `a phone that can scan opens Capture from the FAB`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a")))
+        runCurrent()
+        val events = mutableListOf<LibraryEvent>()
+        backgroundScope.launch { vm.events.toList(events) }
+
+        vm.onIntent(LibraryIntent.Scan)
+        runCurrent()
+
+        assertFalse(vm.uiState.value.fabDimmed)
+        assertEquals(listOf<LibraryEvent>(LibraryEvent.OpenScan), events)
+    }
+
+    @Test
+    fun `AR unavailable dims the FAB and a tap explains instead of opening Capture`() = runTest(dispatcher) {
+        canScan = false
+        val vm = viewModel()
+        repository.emit(listOf(scan("a")))
+        runCurrent()
+        val events = mutableListOf<LibraryEvent>()
+        backgroundScope.launch { vm.events.toList(events) }
+
+        vm.onIntent(LibraryIntent.Scan)
+        runCurrent()
+
+        assertTrue(vm.uiState.value.fabDimmed)
+        assertTrue(vm.uiState.value.showFab)
+        assertEquals(listOf<LibraryEvent>(LibraryEvent.ArUnsupported), events)
     }
 
     @Test

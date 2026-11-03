@@ -2,6 +2,7 @@ package com.huntercoles.splatman.library.di
 
 import android.content.Context
 import android.net.Uri
+import android.text.format.Formatter
 import androidx.room.Room
 import com.huntercoles.splatman.core.coroutines.IoDispatcher
 import com.huntercoles.splatman.library.data.local.LibraryDatabase
@@ -18,6 +19,7 @@ import com.huntercoles.splatman.library.importing.Importer
 import com.huntercoles.splatman.library.importing.ImportSourceFactory
 import com.huntercoles.splatman.library.importing.ImportValidator
 import com.huntercoles.splatman.library.importing.SplatImporter
+import com.huntercoles.splatman.library.presentation.SizeText
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -77,6 +79,11 @@ object LibraryModule {
         val root = File(context.filesDir, SCANS_DIR)
         return SplatImporter(ImportValidator(), scans, freeBytes = { root.mkdirs(); root.usableSpace }, io = io)
     }
+
+    /** A card's folder size, the phone's way ("38 MB"). */
+    @Provides
+    fun provideSizeText(@ApplicationContext context: Context): SizeText =
+        SizeText { bytes -> Formatter.formatShortFileSize(context, bytes) }
 
     @Provides
     fun provideImportSourceFactory(@ApplicationContext context: Context): ImportSourceFactory =
