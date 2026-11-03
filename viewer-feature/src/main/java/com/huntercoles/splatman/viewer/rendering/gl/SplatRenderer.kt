@@ -1,6 +1,8 @@
 package com.huntercoles.splatman.viewer.rendering.gl
 
 import android.opengl.GLSurfaceView
+import com.huntercoles.splatman.splat.edit.CropBox
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.pack.PackedSplats
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,6 +41,9 @@ data class RenderStats(val fps: Float, val frameMs: Float, val scale: Float, val
  *
  * The frame is drawn into an offscreen target at [RenderScaleController.scale] of the surface and blitted up, or
  * straight to the surface at scale 1.
+ *
+ * Crop box ([setCropBox], ADR 0011): splats whose centre is outside the box draw at [CROP_DIM_ALPHA] of their alpha
+ * (a shader uniform: no re-pack, no re-sort) and [CropBoxOverlay] draws the box on top.
  */
 class SplatRenderer(
     private val camera: GaussianCameraController,
@@ -49,9 +54,11 @@ class SplatRenderer(
 ) : GLSurfaceView.Renderer {
 
     private class SceneUpdate(val scene: RenderScene?)
+    private class CropUpdate(val box: CropBox?)
 
     private val sortScope = CoroutineScope(SupervisorJob() + sortDispatcher)
     private val pending = AtomicReference<SceneUpdate?>(null)
+    private val pendingCrop = AtomicReference<CropUpdate?>(null)
     private val _stats = MutableStateFlow<RenderStats?>(null)
 
     /**
@@ -71,6 +78,14 @@ class SplatRenderer(
     private var uProj = -1
     private var uFocal = -1
     private var uViewport = -1
+    private var uCropDim = -1
+    private var uCropCentre = -1
+    private var uCropAxes = -1
+    private var uCropHalf = -1
+    private val overlay = CropBoxOverlay(gl)
+    private var cropBox: CropBox? = null
+    private val cropAxes = FloatArray(9)
+    private var cropModel = FloatArray(16)
     private var vao = 0
     private var quadVbo = 0
     private val orderVbos = IntArray(2)
@@ -102,6 +117,18 @@ class SplatRenderer(
         pending.set(SceneUpdate(scene))
     }
 
+    /**
+     * Dims splats outside [box] and draws it from the next frame on (null = off). Any thread; makes no GL call. A
+     * box with a non-finite or non-positive half extent, or a non-finite centre, is ignored (the last good box stays).
+     */
+    fun setCropBox(box: CropBox?) {
+        if (box != null && !isUsable(box)) {
+            Timber.w("Ignoring unusable crop box %s", box)
+            return
+        }
+        pendingCrop.set(CropUpdate(box))
+    }
+
     /** Stops the sort worker. Any thread; GL names die with the context. */
     fun dispose() {
         sortScope.cancel()
@@ -125,6 +152,10 @@ class SplatRenderer(
         uProj = gl.getUniformLocation(program, "u_proj")
         uFocal = gl.getUniformLocation(program, "u_focal")
         uViewport = gl.getUniformLocation(program, "u_viewport")
+        uCropDim = gl.getUniformLocation(program, "u_cropDim")
+        uCropCentre = gl.getUniformLocation(program, "u_cropCentre")
+        uCropAxes = gl.getUniformLocation(program, "u_cropAxes")
+        uCropHalf = gl.getUniformLocation(program, "u_cropHalf")
         maxTextureSize = gl.getInteger(GlConst.MAX_TEXTURE_SIZE)
 
         vao = gl.genVertexArray()
@@ -142,6 +173,7 @@ class SplatRenderer(
         gl.vertexAttribDivisor(SplatShaders.ATTR_INDEX, 1)
         gl.bindVertexArray(0)
         gl.bindBuffer(GlConst.ARRAY_BUFFER, 0)
+        overlay.create()
 
         gl.disable(GlConst.DEPTH_TEST)
         gl.disable(GlConst.CULL_FACE)
@@ -162,6 +194,7 @@ class SplatRenderer(
         val scale = if (frameMs > 0f) scaleController.onFrame(frameMs) else scaleController.scale
 
         pending.getAndSet(null)?.let { applyScene(it.scene) }
+        pendingCrop.getAndSet(null)?.let { applyCrop(it.box) }
         val current = scene
         if (current != null && !textureReady) uploadTexture(current.packed)
 
@@ -188,6 +221,7 @@ class SplatRenderer(
         if (current != null && texture != 0 && orderCount > 0 && targetW > 0 && targetH > 0) {
             draw(targetW, targetH)
         }
+        if (cropBox != null && targetW > 0 && targetH > 0) overlay.draw(cropModel, view, proj)
         if (offscreen) {
             gl.bindFramebuffer(GlConst.READ_FRAMEBUFFER, fbo)
             gl.bindFramebuffer(GlConst.DRAW_FRAMEBUFFER, 0)
@@ -209,6 +243,19 @@ class SplatRenderer(
         if (next != null && next.packed.count > 0) {
             sorter = SplatSortWorker(next.positions, next.packed.count, next.radius, sortScope)
         }
+    }
+
+    private fun applyCrop(box: CropBox?) {
+        cropBox = box
+        if (box == null) return
+        val r = box.rotation.normalized()
+        val axes = arrayOf(r.rotate(Vec3.UNIT_X), r.rotate(Vec3.UNIT_Y), r.rotate(Vec3.UNIT_Z))
+        for (k in 0 until 3) {
+            cropAxes[3 * k] = axes[k].x
+            cropAxes[3 * k + 1] = axes[k].y
+            cropAxes[3 * k + 2] = axes[k].z
+        }
+        cropModel = CropBoxOverlay.modelOf(box)
     }
 
     private fun uploadTexture(packed: PackedSplats) {
@@ -268,6 +315,15 @@ class SplatRenderer(
         gl.uniformMatrix4fv(uProj, proj)
         gl.uniform2f(uFocal, proj[0] * targetW / 2f, proj[5] * targetH / 2f)
         gl.uniform2f(uViewport, targetW.toFloat(), targetH.toFloat())
+        val box = cropBox
+        if (box == null) {
+            gl.uniform1f(uCropDim, 1f)
+        } else {
+            gl.uniform1f(uCropDim, CROP_DIM_ALPHA)
+            gl.uniform3f(uCropCentre, box.centre.x, box.centre.y, box.centre.z)
+            gl.uniformMatrix3fv(uCropAxes, cropAxes)
+            gl.uniform3f(uCropHalf, box.halfExtents.x, box.halfExtents.y, box.halfExtents.z)
+        }
         gl.bindVertexArray(vao)
         gl.drawArraysInstanced(GlConst.TRIANGLE_STRIP, 0, 4, orderCount)
         gl.bindVertexArray(0)
@@ -356,6 +412,18 @@ class SplatRenderer(
     }
 
     companion object {
+        /** Alpha factor of splats outside the crop box (docs/design/screens/crop.md, `CROP_DIM_ALPHA`). */
+        const val CROP_DIM_ALPHA = 0.2f
+
+        /** True when [box] can be drawn and tested: finite centre, finite half extents above zero. */
+        fun isUsable(box: CropBox): Boolean {
+            val c = box.centre
+            val h = box.halfExtents
+            return c.x.isFinite() && c.y.isFinite() && c.z.isFinite() &&
+                h.x.isFinite() && h.y.isFinite() && h.z.isFinite() &&
+                h.x > 0f && h.y > 0f && h.z > 0f
+        }
+
         private const val NS_PER_MS = 1_000_000f
         private const val MS_PER_S = 1000f
         private const val STATS_INTERVAL_NS = 500_000_000L

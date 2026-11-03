@@ -41,7 +41,13 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     override fun useProgram(program: Int) = rec("useProgram", program)
     override fun getUniformLocation(program: Int, name: String) = name.hashCode().also { rec("getUniformLocation") }
     override fun uniform1i(location: Int, v: Int) = rec("uniform1i", location, v)
+    override fun uniform1f(location: Int, v: Float) = rec("uniform1f", location, v)
     override fun uniform2f(location: Int, x: Float, y: Float) = rec("uniform2f", location, x, y)
+    override fun uniform3f(location: Int, x: Float, y: Float, z: Float) = rec("uniform3f", location, x, y, z)
+    override fun uniform4f(location: Int, x: Float, y: Float, z: Float, w: Float) =
+        rec("uniform4f", location, x, y, z, w)
+    override fun uniformMatrix3fv(location: Int, values: FloatArray) =
+        rec("uniformMatrix3fv", location, values.copyOf())
     override fun uniformMatrix4fv(location: Int, values: FloatArray) = rec("uniformMatrix4fv", location)
     override fun genTexture() = gen("genTexture")
     override fun deleteTexture(texture: Int) = rec("deleteTexture", texture)
@@ -99,4 +105,5 @@ class FakeGl(private val maxTextureSize: Int = 4096) : Gl {
     override fun blendFunc(src: Int, dst: Int) = rec("blendFunc", src, dst)
     override fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int) =
         rec("drawArraysInstanced", mode, count, instances)
+    override fun drawArrays(mode: Int, first: Int, count: Int) = rec("drawArrays", mode, first, count)
 }

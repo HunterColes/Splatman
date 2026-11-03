@@ -26,7 +26,11 @@ interface Gl {
     fun useProgram(program: Int)
     fun getUniformLocation(program: Int, name: String): Int
     fun uniform1i(location: Int, v: Int)
+    fun uniform1f(location: Int, v: Float)
     fun uniform2f(location: Int, x: Float, y: Float)
+    fun uniform3f(location: Int, x: Float, y: Float, z: Float)
+    fun uniform4f(location: Int, x: Float, y: Float, z: Float, w: Float)
+    fun uniformMatrix3fv(location: Int, values: FloatArray)
     fun uniformMatrix4fv(location: Int, values: FloatArray)
 
     fun genTexture(): Int
@@ -64,6 +68,7 @@ interface Gl {
     fun disable(cap: Int)
     fun blendFunc(src: Int, dst: Int)
     fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int)
+    fun drawArrays(mode: Int, first: Int, count: Int)
 }
 
 /** [Gl] on the device: each call is the [GLES30] call of the same name. */
@@ -94,7 +99,13 @@ object AndroidGl : Gl {
     override fun useProgram(program: Int) = GLES30.glUseProgram(program)
     override fun getUniformLocation(program: Int, name: String) = GLES30.glGetUniformLocation(program, name)
     override fun uniform1i(location: Int, v: Int) = GLES30.glUniform1i(location, v)
+    override fun uniform1f(location: Int, v: Float) = GLES30.glUniform1f(location, v)
     override fun uniform2f(location: Int, x: Float, y: Float) = GLES30.glUniform2f(location, x, y)
+    override fun uniform3f(location: Int, x: Float, y: Float, z: Float) = GLES30.glUniform3f(location, x, y, z)
+    override fun uniform4f(location: Int, x: Float, y: Float, z: Float, w: Float) =
+        GLES30.glUniform4f(location, x, y, z, w)
+    override fun uniformMatrix3fv(location: Int, values: FloatArray) =
+        GLES30.glUniformMatrix3fv(location, 1, false, values, 0)
     override fun uniformMatrix4fv(location: Int, values: FloatArray) =
         GLES30.glUniformMatrix4fv(location, 1, false, values, 0)
 
@@ -175,6 +186,7 @@ object AndroidGl : Gl {
     override fun blendFunc(src: Int, dst: Int) = GLES30.glBlendFunc(src, dst)
     override fun drawArraysInstanced(mode: Int, first: Int, count: Int, instances: Int) =
         GLES30.glDrawArraysInstanced(mode, first, count, instances)
+    override fun drawArrays(mode: Int, first: Int, count: Int) = GLES30.glDrawArrays(mode, first, count)
 }
 
 /**
@@ -219,4 +231,6 @@ object GlConst {
     const val ONE = 1
     const val ONE_MINUS_SRC_ALPHA = 0x0303
     const val TRIANGLE_STRIP = 0x0005
+    const val TRIANGLES = 0x0004
+    const val LINES = 0x0001
 }

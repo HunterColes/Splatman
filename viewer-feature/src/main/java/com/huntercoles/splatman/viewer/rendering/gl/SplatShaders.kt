@@ -10,6 +10,11 @@ package com.huntercoles.splatman.viewer.rendering.gl
  * sigma along the eigenvectors (each half-axis capped at 1024 px). Splats behind the near plane or with a centre
  * outside 1.2x the frustum are culled. `v_pos` is the fragment's offset in sigma units along the two axes, so the
  * fragment's Gaussian is `exp(-0.5 |v_pos|^2)` even when the cap shortened an axis.
+ *
+ * Crop box (ADR 0011): `u_cropAxes` holds the box's local axes in W as columns, so `(p - u_cropCentre) * u_cropAxes`
+ * is the centre in box coordinates. A splat whose centre is not inside (`|local| <= u_cropHalf` per axis, boundary
+ * inclusive, NaN outside, the same test as `CropBox.contains`) has its alpha multiplied by `u_cropDim`; with no box
+ * the renderer sets `u_cropDim = 1.0` and the test is skipped, so the output is unchanged.
  */
 object SplatShaders {
     const val ATTR_CORNER = 0
@@ -26,6 +31,10 @@ object SplatShaders {
         uniform mat4 u_proj;
         uniform vec2 u_focal;
         uniform vec2 u_viewport;
+        uniform float u_cropDim;
+        uniform vec3 u_cropCentre;
+        uniform mat3 u_cropAxes;
+        uniform vec3 u_cropHalf;
 
         layout(location = 0) in vec2 a_corner;
         layout(location = 1) in uint a_index;
@@ -45,7 +54,8 @@ object SplatShaders {
             uvec4 c = texelFetch(u_splats, t0, 0);
             uvec4 s = texelFetch(u_splats, ivec2(t0.x + 1, t0.y), 0);
 
-            vec4 cam = u_view * vec4(uintBitsToFloat(c.xyz), 1.0);
+            vec3 centre = uintBitsToFloat(c.xyz);
+            vec4 cam = u_view * vec4(centre, 1.0);
             vec4 clip = u_proj * cam;
             float d = -cam.z;
             float bound = 1.2 * clip.w;
@@ -98,6 +108,10 @@ object SplatShaders {
             v_color = vec4(
                 float(c.w & 255u), float((c.w >> 8u) & 255u), float((c.w >> 16u) & 255u), float(c.w >> 24u)
             ) / 255.0;
+            if (u_cropDim < 1.0) {
+                vec3 local = abs((centre - u_cropCentre) * u_cropAxes);
+                if (!all(lessThanEqual(local, u_cropHalf))) v_color.a *= u_cropDim;
+            }
         }
     """.trimIndent()
 

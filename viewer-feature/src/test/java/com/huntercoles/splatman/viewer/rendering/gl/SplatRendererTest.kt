@@ -1,5 +1,9 @@
 package com.huntercoles.splatman.viewer.rendering.gl
 
+import com.huntercoles.splatman.splat.edit.BoxFace
+import com.huntercoles.splatman.splat.edit.CropBox
+import com.huntercoles.splatman.splat.math.Quat
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
 import com.huntercoles.splatman.viewer.rendering.pack.SplatPacker
@@ -130,7 +134,7 @@ class SplatRendererTest {
         // GLSurfaceView calls onSurfaceCreated again after the EGL context was lost.
         start()
         frame()
-        assertEquals(2, gl.count("createProgram"))
+        assertEquals(4, gl.count("createProgram"), "splat and crop box programs, twice")
         assertEquals(2, splatUploads().size)
         assertTrue(gl.calls.drop(callsBefore).none { it.name == "deleteTexture" }, "old names are not deleted")
         assertEquals(1, draws().size, "no draw before the order is uploaded again")
@@ -237,5 +241,94 @@ class SplatRendererTest {
         repeat(40) { frame(stepMs = 16) }
         assertEquals(stats.last(), renderer.stats.value)
         assertEquals(8, renderer.stats.value?.splats)
+    }
+
+    private fun uniform(kind: String, name: String) = gl.named(kind).filter { it.args[0] == name.hashCode() }
+    private fun overlayDraws() = gl.named("drawArrays")
+
+    /** Draws a scene until its first order is on screen. */
+    private fun drawing() {
+        start()
+        renderer.setScene(scene())
+        frame()
+        scheduler.advanceUntilIdle()
+        frame()
+        assertEquals(1, draws().size)
+    }
+
+    @Test
+    fun `with no crop box the dim factor is one and no box is drawn`() {
+        drawing()
+        assertEquals(listOf(1f), uniform("uniform1f", "u_cropDim").map { it.args[1] })
+        assertTrue(uniform("uniform3f", "u_cropCentre").isEmpty())
+        assertTrue(overlayDraws().isEmpty())
+    }
+
+    @Test
+    fun `a crop box sets the dim uniform and draws the box, null clears it, and nothing is re-uploaded or re-sorted`() {
+        drawing()
+        val textures = gl.count("texImage2D")
+        val buffers = gl.count("bufferData")
+        val box = CropBox(Vec3(0.5f, 0f, -1f), Vec3(1f, 2f, 3f), Quat.IDENTITY)
+
+        val before = gl.calls.size
+        renderer.setCropBox(box)
+        assertEquals(before, gl.calls.size, "setCropBox makes no GL call")
+        frame()
+        scheduler.advanceUntilIdle()
+        assertEquals(SplatRenderer.CROP_DIM_ALPHA, uniform("uniform1f", "u_cropDim").last().args[1])
+        assertEquals(listOf(0.5f, 0f, -1f), uniform("uniform3f", "u_cropCentre").last().args.drop(1))
+        assertEquals(listOf(1f, 2f, 3f), uniform("uniform3f", "u_cropHalf").last().args.drop(1))
+        val axes = uniform("uniformMatrix3fv", "u_cropAxes").last().args[1] as FloatArray
+        assertTrue(floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f).contentEquals(axes))
+        assertEquals(
+            listOf(listOf(GlConst.TRIANGLES, 0, 36), listOf(GlConst.LINES, 36, 24)),
+            overlayDraws().map { it.args },
+        )
+
+        renderer.setCropBox(box.moveFace(BoxFace.X_POS, 0.5f))
+        frame()
+        scheduler.advanceUntilIdle()
+        assertEquals(listOf(1.25f, 2f, 3f), uniform("uniform3f", "u_cropHalf").last().args.drop(1))
+
+        renderer.setCropBox(null)
+        frame()
+        assertEquals(1f, uniform("uniform1f", "u_cropDim").last().args[1])
+        assertEquals(4, overlayDraws().size, "no box drawn after clearing")
+
+        assertEquals(textures, gl.count("texImage2D"), "no splat re-upload")
+        assertEquals(buffers, gl.count("bufferData"), "no order or overlay buffer re-upload")
+        assertEquals(1, gl.orderUploads.size, "no re-sort")
+    }
+
+    @Test
+    fun `a NaN or degenerate crop box is ignored and the last good box kept`() {
+        drawing()
+        val good = CropBox(Vec3(0f, 0f, 0f), Vec3(1f, 1f, 1f), Quat.IDENTITY)
+        renderer.setCropBox(good)
+        frame()
+        renderer.setCropBox(CropBox(Vec3(Float.NaN, 0f, 0f), Vec3(1f, 1f, 1f), Quat.IDENTITY))
+        frame()
+        renderer.setCropBox(CropBox(Vec3(0f, 0f, 0f), Vec3(0f, 1f, 1f), Quat.IDENTITY))
+        frame()
+        renderer.setCropBox(CropBox(Vec3(0f, 0f, 0f), Vec3(1f, Float.POSITIVE_INFINITY, 1f), Quat.IDENTITY))
+        frame()
+        val centres = uniform("uniform3f", "u_cropCentre").map { it.args.drop(1) }
+        val halves = uniform("uniform3f", "u_cropHalf").map { it.args.drop(1) }
+        assertEquals(4, centres.size)
+        assertTrue(centres.all { it == listOf(0f, 0f, 0f) }, "centres $centres")
+        assertTrue(halves.all { it == listOf(1f, 1f, 1f) }, "halves $halves")
+        assertTrue(uniform("uniform1f", "u_cropDim").takeLast(4).all { it.args[1] == SplatRenderer.CROP_DIM_ALPHA })
+    }
+
+    @Test
+    fun `the overlay program is rebuilt after a lost context`() {
+        drawing()
+        renderer.setCropBox(CropBox(Vec3(0f, 0f, 0f), Vec3(1f, 1f, 1f), Quat.IDENTITY))
+        frame()
+        start()
+        assertEquals(4, gl.count("createProgram"), "splat and overlay programs, twice")
+        frame()
+        assertEquals(4, overlayDraws().size, "the box is still drawn on the new context")
     }
 }
