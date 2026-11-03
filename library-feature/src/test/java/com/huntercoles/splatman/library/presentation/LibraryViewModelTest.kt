@@ -37,6 +37,10 @@ class LibraryViewModelTest {
     private val repository = FakeScanRepository()
     private val progress = mutableMapOf<String, MutableSharedFlow<Int?>>()
     private var canScan = true
+    private val shared = mutableListOf<List<ShareScan>>()
+    private var shareResult: (List<ShareScan>) -> SharedFiles? = { scans ->
+        SharedFiles(scans.map { "content://app.exports/exports/${it.id}.ply" }, scans.map { "${it.name}.ply" })
+    }
     private val sample = Sample.fromFileName("cactus.spz")
 
     private fun scan(id: String, status: ScanStatus = ScanStatus.READY, splats: Int = 10) =
@@ -49,6 +53,10 @@ class LibraryViewModelTest {
             buildProgress = BuildProgress { id -> progress.getOrPut(id) { MutableSharedFlow(replay = 1) } },
             scanSupport = ScanSupport { canScan },
             sizeText = SizeText { bytes -> "${bytes / 1_000_000} MB" },
+            scanSharer = ScanSharer { scans ->
+                shared += scans
+                shareResult(scans)
+            },
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -317,6 +325,208 @@ class LibraryViewModelTest {
         vm.onIntent(LibraryIntent.Rename("a", "   "))
         runCurrent()
         assertEquals(listOf("a" to "Desk plant"), repository.renamed)
+    }
+
+    private fun TestScope.events(vm: LibraryViewModel): MutableList<LibraryEvent> {
+        val events = mutableListOf<LibraryEvent>()
+        backgroundScope.launch { vm.events.toList(events) }
+        return events
+    }
+
+    @Test
+    fun `one selected scan shares one file`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b")))
+        runCurrent()
+        val events = events(vm)
+
+        vm.onIntent(LibraryIntent.LongPress("a"))
+        runCurrent()
+        assertTrue(vm.uiState.value.canShare)
+        vm.onIntent(LibraryIntent.Share())
+        runCurrent()
+
+        assertEquals(listOf(listOf(ShareScan("a", "Scan a"))), shared)
+        val files = (events.single() as LibraryEvent.Share).files
+        assertEquals(listOf("content://app.exports/exports/a.ply"), files.uris)
+        assertEquals(listOf("Scan a.ply"), files.fileNames)
+        assertFalse(vm.uiState.value.sharing)
+    }
+
+    @Test
+    fun `several selected scans share several files in selection order`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b"), scan("c")))
+        runCurrent()
+        val events = events(vm)
+
+        vm.onIntent(LibraryIntent.LongPress("c"))
+        vm.onIntent(LibraryIntent.Toggle("a"))
+        vm.onIntent(LibraryIntent.Share())
+        runCurrent()
+
+        assertEquals(listOf(listOf(ShareScan("c", "Scan c"), ShareScan("a", "Scan a"))), shared)
+        val files = (events.single() as LibraryEvent.Share).files
+        assertEquals(2, files.uris.size)
+        assertEquals(listOf("Scan c.ply", "Scan a.ply"), files.fileNames)
+    }
+
+    @Test
+    fun `a card's TalkBack Share shares that scan without a selection`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b")))
+        runCurrent()
+        val events = events(vm)
+
+        vm.onIntent(LibraryIntent.Share(setOf("b")))
+        runCurrent()
+
+        assertEquals(listOf(listOf(ShareScan("b", "Scan b"))), shared)
+        assertTrue(events.single() is LibraryEvent.Share)
+    }
+
+    @Test
+    fun `a bundled sample shares under its own name`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(emptyList())
+        runCurrent()
+        val events = events(vm)
+
+        vm.onIntent(LibraryIntent.Share(setOf(sample.id)))
+        runCurrent()
+
+        assertEquals(listOf(listOf(ShareScan(sample.id, sample.name))), shared)
+        assertTrue(events.single() is LibraryEvent.Share)
+    }
+
+    @Test
+    fun `a building scan in the selection turns Share off with its reason and shares nothing`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b", ScanStatus.PROCESSING, splats = 0)))
+        runCurrent()
+        val events = events(vm)
+
+        vm.onIntent(LibraryIntent.LongPress("a"))
+        vm.onIntent(LibraryIntent.Toggle("b"))
+        runCurrent()
+        assertEquals(ShareBlock.BUILDING, vm.uiState.value.shareBlock)
+        assertFalse(vm.uiState.value.canShare)
+
+        vm.onIntent(LibraryIntent.Share())
+        runCurrent()
+        assertTrue(shared.isEmpty())
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `a waiting or failed scan cannot be shared either`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("w", ScanStatus.CAPTURED, 0), scan("f", ScanStatus.FAILED, 0)))
+        runCurrent()
+
+        vm.onIntent(LibraryIntent.LongPress("w"))
+        runCurrent()
+        assertEquals(ShareBlock.BUILDING, vm.uiState.value.shareBlock)
+        vm.onIntent(LibraryIntent.Toggle("f"))
+        runCurrent()
+        assertEquals(ShareBlock.FAILED, vm.uiState.value.shareBlock)
+        vm.onIntent(LibraryIntent.Share(setOf("f")))
+        runCurrent()
+        assertTrue(shared.isEmpty())
+
+        vm.onIntent(LibraryIntent.ExitSelection)
+        vm.onIntent(LibraryIntent.LongPress("a"))
+        runCurrent()
+        assertNull(vm.uiState.value.shareBlock)
+    }
+
+    @Test
+    fun `a scan deleted between select and share gives the gone snackbar`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b")))
+        runCurrent()
+        val events = events(vm)
+        vm.onIntent(LibraryIntent.LongPress("a"))
+        vm.onIntent(LibraryIntent.Toggle("b"))
+        runCurrent()
+
+        repository.emit(listOf(scan("b")))
+        vm.onIntent(LibraryIntent.Share(setOf("a", "b")))
+        runCurrent()
+
+        assertTrue(shared.isEmpty())
+        assertEquals(listOf<LibraryEvent>(LibraryEvent.ShareGone), events)
+    }
+
+    @Test
+    fun `a scan waiting out its Undo window is gone too`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b")))
+        runCurrent()
+        val events = events(vm)
+        vm.onIntent(LibraryIntent.RequestDelete(setOf("a")))
+        vm.onIntent(LibraryIntent.ConfirmDelete)
+        runCurrent()
+
+        vm.onIntent(LibraryIntent.Share(setOf("a")))
+        runCurrent()
+
+        assertTrue(shared.isEmpty())
+        assertEquals(listOf<LibraryEvent>(LibraryEvent.ShareGone), events)
+    }
+
+    @Test
+    fun `a scan deleted while its file is written is gone, any other failure is a share error`() =
+        runTest(dispatcher) {
+            val vm = viewModel()
+            repository.emit(listOf(scan("a"), scan("b")))
+            runCurrent()
+            val events = events(vm)
+
+            shareResult = { null }
+            vm.onIntent(LibraryIntent.Share(setOf("a")))
+            runCurrent()
+            assertEquals(listOf<LibraryEvent>(LibraryEvent.ShareFailed), events)
+
+            shareResult = {
+                repository.emit(listOf(scan("a")))
+                null
+            }
+            vm.onIntent(LibraryIntent.Share(setOf("b")))
+            runCurrent()
+            assertEquals(listOf(LibraryEvent.ShareFailed, LibraryEvent.ShareGone), events)
+        }
+
+    @Test
+    fun `a sharer that throws is a share error, not a crash`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a")))
+        runCurrent()
+        val events = events(vm)
+
+        shareResult = { throw java.io.FileNotFoundException("gone") }
+        vm.onIntent(LibraryIntent.Share(setOf("a")))
+        runCurrent()
+
+        assertEquals(listOf<LibraryEvent>(LibraryEvent.ShareFailed), events)
+        assertFalse(vm.uiState.value.sharing)
+    }
+
+    @Test
+    fun `only content URIs reach the share sheet, never a file path`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("a"), scan("b")))
+        runCurrent()
+        val events = events(vm)
+
+        shareResult = { SharedFiles(listOf("file:///data/user/0/app/files/scans/a/splat.ply"), listOf("a.ply")) }
+        vm.onIntent(LibraryIntent.Share(setOf("a")))
+        runCurrent()
+        shareResult = { SharedFiles(listOf("content://app.exports/exports/a.ply", "/sdcard/b.ply"), listOf("a", "b")) }
+        vm.onIntent(LibraryIntent.Share(setOf("a", "b")))
+        runCurrent()
+
+        assertEquals(listOf(LibraryEvent.ShareFailed, LibraryEvent.ShareFailed), events)
     }
 
     private class FakeScanRepository : ScanRepository {

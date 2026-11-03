@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.shell
 
+import android.content.ActivityNotFoundException
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,6 +18,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.huntercoles.splatman.R
@@ -24,6 +26,9 @@ import com.huntercoles.splatman.capture.R as CaptureR
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.library.LibraryFeature
 import com.huntercoles.splatman.viewer.ViewerFeature
+import com.huntercoles.splatman.viewer.export.AndroidExportTarget
+import com.huntercoles.splatman.viewer.export.ShareRequest
+import timber.log.Timber
 
 /*
  * Stand-ins until each screen's own ticket lands (docs/design/README.md, Tickets). They only make every route
@@ -90,6 +95,7 @@ internal fun LibraryHome(
     onOpenProcessing: (String) -> Unit,
     onArDetails: () -> Unit,
 ) {
+    val context = LocalContext.current
     LibraryFeature(
         onOpenViewer = onOpenViewer,
         onOpenProcessing = onOpenProcessing,
@@ -99,6 +105,16 @@ internal fun LibraryHome(
         onArDetails = onArDetails,
         arUnsupportedTitle = stringResource(CaptureR.string.ar_unsupported_title),
         modifier = Modifier.fillMaxSize(),
+        // The viewer's share intent: ACTION_SEND or ACTION_SEND_MULTIPLE with read granted on the content:// URIs.
+        onShare = { uris, names ->
+            try {
+                context.startActivity(AndroidExportTarget.shareIntent(ShareRequest(uris, names)))
+                true
+            } catch (e: ActivityNotFoundException) {
+                Timber.w(e, "No app to share %s", names)
+                false
+            }
+        },
     )
 }
 

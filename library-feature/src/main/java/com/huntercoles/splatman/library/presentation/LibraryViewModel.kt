@@ -2,6 +2,7 @@ package com.huntercoles.splatman.library.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.repository.SampleRepository
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -41,6 +43,7 @@ private data class Controls(
     val selected: Set<String> = emptySet(),
     val confirm: Set<String>? = null,
     val pending: Set<String> = emptySet(),
+    val sharing: Boolean = false,
 )
 
 /**
@@ -48,6 +51,7 @@ private data class Controls(
  * selection mode, the delete dialog and the Undo window. Deleting hides the scans at once and deletes their folders
  * only when the window closes, so Undo needs nothing back from disk. Building scans carry their [buildProgress]
  * percent; [scanSupport] answering false dims the Scan FAB, whose tap then explains instead of opening Capture.
+ * Share has [scanSharer] write the built scans' files and hands their `content://` URIs to the screen.
  */
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -56,17 +60,21 @@ class LibraryViewModel @Inject constructor(
     private val buildProgress: BuildProgress,
     scanSupport: ScanSupport,
     private val sizeText: SizeText,
+    private val scanSharer: ScanSharer,
 ) : ViewModel() {
 
     private val controls = MutableStateFlow(Controls())
     private val scanAvailable = MutableStateFlow(true)
     private val eventChannel = Channel<LibraryEvent>(Channel.BUFFERED)
     private var commitJob: Job? = null
+    private var samplesById: Map<String, Sample> = emptyMap()
 
     /** What the screen does once: open Capture, or show why it cannot. */
     val events: Flow<LibraryEvent> = eventChannel.receiveAsFlow()
 
-    private val samples = flow { emit(sampleRepository.samples()) }.onStart { emit(emptyList()) }
+    private val samples = flow { emit(sampleRepository.samples()) }
+        .onStart { emit(emptyList()) }
+        .onEach { list -> samplesById = list.associateBy { it.id } }
 
     /** The scans with the build percent of each PROCESSING one. */
     private val scansWithPercent: Flow<Pair<List<Scan>, Map<String, Int?>>> =
@@ -115,6 +123,7 @@ class LibraryViewModel @Inject constructor(
             is LibraryIntent.Rename -> rename(intent.id, intent.name)
             LibraryIntent.Scan ->
                 eventChannel.trySend(if (scanAvailable.value) LibraryEvent.OpenScan else LibraryEvent.ArUnsupported)
+            is LibraryIntent.Share -> share(intent.ids ?: controls.value.selected)
         }
     }
 
@@ -143,7 +152,50 @@ class LibraryViewModel @Inject constructor(
             selectedIds = selected,
             confirmDelete = c.confirm,
             undo = c.pending.takeIf { it.isNotEmpty() }?.let(::PendingDelete),
+            sharing = c.sharing,
         )
+    }
+
+    /**
+     * Shares [ids] in the order given: only built scans (and bundled samples) are written; a scan deleted since it
+     * was selected ends in [LibraryEvent.ShareGone], anything but `content://` URIs back in [LibraryEvent.ShareFailed].
+     */
+    private fun share(ids: Set<String>) {
+        if (ids.isEmpty() || controls.value.sharing) return
+        controls.update { it.copy(sharing = true) }
+        viewModelScope.launch {
+            try {
+                shareEvent(ids.toList())?.let { eventChannel.send(it) }
+            } finally {
+                controls.update { it.copy(sharing = false) }
+            }
+        }
+    }
+
+    private suspend fun shareEvent(ids: List<String>): LibraryEvent? {
+        val scans = ids.map { id ->
+            samplesById[id]?.let { return@map ShareScan(it.id, it.name) }
+            // Deleted, or waiting out its Undo window: gone as far as the user can see.
+            val scan = scanRepository.get(id)?.takeIf { id !in controls.value.pending } ?: return LibraryEvent.ShareGone
+            // Share is off for a scan with no splat; a stale tap shares nothing.
+            if (scan.status != ScanStatus.READY) return null
+            ShareScan(scan.id, scan.name)
+        }
+        val files = try {
+            scanSharer.prepare(scans)
+        } catch (e: IOException) {
+            Timber.w(e, "Preparing %d share files failed", scans.size)
+            null
+        }
+        return when {
+            files == null -> if (ids.any { it !in samplesById && scanRepository.get(it) == null }) {
+                LibraryEvent.ShareGone
+            } else {
+                LibraryEvent.ShareFailed
+            }
+            !files.allContent -> LibraryEvent.ShareFailed
+            else -> LibraryEvent.Share(files)
+        }
     }
 
     private fun rename(id: String, name: String) {

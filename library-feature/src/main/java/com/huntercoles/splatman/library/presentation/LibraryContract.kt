@@ -50,6 +50,16 @@ sealed interface LibraryContent {
     data class Cards(val cards: List<LibraryCard>) : LibraryContent
 }
 
+/** Why Share is off: a scan with no splat yet (waiting or building), or one whose build failed. */
+enum class ShareBlock { BUILDING, FAILED }
+
+/** The reason [cards] cannot be shared (a failed build wins over one still to build), or null when all are built. */
+fun shareBlockOf(cards: List<LibraryCard>): ShareBlock? = when {
+    cards.any { it.state is CardState.Failed } -> ShareBlock.FAILED
+    cards.any { it.state !is CardState.Ready } -> ShareBlock.BUILDING
+    else -> null
+}
+
 /** Scans taken off the grid but kept on disk until the Undo window closes. */
 data class PendingDelete(val ids: Set<String>)
 
@@ -63,8 +73,20 @@ data class LibraryUiState(
     val undo: PendingDelete? = null,
     /** False once the phone answered that it cannot track motion: the Scan FAB dims and explains instead. */
     val scanAvailable: Boolean = true,
+    /** True while the share files are being written. */
+    val sharing: Boolean = false,
 ) {
     val selecting: Boolean get() = selectedIds.isNotEmpty()
+
+    /** Why the selection cannot be shared (a scan in it has no splat yet, or its build failed), or null. */
+    val shareBlock: ShareBlock?
+        get() {
+            val cards = (content as? LibraryContent.Cards)?.cards ?: return null
+            return shareBlockOf(cards.filter { it.id in selectedIds })
+        }
+
+    /** Share in the selection bar is on: something is selected, all of it built, and no share is being written. */
+    val canShare: Boolean get() = selecting && shareBlock == null && !sharing
 
     /** The empty state shows its own Start a scan button, so the FAB hides. */
     val showFab: Boolean get() = content !is LibraryContent.Empty
@@ -101,6 +123,9 @@ sealed interface LibraryIntent {
 
     /** Scan (the FAB or the empty state's button): opens Capture, or explains when the phone cannot track motion. */
     data object Scan : LibraryIntent
+
+    /** Shares the selection, or [ids] when given (a card's TalkBack Share action), through the share sheet. */
+    data class Share(val ids: Set<String>? = null) : LibraryIntent
 }
 
 /** One-off things the Library screen does for the ViewModel. */
@@ -110,6 +135,15 @@ sealed interface LibraryEvent {
 
     /** Show the "can't track motion" snackbar with Details (the onboarding AR page). */
     data object ArUnsupported : LibraryEvent
+
+    /** Open the share sheet for [files] (`ACTION_SEND` for one, `ACTION_SEND_MULTIPLE` for several). */
+    data class Share(val files: SharedFiles) : LibraryEvent
+
+    /** A scan to share was deleted before its file was written: say so in a snackbar. */
+    data object ShareGone : LibraryEvent
+
+    /** The share files could not be written: say so in a snackbar. */
+    data object ShareFailed : LibraryEvent
 }
 
 /**

@@ -24,7 +24,8 @@ private val PICKER_TYPES = arrayOf("*/*")
  * a new imported scan, which opens in the Viewer. Files from "Open with" arrive through `ImportRequests`.
  * [onOpenViewer] gets a READY scan's id or a sample's `sample:<file>` id; [onOpenProcessing] gets the id of a scan
  * that is not built yet or failed. On a phone that cannot track motion the Scan FAB shows [arUnsupportedTitle]
- * with Details, which calls [onArDetails] (the onboarding AR page).
+ * with Details, which calls [onArDetails] (the onboarding AR page). Share hands [onShare] the selection's
+ * `content://` share files; it answers false when no app can take them.
  */
 @Composable
 fun LibraryFeature(
@@ -36,6 +37,7 @@ fun LibraryFeature(
     onArDetails: () -> Unit,
     arUnsupportedTitle: String,
     modifier: Modifier = Modifier,
+    onShare: (uris: List<String>, fileNames: List<String>) -> Boolean = { _, _ -> false },
     importViewModel: ImportViewModel = hiltViewModel(),
 ) {
     val importState by importViewModel.uiState.collectAsStateWithLifecycle()
@@ -61,6 +63,7 @@ fun LibraryFeature(
             onSettings = onSettings,
             onAbout = onAbout,
             onArDetails = onArDetails,
+            onShare = { files -> onShare(files.uris, files.fileNames) },
         ),
         arUnsupportedTitle = arUnsupportedTitle,
         modifier = modifier,

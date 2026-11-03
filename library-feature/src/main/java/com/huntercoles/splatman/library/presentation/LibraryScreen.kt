@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -131,11 +132,14 @@ data class LibraryActions(
     val onAbout: () -> Unit,
     /** The "can't track motion" snackbar's Details: the onboarding AR page. */
     val onArDetails: () -> Unit = {},
+    /** Opens the share sheet for these `content://` files; false when no app can take them. */
+    val onShare: (SharedFiles) -> Boolean = { false },
 )
 
 /**
  * Home (docs/design/screens/library.md): the scans newest first in an adaptive grid, an empty state with Start a
- * scan, Open a file and Try a sample, selection mode with Delete and an Undo snackbar, and TalkBack actions per card.
+ * scan, Open a file and Try a sample, selection mode with Share, Delete and an Undo snackbar, and TalkBack actions
+ * per card.
  * When the phone cannot track motion the Scan FAB is dimmed and a tap shows [arUnsupportedTitle] with Details.
  */
 @Composable
@@ -153,6 +157,8 @@ fun LibraryScreen(
     var renaming by remember { mutableStateOf<LibraryCard?>(null) }
 
     val details = stringResource(R.string.lib_ar_details)
+    val shareGone = stringResource(R.string.lib_share_gone)
+    val shareError = stringResource(R.string.lib_share_error)
 
     BackHandler(enabled = state.selecting) { onIntent(LibraryIntent.ExitSelection) }
     UndoSnackbar(state.undo, snackbar, onIntent)
@@ -164,6 +170,9 @@ fun LibraryScreen(
                     val result = snackbar.showSnackbar(arUnsupportedTitle, actionLabel = details)
                     if (result == SnackbarResult.ActionPerformed) actions.onArDetails()
                 }
+                is LibraryEvent.Share -> if (!actions.onShare(event.files)) launch { snackbar.showSnackbar(shareError) }
+                LibraryEvent.ShareGone -> launch { snackbar.showSnackbar(shareGone) }
+                LibraryEvent.ShareFailed -> launch { snackbar.showSnackbar(shareError) }
             }
         }
     }
@@ -172,7 +181,7 @@ fun LibraryScreen(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             if (state.selecting) {
-                SelectionBar(state.selectedIds.size, onIntent)
+                SelectionBar(state.selectedIds.size, state.canShare, state.shareBlock, onIntent)
             } else {
                 LargeTopAppBar(
                     title = { Text(stringResource(R.string.lib_title)) },
@@ -219,6 +228,7 @@ fun LibraryScreen(
                     onLongClick = { card -> onIntent(LibraryIntent.LongPress(card.id)) },
                     onRename = { card -> renaming = card },
                     onDelete = { card -> onIntent(LibraryIntent.RequestDelete(setOf(card.id))) },
+                    onShare = { card -> onIntent(LibraryIntent.Share(setOf(card.id))) },
                 )
             }
         }
@@ -264,8 +274,13 @@ private fun HomeActions(actions: LibraryActions) {
 }
 
 @Composable
-private fun SelectionBar(count: Int, onIntent: (LibraryIntent) -> Unit) {
+private fun SelectionBar(count: Int, canShare: Boolean, block: ShareBlock?, onIntent: (LibraryIntent) -> Unit) {
     val announcement = stringResource(R.string.lib_selection_mode, count)
+    val shareDescription = when (block) {
+        ShareBlock.BUILDING -> stringResource(R.string.lib_share_building)
+        ShareBlock.FAILED -> stringResource(R.string.lib_share_failed_build)
+        null -> stringResource(R.string.lib_share)
+    }
     TopAppBar(
         title = {
             Text(
@@ -282,6 +297,9 @@ private fun SelectionBar(count: Int, onIntent: (LibraryIntent) -> Unit) {
             }
         },
         actions = {
+            IconButton(onClick = { onIntent(LibraryIntent.Share()) }, enabled = canShare) {
+                Icon(Icons.Rounded.Share, contentDescription = shareDescription)
+            }
             IconButton(onClick = { onIntent(LibraryIntent.RequestDelete()) }) {
                 Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.lib_delete))
             }
@@ -302,6 +320,7 @@ fun ScanCardGrid(
     onLongClick: (LibraryCard) -> Unit = {},
     onRename: (LibraryCard) -> Unit = {},
     onDelete: (LibraryCard) -> Unit = {},
+    onShare: (LibraryCard) -> Unit = {},
 ) {
     Box(modifier) {
         CardGrid(grid, edge) {
@@ -313,6 +332,7 @@ fun ScanCardGrid(
                     onLongClick = { onLongClick(card) },
                     onRename = { onRename(card) },
                     onDelete = { onDelete(card) },
+                    onShare = { onShare(card) },
                 )
             }
         }
@@ -412,6 +432,7 @@ private fun ScanCard(
     onLongClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val locale = Locale.getDefault()
     val shortDate = formatDate(card.createdAtMs, "d MMM", locale)
@@ -433,6 +454,9 @@ private fun ScanCard(
     }
     val renameLabel = stringResource(R.string.lib_rename)
     val deleteLabel = stringResource(R.string.lib_delete)
+    val shareLabel = stringResource(R.string.lib_share)
+    // Only a built scan has a file to send, so only its card offers Share.
+    val shareable = card.state is CardState.Ready
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -444,8 +468,9 @@ private fun ScanCard(
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 if (selecting) selected = card.selected
-                customActions = listOf(
+                customActions = listOfNotNull(
                     CustomAccessibilityAction(renameLabel) { onRename(); true },
+                    if (shareable) CustomAccessibilityAction(shareLabel) { onShare(); true } else null,
                     CustomAccessibilityAction(deleteLabel) { onDelete(); true },
                 )
             },

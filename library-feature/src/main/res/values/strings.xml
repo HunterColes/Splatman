@@ -34,6 +34,11 @@
     <string name="lib_rename">Rename</string>
     <string name="lib_name">Name</string>
     <string name="lib_delete">Delete</string>
+    <string name="lib_share">Share</string>
+    <string name="lib_share_building">Share unavailable: a selected scan is still building</string>
+    <string name="lib_share_failed_build">Share unavailable: a selected scan couldn\'t be built</string>
+    <string name="lib_share_gone">That scan was deleted before it could be shared</string>
+    <string name="lib_share_error">Couldn\'t prepare the files to share</string>
     <string name="lib_cancel">Cancel</string>
     <string name="lib_imported">Imported</string>
     <string name="lib_ar_details">Details</string>
