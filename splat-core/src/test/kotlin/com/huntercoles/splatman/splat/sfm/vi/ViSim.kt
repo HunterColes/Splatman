@@ -195,33 +195,6 @@ enum class ViScenario(val duration: Double) {
     }
 }
 
-/**
- * IMU noise. Densities are continuous-time (`rad/s/sqrt(Hz)`, `m/s^2/sqrt(Hz)`), bias walks in `rad/s^2/sqrt(Hz)` and
- * `m/s^3/sqrt(Hz)`, starting biases in rad/s and m/s^2 (S axes).
- */
-class ImuNoise(
-    val gyroDensity: Double,
-    val accelDensity: Double,
-    val gyroBiasWalk: Double,
-    val accelBiasWalk: Double,
-    val gyroBias0: DoubleArray,
-    val accelBias0: DoubleArray,
-) {
-    companion object {
-        val NONE = ImuNoise(0.0, 0.0, 0.0, 0.0, DoubleArray(3), DoubleArray(3))
-
-        /** Phone-grade MEMS: gyro 2e-3, accel 2e-2, walks 2e-5 and 5e-4, biases about 0.01 rad/s, 0.1 m/s^2. */
-        val PHONE = ImuNoise(
-            gyroDensity = 2e-3,
-            accelDensity = 2e-2,
-            gyroBiasWalk = 2e-5,
-            accelBiasWalk = 5e-4,
-            gyroBias0 = doubleArrayOf(0.01, -0.008, 0.005),
-            accelBias0 = doubleArrayOf(0.08, -0.05, 0.12),
-        )
-    }
-}
-
 @Suppress("LongParameterList") // A test fixture's knobs, every one defaulted and named at the call site.
 class ViSimConfig(
     val imuRate: Double = 200.0,
