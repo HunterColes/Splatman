@@ -48,6 +48,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0008](adr/0008-libraries.md) | Write the maths and codecs; adopt ARCore (optional), kotlinx.serialization, java.util.zip; no INRIA code |
 | [0009](adr/0009-testing.md) | JVM unit tests with fixed fixtures and stated tolerances for every conversion, codec, packet and kernel; CPU rasteriser as golden renderer |
 | [0010](adr/0010-gpu-training.md) | GPU training in a new `splat-gpu` module: GLES 3.1 compute, same sort order as the CPU, no gradient atomics, on-device parity tests with fixed tolerances; fills in point 5 of 0005 |
+| [0011](adr/0011-crop.md) | Crop: one `CropBox` in W (centre-inclusive rule, UI W-aligned only), 5..95th percentile start box, `splat.uncropped.ply` kept on first Apply with a crash-safe rename order, samples cropped to `filesDir/sample-crops/` |
 
 ## Build order (child tickets of #2)
 

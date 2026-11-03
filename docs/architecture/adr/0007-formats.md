@@ -50,11 +50,12 @@ scans/<scan-id>/
   depth/frame_00001.bin ...    # optional, little-endian f32 metres, with "depth_file_path" per frame
   seed.ply            # SeedPoints as x y z red green blue (u8); "ply_file_path": "seed.ply"
   splat.ply           # the trained result (3DGS PLY)
+  splat.uncropped.ply # optional, written by crop: the original before the first Apply (ADR 0011)
 ```
 
 `transforms.json`: top-level `camera_model: "OPENCV"`, per frame `file_path`, `transform_matrix` (`T_W_Cgl`,
 row-major 4x4), and per-frame `fl_x, fl_y, cx, cy, w, h` (intrinsics can change between frames), plus
-`timestamp_ns`. Unknown keys are ignored on read; `splatman_version` higher than known is rejected.
+`timestamp_ns`. `splat.uncropped.ply` and the crop order: [ADR 0011](0011-crop.md). Unknown keys are ignored on read; `splatman_version` higher than known is rejected.
 
 ## Import rules
 
