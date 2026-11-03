@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 
 class ImportValidatorTest {
 
@@ -100,6 +101,41 @@ class ImportValidatorTest {
             ImportValidation.TooLarge(150),
             validate("big.splat", ImportFixtures.splat(ImportFixtures.cloud(150))),
         )
+    }
+
+    @Test
+    fun `a splat file over a small heap budget is too large, not a crash`() {
+        val small = ImportValidator(maxSplats = 100, heapBudget = { 1_000L })
+        val bytes = ImportFixtures.splat(ImportFixtures.cloud(50))
+
+        assertEquals(ImportValidation.TooLarge(50), small.validate("big.splat") { ByteArrayInputStream(bytes) })
+    }
+
+    @Test
+    fun `a splat file that fits the heap budget is valid`() {
+        val roomy = ImportValidator(maxSplats = 100, heapBudget = { 1_000_000L })
+        val bytes = ImportFixtures.splat(ImportFixtures.cloud(50))
+
+        assertInstanceOf(ImportValidation.Valid::class.java, roomy.validate("ok.splat") { ByteArrayInputStream(bytes) })
+    }
+
+    @Test
+    fun `running out of memory mid-decode of a splat file is too large`() {
+        val bytes = ImportFixtures.splat(ImportFixtures.cloud(4))
+        var opens = 0
+        val result = validator.validate("big.splat") {
+            opens++
+            if (opens < 3) {
+                ByteArrayInputStream(bytes)
+            } else {
+                object : InputStream() {
+                    override fun read(): Int = throw OutOfMemoryError("test")
+                    override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("test")
+                }
+            }
+        }
+
+        assertEquals(ImportValidation.TooLarge(4), result)
     }
 
     @Test

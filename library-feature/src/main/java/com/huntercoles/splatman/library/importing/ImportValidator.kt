@@ -6,7 +6,6 @@ import com.huntercoles.splatman.splat.io.SplatFormat
 import com.huntercoles.splatman.splat.io.ply.PlyReader
 import com.huntercoles.splatman.splat.io.splat.SplatCodec
 import com.huntercoles.splatman.splat.model.SplatCloud
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import kotlin.math.abs
@@ -16,12 +15,14 @@ import kotlin.math.ln
  * Tells whether a picked file is a Gaussian splat Splatman can open (docs/design/screens/import.md, States), by
  * content, not extension (ADR 0007, [FormatDetector]): a PLY must carry the 3DGS properties (positions alone is a
  * point cloud), a `.splat` must be whole 32-byte records. Either is decoded in full, so a truncated body or a value
- * that is not a number is caught here and not in the viewer. [maxSplats] is the device budget.
+ * that is not a number is caught here and not in the viewer. [maxSplats] is the device budget; [heapBudget] is the
+ * memory free for a decode, so a file the heap cannot hold is refused as too large instead of crashing.
  * Pure Kotlin; blocking; every stream [validate]'s `open` returns is closed.
  */
 class ImportValidator(
     private val maxSplats: Long = MAX_SPLATS,
     private val shCapBytes: Long = PlyReader.SH_CAP_BYTES,
+    private val heapBudget: () -> Long = ::freeHeapBytes,
 ) {
 
     /** [open] gives a fresh stream of the file each call (it is read up to three times). */
@@ -50,6 +51,8 @@ class ImportValidator(
             open().use { PlyReader.readWithReport(it, shCapBytes).cloud }
         } catch (_: IOException) {
             return ImportValidation.Corrupt
+        } catch (_: OutOfMemoryError) {
+            return ImportValidation.TooLarge(header.splatCount.toLong())
         }
         return valid(fileName, cloud)
     }
@@ -60,24 +63,21 @@ class ImportValidator(
      */
     private fun validateSplat(fileName: String, head: ByteArray, open: () -> InputStream): ImportValidation {
         val namedSplat = extensionOf(fileName) == SPLAT_EXTENSION
-        val maxBytes = maxSplats * SPLAT_RECORD_BYTES
-        val bytes = ByteArrayOutputStream()
-        var total = 0L
-        open().use { input ->
-            val chunk = ByteArray(CHUNK_BYTES)
-            while (true) {
-                val r = input.read(chunk)
-                if (r < 0) break
-                if (total + r <= maxBytes) bytes.write(chunk, 0, r)
-                total += r
-            }
-        }
         val failed = if (namedSplat) ImportValidation.Corrupt else unsupported(fileName)
+        val total = open().use(::countBytes)
         if (FormatDetector.detect(head, total) != SplatFormat.SPLAT) return failed
-        if (total > maxBytes) {
-            return if (namedSplat) ImportValidation.TooLarge(total / SPLAT_RECORD_BYTES) else failed
+        val count = total / SPLAT_RECORD_BYTES
+        val tooLarge = if (namedSplat) ImportValidation.TooLarge(count) else failed
+        if (count > maxSplats || count * SPLAT_DECODE_BYTES_PER_SPLAT > heapBudget()) return tooLarge
+        val cloud = try {
+            val bytes = ByteArray(total.toInt())
+            val got = open().use { readUpTo(it, bytes) }
+            if (got != bytes.size) return failed
+            SplatCodec.read(bytes)
+        } catch (_: OutOfMemoryError) {
+            return tooLarge
         }
-        val result = valid(fileName, SplatCodec.read(bytes.toByteArray()))
+        val result = valid(fileName, cloud)
         return if (result is ImportValidation.Valid) result else failed
     }
 
@@ -94,6 +94,15 @@ class ImportValidator(
         private const val HEADER_BYTES = 512
         private const val CHUNK_BYTES = 1 shl 16
         private const val SPLAT_RECORD_BYTES = 32L
+
+        /**
+         * Peak heap of a `.splat` decode per splat: the 32-byte record, the decoded cloud (14 floats) and the copy
+         * `FrameConversions.fileToWorld` makes of it.
+         */
+        private const val SPLAT_DECODE_BYTES_PER_SPLAT = SPLAT_RECORD_BYTES + 2 * 14 * Float.SIZE_BYTES
+
+        /** Heap the runtime can still hand out: its cap less what is in use. */
+        fun freeHeapBytes(): Long = Runtime.getRuntime().run { maxMemory() - (totalMemory() - freeMemory()) }
         private const val SPLAT_EXTENSION = "splat"
         private const val FALLBACK_NAME = "Imported splat"
 
@@ -128,13 +137,28 @@ class ImportValidator(
 
         private fun readUpTo(input: InputStream, max: Int): ByteArray {
             val buf = ByteArray(max)
+            return buf.copyOf(readUpTo(input, buf))
+        }
+
+        /** Fills [buf] from [input] until it is full or the stream ends; the count read. */
+        private fun readUpTo(input: InputStream, buf: ByteArray): Int {
             var got = 0
-            while (got < max) {
-                val r = input.read(buf, got, max - got)
+            while (got < buf.size) {
+                val r = input.read(buf, got, buf.size - got)
                 if (r < 0) break
                 got += r
             }
-            return buf.copyOf(got)
+            return got
+        }
+
+        private fun countBytes(input: InputStream): Long {
+            val chunk = ByteArray(CHUNK_BYTES)
+            var total = 0L
+            while (true) {
+                val r = input.read(chunk)
+                if (r < 0) return total
+                total += r
+            }
         }
     }
 }
