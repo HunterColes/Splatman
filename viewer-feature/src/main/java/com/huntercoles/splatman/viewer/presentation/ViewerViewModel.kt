@@ -76,6 +76,8 @@ data class ViewerUiState(
     val source: SplatSource? = null,
     /** A crop reload just reached Ready: keep the camera, show its snackbar, then send [ViewerIntent.ReloadShown]. */
     val reloaded: ViewerReload? = null,
+    /** The import flow just opened this scan: show `imp_done` with this name, then send [ViewerIntent.ImportShown]. */
+    val importDone: String? = null,
 )
 
 sealed interface ViewerIntent {
@@ -103,11 +105,15 @@ sealed interface ViewerIntent {
 
     /** The screen showed [ViewerUiState.reloaded]. */
     data object ReloadShown : ViewerIntent
+
+    /** The screen showed [ViewerUiState.importDone]. */
+    data object ImportShown : ViewerIntent
 }
 
 /**
  * Opens a sample or a picked file through [SplatLoader] (off the main thread) and holds the result. The route's
- * `scanId` ([ARG_SCAN_ID]) opens at once: a bundled sample (`sample:<file>`) or a scan's `splat.ply`.
+ * `scanId` ([ARG_SCAN_ID]) opens at once: a bundled sample (`sample:<file>`) or a scan's `splat.ply`. When
+ * [ARG_IMPORTED] is set (the import flow opened it), the first load that reaches Ready carries `imp_done` once.
  * A new open cancels the one in flight; leaving the screen clears the ViewModel, which cancels any load still running.
  * It also holds the chrome (bars shown, auto-rotate, the one-time hint) and the scan's details, rename and delete.
  */
@@ -117,7 +123,7 @@ class ViewerViewModel @Inject constructor(
     private val scans: ViewerScanStore,
     private val hints: ViewerHintStore,
     private val settings: SettingsPreferences,
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewerUiState())
@@ -166,6 +172,7 @@ class ViewerViewModel @Inject constructor(
             ViewerIntent.EnterCrop -> enterCrop()
             is ViewerIntent.Reload -> lastSource?.let { open(it, intent.reason) }
             ViewerIntent.ReloadShown -> _uiState.update { it.copy(reloaded = null) }
+            ViewerIntent.ImportShown -> _uiState.update { it.copy(importDone = null) }
         }
     }
 
@@ -252,8 +259,16 @@ class ViewerViewModel @Inject constructor(
             }
             val record = if (next is ViewerLoad.Loaded && source is SplatSource.Scan) record(source.scanId) else null
             _uiState.update { it.mapLoad(source, next, record, reload) }
+            if (next is ViewerLoad.Loaded) markImportDone()
             if (next is ViewerLoad.Loaded) _ready.send(source)
         }
+    }
+
+    /** Once per import: a retry, a crop reload or a recreated ViewModel does not show it again. */
+    private fun markImportDone() {
+        if (savedStateHandle.get<Boolean>(ARG_IMPORTED) != true) return
+        savedStateHandle[ARG_IMPORTED] = false
+        _uiState.update { it.copy(importDone = it.title) }
     }
 
     private suspend fun record(scanId: String): ScanRecord? = try {
@@ -294,6 +309,9 @@ class ViewerViewModel @Inject constructor(
     companion object {
         /** The viewer route's argument (core/navigation `NavigationDestination.Viewer.scanId`). */
         const val ARG_SCAN_ID = "scanId"
+
+        /** The viewer route's flag (`NavigationDestination.Viewer.imported`): the import flow opened this scan. */
+        const val ARG_IMPORTED = "imported"
         private const val GENERIC_ERROR = "The file could not be opened."
     }
 }

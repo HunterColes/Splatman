@@ -177,6 +177,12 @@ fun ViewerScreen(
         }
         scope.launch { snackbar.showSnackbar(text) }
     }
+    val importDone = state.importDone
+    LaunchedEffect(importDone) {
+        if (importDone == null) return@LaunchedEffect
+        viewModel.onIntent(ViewerIntent.ImportShown)
+        scope.launch { snackbar.showSnackbar(context.getString(R.string.imp_done, importDone)) }
+    }
     val cropBox = when (val c = crop) {
         is CropUiState.Editing -> c.box
         is CropUiState.Applying -> c.box

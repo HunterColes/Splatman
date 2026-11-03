@@ -23,7 +23,7 @@ private val PICKER_TYPES = arrayOf("*/*")
  * flow (docs/design/screens/import.md): Open a file launches the system picker, the file is validated and copied into
  * a new imported scan, which opens in the Viewer. Files from "Open with" arrive through `ImportRequests`.
  * [onOpenViewer] gets a READY scan's id or a sample's `sample:<file>` id; [onOpenProcessing] gets the id of a scan
- * that is not built yet or failed. On a phone that cannot track motion the Scan FAB shows [arUnsupportedTitle]
+ * that is not built yet or failed; [onOpenImported] gets the id of a scan the import flow just made. On a phone that cannot track motion the Scan FAB shows [arUnsupportedTitle]
  * with Details, which calls [onArDetails] (the onboarding AR page). Share hands [onShare] the selection's
  * `content://` share files; it answers false when no app can take them.
  */
@@ -38,6 +38,7 @@ fun LibraryFeature(
     arUnsupportedTitle: String,
     modifier: Modifier = Modifier,
     onShare: (uris: List<String>, fileNames: List<String>) -> Boolean = { _, _ -> false },
+    onOpenImported: (String) -> Unit = onOpenViewer,
     importViewModel: ImportViewModel = hiltViewModel(),
 ) {
     val importState by importViewModel.uiState.collectAsStateWithLifecycle()
@@ -47,7 +48,7 @@ fun LibraryFeature(
     LaunchedEffect(importState.opened) {
         val opened = importState.opened ?: return@LaunchedEffect
         importViewModel.onIntent(ImportIntent.Opened)
-        onOpenViewer(opened.scanId)
+        onOpenImported(opened.scanId)
     }
 
     LibraryScreen(

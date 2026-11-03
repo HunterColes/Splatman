@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * The app's typed routes (docs/design/README.md). The serial names make Navigation's route patterns read
  * `onboarding?page={page}`, `library`, `capture`, `processing/{scanId}`, `viewer/{scanId}`, `settings` and `about`.
+ * [Viewer.imported] (a `?imported=` query argument) marks a scan the import flow just made: the Viewer shows `imp_done`.
  * [Back] is a command, not a route.
  */
 sealed class NavigationDestination {
@@ -28,7 +29,7 @@ sealed class NavigationDestination {
 
     @Serializable
     @SerialName("viewer")
-    data class Viewer(val scanId: String) : NavigationDestination()
+    data class Viewer(val scanId: String, val imported: Boolean = false) : NavigationDestination()
 
     @Serializable
     @SerialName("settings")

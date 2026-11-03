@@ -20,12 +20,14 @@ internal fun LibraryHome(
     onSettings: () -> Unit,
     onAbout: () -> Unit,
     onOpenViewer: (String) -> Unit,
+    onOpenImported: (String) -> Unit,
     onOpenProcessing: (String) -> Unit,
     onArDetails: () -> Unit,
 ) {
     val context = LocalContext.current
     LibraryFeature(
         onOpenViewer = onOpenViewer,
+        onOpenImported = onOpenImported,
         onOpenProcessing = onOpenProcessing,
         onScan = onScan,
         onSettings = onSettings,

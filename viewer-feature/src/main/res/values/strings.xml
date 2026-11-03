@@ -110,4 +110,5 @@
     <string name="crop_reverting">Restoring the original…</string>
     <string name="crop_reverted">Original restored</string>
     <string name="crop_revert_error">Couldn\'t restore the original. Try again.</string>
+    <string name="imp_done">Opened %1$s</string>
 </resources>

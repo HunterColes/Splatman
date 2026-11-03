@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -111,8 +112,14 @@ class ViewerViewModelTest {
         scanId: String? = null,
         scans: ViewerScanStore = FakeScans(),
         hints: ViewerHintStore = FakeHints(),
+        imported: Boolean? = null,
+        args: SavedStateHandle = SavedStateHandle(
+            buildMap {
+                if (scanId != null) put(ViewerViewModel.ARG_SCAN_ID, scanId)
+                if (imported != null) put(ViewerViewModel.ARG_IMPORTED, imported)
+            },
+        ),
     ): ViewerViewModel {
-        val args = SavedStateHandle(if (scanId == null) emptyMap() else mapOf(ViewerViewModel.ARG_SCAN_ID to scanId))
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -513,5 +520,44 @@ class ViewerViewModelTest {
         assertFalse(state.showHint)
         assertTrue(state.chromeVisible)
         assertTrue(hints.hintSeen)
+    }
+
+    @Test
+    fun `#196 a scan the import flow opened carries imp_done with its name once`() = test {
+        val vm = viewModel(
+            FakeLoader(mapOf(scanSource to { scene(scanId) })),
+            scanId,
+            FakeScans(mutableMapOf(scanId to record)),
+            imported = true,
+        )
+        assertNull(vm.uiState.value.importDone)
+        advanceUntilIdle()
+        assertEquals("Desk plant", vm.uiState.value.importDone)
+
+        vm.onIntent(ViewerIntent.ImportShown)
+        assertNull(vm.uiState.value.importDone)
+        vm.onIntent(ViewerIntent.Reload(ViewerReload.CROPPED))
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.importDone)
+    }
+
+    @Test
+    fun `#196 a normal open of a scan carries no imp_done`() = test {
+        assertNull(loadedScan().uiState.value.importDone)
+        val vm = viewModel(FakeLoader(mapOf(scanSource to { scene(scanId) })), scanId, imported = false)
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.importDone)
+    }
+
+    @Test
+    fun `#196 a recreated Viewer does not show imp_done again`() = test {
+        val args = SavedStateHandle(mapOf(ViewerViewModel.ARG_SCAN_ID to scanId, ViewerViewModel.ARG_IMPORTED to true))
+        val loader = FakeLoader(mapOf(scanSource to { scene(scanId) }))
+        viewModel(loader, scanId, args = args)
+        advanceUntilIdle()
+        store.clear()
+        val again = viewModel(loader, scanId, args = args)
+        advanceUntilIdle()
+        assertNull(again.uiState.value.importDone)
     }
 }

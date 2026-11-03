@@ -115,6 +115,7 @@ fun SplatmanShell(
                             onSettings = { navController.navigate(Settings) },
                             onAbout = { navController.navigate(About) },
                             onOpenViewer = { scanId -> navController.navigate(Viewer(scanId)) },
+                            onOpenImported = { scanId -> navController.navigate(Viewer(scanId, imported = true)) },
                             onOpenProcessing = { scanId -> navController.navigate(Processing(scanId)) },
                             onArDetails = { navController.navigate(Onboarding(page = OnboardingPage.CAMERA.ordinal)) },
                         )
