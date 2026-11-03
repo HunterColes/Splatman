@@ -101,7 +101,6 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.max
 
 /**
  * The splat viewer (docs/design/screens/viewer.md): a full-bleed GLES 3.0 [SplatRenderer] with the chrome floating
@@ -126,7 +125,7 @@ fun ViewerScreen(
     val cropping = crop !is CropUiState.Idle
     val context = LocalContext.current
     val view = LocalView.current
-    val camera = remember { GaussianCameraController() }
+    val camera = viewModel.camera.controller
     val renderer = remember { SplatRenderer(camera) }
     val stats by renderer.stats.collectAsStateWithLifecycle()
     DisposableEffect(renderer) { onDispose { renderer.dispose() } }
@@ -147,7 +146,7 @@ fun ViewerScreen(
     val keepPose = state.reloaded != null
     LaunchedEffect(loaded) {
         exportViewModel.setScene(loaded?.name, loaded?.cloud)
-        if (loaded != null && !keepPose) frame(camera, loaded, size)
+        if (loaded != null) viewModel.camera.frame(loaded, size, keepPose)
         renderer.setScene(loaded?.render)
     }
 
@@ -353,17 +352,6 @@ fun ViewerScreen(
         )
     }
     ExportSheet(exportViewModel, onSaved = { message -> scope.launch { snackbar.showSnackbar(message) } })
-}
-
-/** Frames [scene] in the initial view for a screen of [size] (the aspect decides which edge is short). */
-private fun frame(camera: GaussianCameraController, scene: LoadedScene, size: IntSize) {
-    val framing = scene.framing
-    synchronized(camera) {
-        camera.reset()
-        if (size.width > 0 && size.height > 0) camera.setAspectRatio(size.width.toFloat() / size.height)
-        camera.setInitialView(framing.target, framing.radius)
-        camera.setFarPlane(max(FAR_PLANE_MIN, (camera.getMaxDistance() + framing.radius) * FAR_PLANE_FACTOR))
-    }
 }
 
 /**
@@ -628,5 +616,3 @@ private const val PAN_PER_PX = 0.1f
 
 /** A pinch counts as a gesture once the spread changes by this fraction. */
 private const val PINCH_SLOP = 0.02f
-private const val FAR_PLANE_MIN = 100f
-private const val FAR_PLANE_FACTOR = 10f

@@ -131,6 +131,9 @@ class ViewerViewModel @Inject constructor(
     /** Settings > Haptics. */
     val haptics: Boolean get() = settings.haptics.value
 
+    /** The camera, kept here so a rotation keeps its pose. */
+    val camera = ViewerCamera()
+
     private var loadJob: Job? = null
     private var lastSource: SplatSource? = null
 
