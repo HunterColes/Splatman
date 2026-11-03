@@ -52,6 +52,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0013](adr/0013-library-folders.md) | Library folders as Room rows only (DB v4, `MIGRATION_3_4`, `scans.folderId`, no FK), files stay flat; `LibraryText.key` for names and search; NEWEST/OLDEST/NAME/SIZE sort in `library_prefs`; in-memory search; `library/folder/{folderId}` route |
 | [0012](adr/0012-foss-pose-source.md) | foss pose source (proposed): post-capture SfM, OpenCV in native `splat-sfm`, the rest in `splat-core` `sfm`; fallback #201 OpenVINS |
 | [0015](adr/0015-retire-arcore.md) | Retire ARCore and the `full` flavour: foss is the one build (no flavours, dependency guard on every variant); `PoseSource`/`TrackedFrame` stay as the seam for #336; removal cards #343 to #349 after #230 |
+| [0016](adr/0016-own-vio.md) | Our own VIO, staged: stage 1 visual-inertial BA after capture in Kotlin (splat-core sfm/vi) plus gyro/autofocus guidance; stage 2 live MSCKF in NDK C++ behind a start gate and an 8-week kill gate; tracking stream in the pose-free capture; clean-room rule |
 
 ## Build order (child tickets of #2)
 
