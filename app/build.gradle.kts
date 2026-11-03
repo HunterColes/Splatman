@@ -37,8 +37,11 @@ android {
         applicationId = "com.huntercoles.splatman"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.0.1"
+        // 0.0.x until Hunter says otherwise; tools/bump-version.sh steps both, once a build sent for testing (#209).
+        versionCode = 2
+        versionName = "0.0.2"
+        // About reads "<versionName> (<GIT_HASH>)"; GIT_HASH is "source" when the build has no git checkout.
+        buildConfigField("String", "GIT_HASH", "\"${gitShortHash()}\"")
         testInstrumentationRunner = "com.huntercoles.splatman.HiltTestRunner"
     }
 
@@ -209,6 +212,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     ksp(libs.room.compiler)
 
+    // app/src/test: the version guard (#209), JUnit 4 on AGP's own runner
+    testImplementation(libs.test.junit4)
+
     // tools/e2e.sh: the device tests (app/src/androidTest), on Hilt's test application (#120: fake tracker)
     androidTestImplementation(project(":splat-io"))
     androidTestImplementation(libs.hilt.testing)
@@ -221,6 +227,21 @@ dependencies {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+/**
+ * The checkout's short commit hash, read through providers.exec (configuration cache safe), or "source" when there
+ * is no .git here (an F-Droid source build), no git binary, or git fails. A detached HEAD still has a hash.
+ */
+fun gitShortHash(): String {
+    if (!rootProject.file(".git").exists()) return "source"
+    val hash = runCatching {
+        providers.exec {
+            commandLine("git", "-C", rootProject.projectDir.path, "rev-parse", "--short=7", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.get().trim()
+    }.getOrNull()
+    return hash?.takeIf { Regex("[0-9a-f]{7,40}").matches(it) } ?: "source"
 }
 
 abstract class StripBaselineProfilesTask : DefaultTask() {

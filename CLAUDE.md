@@ -55,6 +55,9 @@ skipped, not failed. Not part of the gate.
   `tools/gate-files.sh`; a PR that changes one needs its reviewer to name it.
 - Update `STATUS.md` (the Now line) at the end of a session.
 - Keep working features unless the card says to drop them; list what you removed.
+- Version: bump once for every build that goes to Hunter for testing, with `tools/bump-version.sh` (patch and
+  versionCode by one; `--dry-run` only prints them). Never go to 0.1.0 or above without Hunter; the script refuses and
+  `app/src/test/.../VersionTest` goes red outside 0.0.x. About shows `<version> (<short commit hash>)`.
 
 ## Hard rule: this repo is public
 

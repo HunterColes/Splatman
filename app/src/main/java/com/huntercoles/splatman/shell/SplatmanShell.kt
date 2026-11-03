@@ -151,7 +151,7 @@ fun SplatmanShell(
                 composable<About> {
                     screen(About) {
                         AboutFeature(
-                            versionName = BuildConfig.VERSION_NAME,
+                            versionName = aboutVersion(BuildConfig.VERSION_NAME, BuildConfig.GIT_HASH),
                             onBack = { navController.popBackStack() },
                         )
                     }
@@ -160,6 +160,9 @@ fun SplatmanShell(
         }
     }
 }
+
+/** What About shows for the version (#209): `0.0.2 (abc1234)`; [gitHash] is "source" in a build without git. */
+internal fun aboutVersion(versionName: String, gitHash: String): String = "$versionName ($gitHash)"
 
 /**
  * Moves on to [step]'s destination, first taking the screen it leaves off the back stack (Back skips it).

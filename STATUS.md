@@ -1,6 +1,6 @@
 # Status
 
-Now (2026-11-02): v0.0.1, a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
+Now (2026-11-02): v0.0.2 (About shows `0.0.2 (<short hash>)`, `tools/bump-version.sh` steps 0.0.x, #209), a prototype that is about to be rebuilt by the Company. The gate (`tools/check.sh`:
 assembleDebug, unit tests, lint) is green; detekt is not part of it (69 findings).
 `tools/e2e.sh` (headless emulator smoke test, screenshots in build/e2e/) is green: OK (14 tests), capture skipped (no ARCore).
 - Crop storage (#183): `viewer-feature/.../crop/store/` `CropStore` (`FileCropStore`): Apply/Revert/hasOriginal for scans (`splat.ply.tmp` -> `splat.uncropped.ply` kept once -> rename, ADR 0011 rule 6) and samples (`filesDir/sample-crops/<file>`, which `AndroidSplatOpener` prefers over the asset); app binds `ScanChangeListener` to `ScanRepository.refresh`. No UI calls it yet.
