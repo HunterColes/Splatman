@@ -1,6 +1,7 @@
 package com.huntercoles.splatman.splat.io.bundle
 
 import com.huntercoles.splatman.splat.frames.FrameConversions
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.SeedPoints
 import java.io.File
 import java.io.FileOutputStream
@@ -21,9 +22,12 @@ import java.nio.file.StandardCopyOption
  */
 object CaptureBundleWriter {
 
-    /** Writes [frames] and [seed] into [directory] (created if needed); frame `i` is named `frame_{i+1}`, 5 digits. */
+    /**
+     * Writes [frames], [seed] and the optional capture [subject] (frame W) into [directory] (created if needed);
+     * frame `i` is named `frame_{i+1}`, 5 digits.
+     */
     @Throws(IOException::class)
-    fun write(directory: File, frames: List<BundleFrameInput>, seed: SeedPoints) {
+    fun write(directory: File, frames: List<BundleFrameInput>, seed: SeedPoints, subject: Vec3? = null) {
         if (!directory.isDirectory && !directory.mkdirs()) throw IOException("cannot create ${directory.path}")
         Files.deleteIfExists(File(directory, TRANSFORMS_FILE).toPath())
         val json = frames.mapIndexed { i, f -> writeFrame(directory, i, f) }
@@ -32,6 +36,7 @@ object CaptureBundleWriter {
             cameraModel = CAMERA_MODEL,
             splatmanVersion = SPLATMAN_BUNDLE_VERSION,
             plyFilePath = SEED_FILE,
+            subject = subject?.let { listOf(it.x, it.y, it.z) },
             frames = json,
         )
         writeAtomic(File(directory, TRANSFORMS_FILE), encode(doc).toByteArray(Charsets.UTF_8))

@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.DepthImage
 import com.huntercoles.splatman.splat.model.Distortion
@@ -36,7 +37,13 @@ object CaptureBundleReader {
         }
         val frames = doc.frames.mapIndexed { i, f -> readFrame(directory, i, f) }
         val seed = doc.plyFilePath?.let { readSeedPly(existing(directory, it, "ply_file_path")) }
-        return CaptureBundle(directory, doc.splatmanVersion, frames, seed)
+        val subject = doc.subject?.let {
+            if (it.size != 3 || it.any { c -> !c.isFinite() }) {
+                throw CaptureBundleException("$TRANSFORMS_FILE: splatman_subject must be 3 finite numbers")
+            }
+            Vec3(it[0], it[1], it[2])
+        }
+        return CaptureBundle(directory, doc.splatmanVersion, frames, seed, subject)
     }
 
     /** Loads a frame's depth file (little-endian f32 metres); null when it has no depth or no depth size. */

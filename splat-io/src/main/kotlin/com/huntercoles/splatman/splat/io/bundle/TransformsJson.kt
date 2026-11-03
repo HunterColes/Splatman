@@ -14,6 +14,8 @@ internal data class TransformsJson(
     /** Missing in a plain Nerfstudio file: read as version 1. */
     @SerialName("splatman_version") val splatmanVersion: Int = 1,
     @SerialName("ply_file_path") val plyFilePath: String? = null,
+    /** The capture subject `[x, y, z]`, frame W, metres; absent in older bundles and plain Nerfstudio files. */
+    @SerialName("splatman_subject") val subject: List<Float>? = null,
     val frames: List<FrameJson>,
 )
 

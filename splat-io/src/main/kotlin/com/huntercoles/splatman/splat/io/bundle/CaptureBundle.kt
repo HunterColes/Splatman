@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.CameraPose
 import com.huntercoles.splatman.splat.model.DepthImage
@@ -50,6 +51,8 @@ class CaptureBundle(
     val frames: List<BundleFrame>,
     /** The seed points from `ply_file_path` (frame W), or null when the bundle names none. */
     val seed: SeedPoints?,
+    /** The capture subject (the point the coverage ring circled), frame W, metres; null when the bundle has none. */
+    val subject: Vec3? = null,
 )
 
 /** A bundle that cannot be read: the message names the file or key at fault. */

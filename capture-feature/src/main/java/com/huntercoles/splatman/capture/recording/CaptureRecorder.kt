@@ -267,7 +267,7 @@ class CaptureRecorder(
         var moved = false
         try {
             stagingRoot.listFiles()?.forEach { it.deleteRecursively() } // left by a process that died mid-save
-            CaptureBundleWriter.write(staging, frames, checkNotNull(seeds).toSeedPoints())
+            CaptureBundleWriter.write(staging, frames, checkNotNull(seeds).toSeedPoints(), coverage.subject)
             currentCoroutineContext().ensureActive()
             if (!scansRoot.isDirectory && !scansRoot.mkdirs()) throw IOException("cannot create ${scansRoot.path}")
             if (!staging.renameTo(target)) throw IOException("cannot move the scan into ${scansRoot.path}")

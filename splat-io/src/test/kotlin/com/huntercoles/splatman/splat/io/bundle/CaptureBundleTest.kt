@@ -96,6 +96,32 @@ class CaptureBundleTest {
     }
 
     @Test
+    fun `the subject round-trips in frame W`() {
+        val dir = File(tmp, "subject")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed, Vec3(0.5f, -1.25f, 2f))
+        assertTrue(File(dir, "transforms.json").readText().contains("\"splatman_subject\""))
+        assertEquals(Vec3(0.5f, -1.25f, 2f), CaptureBundleReader.read(dir).subject)
+    }
+
+    @Test
+    fun `a bundle without a subject reads it as null`() {
+        val dir = File(tmp, "nosubject")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed)
+        assertTrue(!File(dir, "transforms.json").readText().contains("splatman_subject"))
+        assertNull(CaptureBundleReader.read(dir).subject)
+    }
+
+    @Test
+    fun `a malformed subject is reported by key`() {
+        val dir = File(tmp, "badsubject")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed)
+        val json = File(dir, "transforms.json")
+        json.writeText(json.readText().replace("\"splatman_version\": 1", "\"splatman_version\": 1, \"splatman_subject\": [1, 2]"))
+        val e = assertThrows<CaptureBundleException> { CaptureBundleReader.read(dir) }
+        assertTrue(e.message!!.contains("splatman_subject"), e.message)
+    }
+
+    @Test
     fun `a newer splatman_version is rejected`() {
         val dir = File(tmp, "newer")
         CaptureBundleWriter.write(dir, goldenFrames(), seed)

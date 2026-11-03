@@ -177,6 +177,7 @@ class CaptureRecorderTest {
             val bundle = CaptureBundleReader.read(folder)
             assertEquals(25, bundle.frames.size)
             assertEquals(live.seedPoints, bundle.seed?.count)
+            assertEquals(Vec3.ZERO, bundle.subject)
             assertEquals(25, File(folder, "images").listFiles()!!.size)
             bundle.frames.forEachIndexed { i, f ->
                 val expected = source.poses[2 * i]
