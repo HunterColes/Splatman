@@ -64,6 +64,7 @@ fun SplatmanShell(
     themeMode: ThemeMode,
     requestedRoute: NavigationDestination?,
     onOnboardingDone: () -> Unit,
+    onRequestedRouteOpened: () -> Unit = {},
     navController: NavHostController = rememberNavController(),
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -72,7 +73,10 @@ fun SplatmanShell(
     SystemBars(dark = barsDark)
 
     LaunchedEffect(requestedRoute) {
-        if (requestedRoute != null) navController.navigate(requestedRoute)
+        if (requestedRoute != null) {
+            navController.navigate(requestedRoute)
+            onRequestedRouteOpened()
+        }
     }
 
     val reducedMotion = rememberAnimatorScale() == 0f
