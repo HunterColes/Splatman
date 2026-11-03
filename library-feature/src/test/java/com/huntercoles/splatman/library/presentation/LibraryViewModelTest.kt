@@ -11,7 +11,9 @@ import com.huntercoles.splatman.library.domain.repository.ScanRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -42,6 +44,11 @@ class LibraryViewModelTest {
         SharedFiles(scans.map { "content://app.exports/exports/${it.id}.ply" }, scans.map { "${it.name}.ply" })
     }
     private val sample = Sample.fromFileName("cactus.spz")
+    private var deletes: PendingDeletes? = null
+
+    /** The app-wide deferred delete the Viewer and every Library ViewModel share. */
+    private fun TestScope.pendingDeletes(): PendingDeletes =
+        deletes ?: PendingDeletes(repository, backgroundScope).also { deletes = it }
 
     private fun scan(id: String, status: ScanStatus = ScanStatus.READY, splats: Int = 10) =
         Scan(id, "Scan $id", createdAtMs = 1_000, status = status, splatCount = splats, keyframeCount = 3, folder = id)
@@ -57,6 +64,7 @@ class LibraryViewModelTest {
                 shared += scans
                 shareResult(scans)
             },
+            pendingDeletes = pendingDeletes(),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -528,6 +536,71 @@ class LibraryViewModelTest {
 
         assertEquals(listOf(LibraryEvent.ShareFailed, LibraryEvent.ShareFailed), events)
     }
+
+    @Test
+    fun `a Viewer delete shows the Library's snackbar once and deletes when the window closes`() =
+        runTest(dispatcher) {
+            repository.emit(listOf(scan("a"), scan("b")))
+            val vm = viewModel()
+            val offers = mutableListOf<PendingDelete?>()
+            backgroundScope.launch { vm.uiState.map { it.undo }.distinctUntilChanged().toList(offers) }
+            runCurrent()
+
+            // The Viewer's ViewerScanStore.delete, then it pops back to this Library.
+            pendingDeletes().defer(setOf("a"))
+            runCurrent()
+            assertEquals(listOf("b"), vm.cards().map { it.id })
+            assertEquals(PendingDelete(setOf("a")), vm.uiState.value.undo)
+
+            // Rotation: a new collector sees the same one offer, not a second.
+            val rotated = viewModel()
+            assertEquals(PendingDelete(setOf("a")), rotated.uiState.value.undo)
+
+            advanceTimeBy(UNDO_WINDOW_MS + 1)
+            runCurrent()
+            assertEquals(listOf("a"), repository.deleted)
+            assertNull(vm.uiState.value.undo)
+            assertNull(viewModel().uiState.value.undo, "a Library opened after the window offers nothing")
+            assertEquals(listOf(null, PendingDelete(setOf("a")), null), offers)
+        }
+
+    @Test
+    fun `Undo on the Library brings back a scan deleted in the Viewer`() = runTest(dispatcher) {
+        repository.emit(listOf(scan("a")))
+        val vm = viewModel()
+        pendingDeletes().defer(setOf("a"))
+        runCurrent()
+        assertEquals(LibraryContent.Empty, vm.uiState.value.content)
+
+        vm.onIntent(LibraryIntent.Undo)
+        advanceTimeBy(UNDO_WINDOW_MS + 1)
+        runCurrent()
+
+        assertEquals(listOf("a"), vm.cards().map { it.id })
+        assertNull(vm.uiState.value.undo)
+        assertTrue(repository.deleted.isEmpty())
+    }
+
+    @Test
+    fun `a Library delete inside a Viewer delete's window commits the first and offers the second`() =
+        runTest(dispatcher) {
+            repository.emit(listOf(scan("a"), scan("b"), scan("c")))
+            val vm = viewModel()
+            pendingDeletes().defer(setOf("a"))
+            runCurrent()
+
+            vm.onIntent(LibraryIntent.RequestDelete(setOf("b")))
+            vm.onIntent(LibraryIntent.ConfirmDelete)
+            runCurrent()
+            assertEquals(listOf("a"), repository.deleted)
+            assertEquals(PendingDelete(setOf("b")), vm.uiState.value.undo)
+            assertEquals(listOf("c"), vm.cards().map { it.id })
+
+            vm.onIntent(LibraryIntent.Undo)
+            runCurrent()
+            assertEquals(listOf("b", "c"), vm.cards().map { it.id })
+            assertEquals(listOf("a"), repository.deleted)
+        }
 
     private class FakeScanRepository : ScanRepository {
         private val lists = MutableStateFlow<List<Scan>?>(null)

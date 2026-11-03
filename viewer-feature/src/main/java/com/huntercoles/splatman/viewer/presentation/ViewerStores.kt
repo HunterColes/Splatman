@@ -15,6 +15,7 @@ interface ViewerScanStore {
 
     suspend fun rename(scanId: String, name: String)
 
+    /** Hides the scan and deletes it once the Library's Undo window closes; the viewer then pops to the Library. */
     suspend fun delete(scanId: String)
 }
 

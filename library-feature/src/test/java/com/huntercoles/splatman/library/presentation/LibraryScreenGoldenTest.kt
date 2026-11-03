@@ -6,6 +6,8 @@ import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.repository.SampleRepository
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
@@ -36,6 +38,7 @@ class LibraryScreenGoldenTest {
         scanSupport = ScanSupport { true },
         sizeText = SizeText { bytes -> String.format(Locale.US, "%.0f MB", bytes / 1e6) },
         scanSharer = ScanSharer { null },
+        pendingDeletes = PendingDeletes(FixedScans(SCANS), CoroutineScope(Dispatchers.Unconfined)),
     )
 
     private fun capture(dark: Boolean) =
