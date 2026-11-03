@@ -141,7 +141,7 @@ class ScanRepositoryImpl(
         }
         val status = when {
             splatCount != null -> ScanStatus.READY
-            !splat.exists() && File(folder, TRANSFORMS_FILE).isFile -> ScanStatus.CAPTURED
+            !splat.exists() && (File(folder, TRANSFORMS_FILE).isFile || File(folder, CAPTURE_FILE).isFile) -> ScanStatus.CAPTURED
             else -> ScanStatus.FAILED
         }
         val keyframes = File(folder, IMAGES_DIR).listFiles()?.count { it.isFile } ?: 0
@@ -153,7 +153,7 @@ class ScanRepositoryImpl(
             splatCount = splatCount ?: 0,
             keyframeCount = keyframes,
             folder = folder.name,
-            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists(),
+            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists() && !File(folder, CAPTURE_FILE).exists(),
         )
     }
 
@@ -181,6 +181,7 @@ class ScanRepositoryImpl(
     companion object {
         const val SPLAT_FILE = "splat.ply"
         const val TRANSFORMS_FILE = "transforms.json"
+        const val CAPTURE_FILE = "capture.json"
         const val IMAGES_DIR = "images"
         const val THUMBNAIL_FILE = "thumbnail.png"
     }

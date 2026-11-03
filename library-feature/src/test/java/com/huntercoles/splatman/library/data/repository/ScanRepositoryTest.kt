@@ -158,6 +158,29 @@ class ScanRepositoryTest {
     }
 
     @Test
+    fun `sync adopts a pose-free capture as CAPTURED and keeps broken or bare ones FAILED`() = runTest {
+        val ok = File(root, "pose-free").apply { mkdirs() }
+        File(ok, "capture.json").writeText("{}")
+        File(ok, "images").mkdirs()
+        File(ok, "images/a.jpg").writeText("x")
+        File(ok, "images/b.jpg").writeText("x")
+        File(root, "pose-broken").apply { mkdirs() }.also {
+            File(it, "capture.json").writeText("{}")
+            File(it, "splat.ply").writeText("not a ply")
+        }
+        File(root, "only-images").apply { mkdirs() }.resolve("images").apply { mkdirs() }.resolve("a.jpg").writeText("x")
+
+        repository.sync()
+
+        val got = repository.get("pose-free")!!
+        assertEquals(ScanStatus.CAPTURED, got.status)
+        assertEquals(2, got.keyframeCount)
+        assertEquals(false, got.imported)
+        assertEquals(ScanStatus.FAILED, repository.get("pose-broken")!!.status)
+        assertEquals(ScanStatus.FAILED, repository.get("only-images")!!.status)
+    }
+
+    @Test
     fun `sync keeps known rows and drops rows whose folder is gone`() = runTest {
         val kept = repository.create("kept", createdAtMs = 1)
         repository.rename(kept.id, "Desk plant")
