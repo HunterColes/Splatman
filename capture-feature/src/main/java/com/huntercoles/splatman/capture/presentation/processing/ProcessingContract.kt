@@ -2,6 +2,7 @@ package com.huntercoles.splatman.capture.presentation.processing
 
 import com.huntercoles.splatman.capture.R
 import com.huntercoles.splatman.capture.processing.ProcessingState
+import com.huntercoles.splatman.splat.model.SplatCloud
 import java.io.File
 
 /** What the user did on the Processing screen. */
@@ -47,7 +48,8 @@ sealed interface ProcessingEvent {
 /**
  * The Processing screen's state: the scan's [ProcessingState] ([missing] when the route names no scan folder), the
  * [eta] line, whether the frames are still on the phone ([framesKept]; Try again needs them) and the capture's
- * [lastFrame] (the preview placeholder), when there is one.
+ * [lastFrame] (the preview placeholder), when there is one. [snapshot] is the newest trainer snapshot this screen has
+ * seen (kept past Done: it is then the finished splat) and [thumbnail] the scan's saved still, when there is one.
  */
 data class ProcessingUiState(
     val scanId: String,
@@ -56,6 +58,8 @@ data class ProcessingUiState(
     val eta: Eta = Eta.Unknown,
     val framesKept: Boolean = true,
     val lastFrame: File? = null,
+    val snapshot: SplatCloud? = null,
+    val thumbnail: File? = null,
 ) {
     /** The stage and overall progress, or null when nothing runs (an indeterminate bar while starting). */
     val progress: StageProgress? get() = state.stageProgress()

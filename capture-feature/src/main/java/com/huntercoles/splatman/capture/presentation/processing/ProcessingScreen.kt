@@ -2,6 +2,7 @@ package com.huntercoles.splatman.capture.presentation.processing
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.text.format.Formatter
@@ -57,6 +58,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
@@ -70,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -88,8 +91,12 @@ import com.huntercoles.splatman.capture.processing.ProcessingState
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDialog
 import com.huntercoles.splatman.core.design.SplatDimens
+import com.huntercoles.splatman.splat.model.SplatCloud
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 
 /** Width from which the preview sits left of the progress column. */
@@ -98,6 +105,7 @@ private val PreviewMaxWidth = 480.dp
 private val BarHeight = 8.dp
 private const val DIMMED = 0.4f
 private const val ANNOUNCE_STEP = 25
+private const val FULL_TURN_DEG = 360f
 
 /**
  * The Processing route (docs/design/screens/processing.md): the scan's run with its stage, step, overall bar and time
@@ -224,29 +232,46 @@ fun ProcessingScreen(
     }
 }
 
-/** The preview square: the capture's last frame, blurred while building, dimmed with an error icon on failure. */
+/**
+ * The preview square: the newest trainer snapshot, slowly turning, while building; the finished splat on Done; the
+ * capture's last frame (blurred) until the first snapshot, dimmed with an error icon on failure.
+ */
 @Composable
 private fun Preview(state: ProcessingUiState, modifier: Modifier) {
-    val frame by rememberFrame(state.lastFrame)
+    val source = state.previewSource()
+    val frame by rememberFrame(if (source == PreviewSource.Placeholder) state.lastFrame else null)
+    val live by rememberLive(source)
     val shape = RoundedCornerShape(SplatDimens.CornerLarge)
     Box(
         modifier = modifier.aspectRatio(1f).clip(shape).background(SplatColors.ViewerBackground),
         contentAlignment = Alignment.Center,
     ) {
-        frame?.let { image ->
-            val look = when {
-                state.needsPoses -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
-                state.failed -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
-                state.done -> Modifier.fillMaxSize()
-                else -> Modifier.fillMaxSize().blur(SplatDimens.SpacingLarge)
+        val splat = live
+        if (source != PreviewSource.Placeholder && splat != null) {
+            Crossfade(targetState = splat, label = "preview") { image ->
+                Image(
+                    bitmap = image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
-            Image(
-                bitmap = image,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alpha = if (state.failed) DIMMED else 1f,
-                modifier = look,
-            )
+        } else {
+            frame?.let { image ->
+                val look = when {
+                    state.needsPoses -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
+                    state.failed -> Modifier.fillMaxSize().blur(SplatDimens.SpacingSmall)
+                    state.done -> Modifier.fillMaxSize()
+                    else -> Modifier.fillMaxSize().blur(SplatDimens.SpacingLarge)
+                }
+                Image(
+                    bitmap = image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = if (state.failed) DIMMED else 1f,
+                    modifier = look,
+                )
+            }
         }
         if (state.failed || state.missing) {
             Icon(
@@ -259,6 +284,50 @@ private fun Preview(state: ProcessingUiState, modifier: Modifier) {
     }
 }
 
+/**
+ * The splat image for [source], drawn off the main thread: a [PreviewSource.Cloud] turning [LivePreview.TURN_STEP_DEG]
+ * every [LivePreview.TURN_FRAME_MS] while [PreviewSource.Cloud.turning] (the angle carries over to the next
+ * snapshot), else once at the angle reached; a [PreviewSource.Still] decoded. The last image stays until the next is ready.
+ */
+@Composable
+private fun rememberLive(source: PreviewSource): State<ImageBitmap?> {
+    val image = remember { mutableStateOf<ImageBitmap?>(null) }
+    val yaw = remember { mutableFloatStateOf(0f) }
+    val background = SplatColors.ViewerBackground.toArgb()
+    LaunchedEffect(source) {
+        when (source) {
+            PreviewSource.Placeholder -> image.value = null
+            is PreviewSource.Still -> image.value = withContext(Dispatchers.IO) { decodeFrame(source.file, 1) }
+            is PreviewSource.Cloud -> if (source.turning) {
+                while (true) {
+                    renderSplat(source.cloud, yaw.floatValue, background)?.let { image.value = it }
+                    delay(LivePreview.TURN_FRAME_MS)
+                    yaw.floatValue = (yaw.floatValue + LivePreview.TURN_STEP_DEG) % FULL_TURN_DEG
+                }
+            } else {
+                renderSplat(source.cloud, yaw.floatValue, background)?.let { image.value = it }
+            }
+        }
+    }
+    return image
+}
+
+private suspend fun renderSplat(cloud: SplatCloud, yawDeg: Float, background: Int): ImageBitmap? =
+    withContext(Dispatchers.Default) {
+        try {
+            val pixels = LivePreview.render(cloud, yawDeg, background)
+            Bitmap.createBitmap(pixels, LivePreview.SIZE, LivePreview.SIZE, Bitmap.Config.ARGB_8888).asImageBitmap()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Timber.w(e, "Drawing the live preview failed")
+            null
+        } catch (e: OutOfMemoryError) {
+            Timber.w(e, "Out of memory drawing the live preview")
+            null
+        }
+    }
+
 @Composable
 private fun rememberFrame(file: File?): State<ImageBitmap?> {
     val frame = remember(file) { mutableStateOf<ImageBitmap?>(null) }
@@ -268,8 +337,8 @@ private fun rememberFrame(file: File?): State<ImageBitmap?> {
     return frame
 }
 
-private fun decodeFrame(file: File): ImageBitmap? = runCatching {
-    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+private fun decodeFrame(file: File, sampleSize: Int = 2): ImageBitmap? = runCatching {
+    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     BitmapFactory.decodeFile(file.path, options)?.asImageBitmap()
 }.getOrNull()
 

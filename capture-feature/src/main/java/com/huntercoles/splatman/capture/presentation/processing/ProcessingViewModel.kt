@@ -10,7 +10,9 @@ import com.huntercoles.splatman.capture.processing.ProcessingStarter
 import com.huntercoles.splatman.capture.processing.ProcessingState
 import com.huntercoles.splatman.capture.processing.ScanDeleter
 import com.huntercoles.splatman.capture.processing.ScanFolders
+import com.huntercoles.splatman.capture.processing.ThumbnailWriter
 import com.huntercoles.splatman.core.preferences.SettingsPreferences
+import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.viewer.export.AndroidExportTarget
 import com.huntercoles.splatman.viewer.export.ExportTarget
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +55,10 @@ class ProcessingViewModel @Inject constructor(
     private val folder = folders.folder(scanId)?.takeIf { it.isDirectory }
     private var eta = EtaEstimator()
     private var cachedFrames: List<File>? = null
+
+    /** The newest trainer snapshot seen; on Done it is the finished splat. Cleared when a run is started again. */
+    @Volatile
+    private var latestSnapshot: SplatCloud? = null
 
     /** What the screen shows. */
     val uiState: StateFlow<ProcessingUiState> = if (folder == null) {
@@ -107,6 +113,7 @@ class ProcessingViewModel @Inject constructor(
     private fun retry(scan: File) {
         if (repository.isRunning(scan)) return
         eta = EtaEstimator()
+        latestSnapshot = null
         starter.start(scan)
     }
 
@@ -147,12 +154,19 @@ class ProcessingViewModel @Inject constructor(
         // The frames do not change while a run goes; list them only when it is not running (a tick each iteration).
         val frames = if (progress != null && cachedFrames != null) cachedFrames else listFrames(scan)
         cachedFrames = frames
+        latestSnapshot = heldSnapshot(latestSnapshot, state)
         return ProcessingUiState(
             scanId = scanId,
             state = state,
             eta = time,
             framesKept = !frames.isNullOrEmpty(),
             lastFrame = frames?.lastOrNull(),
+            snapshot = latestSnapshot,
+            thumbnail = if (state is ProcessingState.Done) {
+                File(scan, ThumbnailWriter.FILE).takeIf { it.isFile }
+            } else {
+                null
+            },
         )
     }
 
