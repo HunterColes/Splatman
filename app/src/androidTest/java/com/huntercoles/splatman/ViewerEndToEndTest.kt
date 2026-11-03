@@ -68,9 +68,8 @@ class ViewerEndToEndTest {
     @Test
     fun a1_cactusSh1SampleShowsItsSplatCount() = sampleShowsSplatCount("Cactus sh1", "139,410")
 
-    /** Expected to fail until #165: the viewer refuses SPZ ("SPZ files cannot be opened yet."). */
     @Test
-    fun a1_cactusSpzSampleShowsItsSplatCount() = expectedToFail("#165") { sampleShowsSplatCount("Cactus", "139,410") }
+    fun a1_cactusSpzSampleShowsItsSplatCount() = sampleShowsSplatCount("Cactus", "139,410")
 
     @Test
     fun a1_measuringTapeSampleShowsItsSplatCount() = sampleShowsSplatCount("Measuring tape", "19,469")

@@ -2,6 +2,7 @@ package com.huntercoles.splatman.viewer.presentation.load
 
 import com.huntercoles.splatman.splat.io.ply.PlyWriter
 import com.huntercoles.splatman.splat.io.splat.SplatCodec
+import com.huntercoles.splatman.splat.io.spz.SpzCodec
 import com.huntercoles.splatman.splat.model.SplatCloud
 import java.io.ByteArrayOutputStream
 
@@ -24,4 +25,6 @@ object TestClouds {
     fun ply(cloud: SplatCloud): ByteArray = ByteArrayOutputStream().also { PlyWriter.write(cloud, it) }.toByteArray()
 
     fun splat(cloud: SplatCloud): ByteArray = SplatCodec.write(cloud)
+
+    fun spz(cloud: SplatCloud): ByteArray = SpzCodec.write(cloud)
 }

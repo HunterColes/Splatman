@@ -4,6 +4,7 @@ import com.huntercoles.splatman.splat.io.FormatDetector
 import com.huntercoles.splatman.splat.io.SplatFormat
 import com.huntercoles.splatman.splat.io.ply.PlyReader
 import com.huntercoles.splatman.splat.io.splat.SplatCodec
+import com.huntercoles.splatman.splat.io.spz.SpzCodec
 import com.huntercoles.splatman.splat.model.SplatCloud
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -19,13 +20,16 @@ class DecodedSplats(val cloud: SplatCloud, val format: SplatFormat, val shDroppe
 /**
  * Opens a splat file by content (ADR 0007, [FormatDetector]): a PLY is streamed through [PlyReader] with the ADR 0002
  * SH memory cap [shCapBytes], so a 1M-splat SH3 file keeps degree 0 instead of running out of memory; anything else
- * is read whole (at most [maxRawBytes]) and decoded as `.splat` when its size fits. SPZ is recognised but not read yet.
+ * is read whole (at most [maxRawBytes]) and decoded as `.splat` when its size fits. An SPZ is streamed through
+ * [SpzCodec], which refuses a header whose decoded arrays exceed [spzBudgetBytes] (null: half the heap) before
+ * allocating; its SH is kept whole (SPZ has no streaming SH cap), so [DecodedSplats.shDropped] is false.
  * A decoded cloud must pass [SplatSanity] (finite, in bounds) or it is refused like an unreadable file.
  * Pure Kotlin; blocking; the stream is not closed.
  */
 class SplatFileDecoder(
     private val shCapBytes: Long = PlyReader.SH_CAP_BYTES,
     private val maxRawBytes: Long = MAX_RAW_BYTES,
+    private val spzBudgetBytes: Long? = null,
 ) {
     fun decode(input: InputStream): DecodedSplats =
         decodeUnchecked(input).also { SplatSanity.requireUsable(it.cloud) }
@@ -39,7 +43,16 @@ class SplatFileDecoder(
         val head = header.copyOf(got)
         if (got == 0) throw SplatFileException("The file is empty.")
 
-        if (FormatDetector.detect(head, got.toLong()) == SplatFormat.PLY) {
+        val byHead = FormatDetector.detect(head, got.toLong())
+        if (byHead == SplatFormat.SPZ) {
+            val cloud = try {
+                if (spzBudgetBytes == null) SpzCodec.read(stream) else SpzCodec.read(stream, spzBudgetBytes)
+            } catch (e: IOException) {
+                throw SplatFileException("Not a readable SPZ: ${e.message}", e)
+            }
+            return DecodedSplats(cloud, SplatFormat.SPZ, shDropped = false)
+        }
+        if (byHead == SplatFormat.PLY) {
             val result = try {
                 PlyReader.readWithReport(stream, shCapBytes)
             } catch (e: IOException) {
@@ -51,8 +64,7 @@ class SplatFileDecoder(
         val bytes = readAll(stream)
         return when (FormatDetector.detect(head, bytes.size.toLong())) {
             SplatFormat.SPLAT -> DecodedSplats(SplatCodec.read(bytes), SplatFormat.SPLAT, shDropped = false)
-            SplatFormat.SPZ -> throw SplatFileException("SPZ files cannot be opened yet.")
-            else -> throw SplatFileException("Not a splat file (PLY or .splat).")
+            else -> throw SplatFileException("Not a splat file (PLY, SPZ or .splat).")
         }
     }
 

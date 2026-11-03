@@ -54,7 +54,7 @@ class SplatFileDecoderTest {
     @Test
     fun `bytes that are no splat format are rejected`() {
         val e = assertThrows<SplatFileException> { decoder.decode(ByteArray(33) { 7 }.inputStream()) }
-        assertEquals("Not a splat file (PLY or .splat).", e.message)
+        assertEquals("Not a splat file (PLY, SPZ or .splat).", e.message)
     }
 
     @Test
@@ -65,12 +65,31 @@ class SplatFileDecoderTest {
     }
 
     @Test
-    fun `an SPZ file is recognised but not opened yet`() {
+    fun `an SPZ file is detected by content and read in frame W`() {
+        val cloud = TestClouds.cloud(6, shDegree = 1)
+        val decoded = decoder.decode(TestClouds.spz(cloud).inputStream())
+        assertEquals(SplatFormat.SPZ, decoded.format)
+        assertEquals(6, decoded.cloud.count)
+        assertEquals(1, decoded.cloud.shDegree)
+        assertFalse(decoded.shDropped)
+        assertArrayEquals(cloud.positions, decoded.cloud.positions, 0.01f)
+    }
+
+    @Test
+    fun `an SPZ whose decoded size is over the budget is refused with a message`() {
+        val e = assertThrows<SplatFileException> {
+            SplatFileDecoder(spzBudgetBytes = 64).decode(TestClouds.spz(TestClouds.cloud(6)).inputStream())
+        }
+        assertTrue(e.message!!.startsWith("Not a readable SPZ"), e.message)
+    }
+
+    @Test
+    fun `a truncated SPZ is rejected as unreadable`() {
         val gz = ByteArrayOutputStream().also { out ->
             GZIPOutputStream(out).use { it.write("NGSP".toByteArray() + ByteArray(12)) }
         }.toByteArray()
         val e = assertThrows<SplatFileException> { decoder.decode(gz.inputStream()) }
-        assertEquals("SPZ files cannot be opened yet.", e.message)
+        assertTrue(e.message!!.startsWith("Not a readable SPZ"), e.message)
     }
 
     @Test
