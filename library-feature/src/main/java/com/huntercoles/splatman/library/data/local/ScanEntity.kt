@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.library.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.huntercoles.splatman.library.domain.model.Scan
@@ -15,6 +16,7 @@ data class ScanEntity(
     val splatCount: Int,
     val keyframeCount: Int,
     val folder: String,
+    @ColumnInfo(defaultValue = "0") val imported: Boolean = false,
 ) {
-    fun toScan() = Scan(id, name, createdAtMs, status, splatCount, keyframeCount, folder)
+    fun toScan() = Scan(id, name, createdAtMs, status, splatCount, keyframeCount, folder, imported)
 }

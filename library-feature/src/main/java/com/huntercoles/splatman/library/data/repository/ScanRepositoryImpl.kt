@@ -8,11 +8,13 @@ import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import java.util.UUID
 
 /**
@@ -49,6 +51,30 @@ class ScanRepositoryImpl(
                 keyframeCount = keyframeCount ?: row.keyframeCount,
             ),
         )
+    }
+
+    override suspend fun import(
+        name: String,
+        createdAtMs: Long,
+        splatCount: Int,
+        writeSplat: (OutputStream) -> Unit,
+    ): Scan {
+        val id = UUID.randomUUID().toString()
+        val folder = folderOf(id)
+        try {
+            withContext(io) {
+                if (!folder.mkdirs()) throw IOException("Could not create the scan folder $id")
+                val temp = File(folder, "$SPLAT_FILE.tmp")
+                temp.outputStream().buffered().use(writeSplat)
+                if (!temp.renameTo(File(folder, SPLAT_FILE))) throw IOException("Could not save the splat of $id")
+            }
+            val row = ScanEntity(id, name, createdAtMs, ScanStatus.READY, splatCount, 0, id, imported = true)
+            dao.insert(row)
+            return row.toScan()
+        } catch (e: Throwable) {
+            withContext(NonCancellable + io) { folder.deleteRecursively() }
+            throw e
+        }
     }
 
     override suspend fun rename(id: String, name: String) {
@@ -92,7 +118,10 @@ class ScanRepositoryImpl(
         }
     }
 
-    /** A row for a folder found on disk: READY when its `splat.ply` reads, CAPTURED with only a bundle, else FAILED. */
+    /**
+     * A row for a folder found on disk: READY when its `splat.ply` reads, CAPTURED with only a bundle, else FAILED.
+     * A READY folder without `transforms.json` came from the import flow.
+     */
     private fun adopt(folder: File): ScanEntity {
         val splat = File(folder, SPLAT_FILE)
         val splatCount = if (splat.isFile) {
@@ -118,6 +147,7 @@ class ScanRepositoryImpl(
             splatCount = splatCount ?: 0,
             keyframeCount = keyframes,
             folder = folder.name,
+            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists(),
         )
     }
 

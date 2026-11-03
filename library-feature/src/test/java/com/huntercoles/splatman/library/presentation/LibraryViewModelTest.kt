@@ -251,6 +251,13 @@ class LibraryViewModelTest {
 
         override suspend fun create(name: String, createdAtMs: Long): Scan = error("not used")
 
+        override suspend fun import(
+            name: String,
+            createdAtMs: Long,
+            splatCount: Int,
+            writeSplat: (java.io.OutputStream) -> Unit,
+        ): Scan = error("not used")
+
         override suspend fun updateStatus(id: String, status: ScanStatus, splatCount: Int?, keyframeCount: Int?) =
             error("not used")
 

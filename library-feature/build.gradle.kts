@@ -60,6 +60,7 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":splat-io"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

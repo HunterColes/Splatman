@@ -83,7 +83,6 @@ private fun PlaceholderText(text: String) {
 @Composable
 internal fun LibraryHome(
     onScan: () -> Unit,
-    onOpenFile: () -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit,
     onOpenViewer: (String) -> Unit,
@@ -93,7 +92,6 @@ internal fun LibraryHome(
         onOpenViewer = onOpenViewer,
         onOpenProcessing = onOpenProcessing,
         onScan = onScan,
-        onOpenFile = onOpenFile,
         onSettings = onSettings,
         onAbout = onAbout,
         modifier = Modifier.fillMaxSize(),

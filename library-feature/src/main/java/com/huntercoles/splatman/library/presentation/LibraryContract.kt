@@ -29,6 +29,8 @@ data class LibraryCard(
     val state: CardState,
     val target: OpenTarget,
     val selected: Boolean = false,
+    /** Came from a file (the import flow): the thumbnail carries an "Imported" chip. */
+    val imported: Boolean = false,
 )
 
 /** The body of the Library: placeholders on first load, the empty state, or the grid. */
@@ -98,4 +100,5 @@ fun Scan.toCard(selected: Boolean = false): LibraryCard = LibraryCard(
     },
     target = openTarget(),
     selected = selected,
+    imported = imported,
 )

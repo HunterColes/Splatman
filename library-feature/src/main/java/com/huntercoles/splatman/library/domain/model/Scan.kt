@@ -6,6 +6,7 @@ enum class ScanStatus { CAPTURED, PROCESSING, READY, FAILED }
 /**
  * One scan: a folder `scans/<folder>/` in the capture bundle layout of ADR 0007 and its row in the library.
  * [splatCount] is the size of `splat.ply` once READY (0 before), [keyframeCount] the number of recorded images.
+ * [imported] scans came from a file (the import flow): a folder with only `splat.ply`, nothing to rebuild.
  */
 data class Scan(
     val id: String,
@@ -15,6 +16,7 @@ data class Scan(
     val splatCount: Int,
     val keyframeCount: Int,
     val folder: String,
+    val imported: Boolean = false,
 )
 
 /** Where tapping a library card goes. */

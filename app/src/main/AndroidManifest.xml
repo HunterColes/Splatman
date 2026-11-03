@@ -27,6 +27,29 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Open with" for splat files (docs/design/screens/import.md). .ply and .splat have no registered MIME
+                 type: file managers send them as octet-stream or a ply type, and some only name them in the path.
+                 The import flow validates by content, so a wrong match only ends in its error dialog. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/ply" />
+                <data android:mimeType="application/x-ply" />
+                <data android:mimeType="model/ply" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.ply" />
+                <data android:pathPattern=".*\\..*\\.ply" />
+                <data android:pathPattern=".*\\.splat" />
+                <data android:pathPattern=".*\\..*\\.splat" />
+            </intent-filter>
         </activity>
 
         <!-- Share an export (viewer-feature export/): serves only cache/exports, read-only, per-grant. -->

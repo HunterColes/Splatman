@@ -98,7 +98,7 @@ fun SplatmanShell(
                     screen(backStackEntry.toRoute<Onboarding>()) {
                         OnboardingScreen(
                             onDone = {
-                                // Both exits land in the Library; its open-a-file flow is the import ticket's.
+                                // Both exits land in the Library.
                                 onOnboardingDone()
                                 navController.navigate(Library) {
                                     popUpTo(navController.graph.id) { inclusive = true }
@@ -111,8 +111,6 @@ fun SplatmanShell(
                     screen(Library) {
                         LibraryHome(
                             onScan = { navController.navigate(Capture) },
-                            // The Viewer stand-in has its own file picker until the import flow (#21) lands.
-                            onOpenFile = { navController.navigate(Viewer(OPEN_FILE_SCAN_ID)) },
                             onSettings = { navController.navigate(Settings) },
                             onAbout = { navController.navigate(About) },
                             onOpenViewer = { scanId -> navController.navigate(Viewer(scanId)) },
@@ -162,9 +160,6 @@ fun SplatmanShell(
         }
     }
 }
-
-/** The Viewer route's id for "pick a file" until #21 gives Open a file its own flow. */
-private const val OPEN_FILE_SCAN_ID = "open-file"
 
 /**
  * Moves on to [step]'s destination, first taking the screen it leaves off the back stack (Back skips it).

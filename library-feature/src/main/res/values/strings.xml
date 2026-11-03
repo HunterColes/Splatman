@@ -37,6 +37,16 @@
     <string name="lib_name">Name</string>
     <string name="lib_delete">Delete</string>
     <string name="lib_cancel">Cancel</string>
+    <string name="lib_imported">Imported</string>
+    <string name="imp_validating">Reading %1$s…</string>
+    <string name="imp_point_cloud">This PLY is a point cloud, not a Gaussian splat. Splatman opens splat files only.</string>
+    <string name="imp_unsupported">Splatman opens .ply and .splat splat files. This one is %1$s.</string>
+    <string name="imp_corrupt">This file looks damaged and can\'t be opened.</string>
+    <string name="imp_too_large">This splat has %1$s splats, too many for this phone.</string>
+    <string name="imp_done">Opened %1$s</string>
+    <!-- exp_low_storage wording (docs/design/screens/import.md, States). -->
+    <string name="imp_low_storage">Needs %1$s free. You have %2$s.</string>
+    <string name="imp_ok">OK</string>
     <string name="set_title">Settings</string>
     <string name="set_back">Back</string>
     <string name="set_group_appearance">Appearance</string>

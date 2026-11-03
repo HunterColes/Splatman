@@ -398,7 +398,7 @@ private fun ScanCard(
             },
     ) {
         Column {
-            Thumbnail(card.state, selecting, card.selected)
+            Thumbnail(card.state, selecting, card.selected, card.imported)
             Column(modifier = Modifier.padding(SplatDimens.SpacingMedium)) {
                 Text(
                     text = card.name,
@@ -417,7 +417,7 @@ private fun ScanCard(
 }
 
 @Composable
-private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean) {
+private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean, imported: Boolean) {
     val shape = RoundedCornerShape(topStart = SplatDimens.CornerMedium, topEnd = SplatDimens.CornerMedium)
     val fill = when (state) {
         is CardState.Ready -> SplatColors.ViewerBackground
@@ -435,6 +435,8 @@ private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean) {
         }
         if (state == CardState.Failed) {
             FailedBadge(Modifier.align(Alignment.TopStart).padding(SplatDimens.SpacingSmall))
+        } else if (imported) {
+            ImportedChip(Modifier.align(Alignment.TopStart).padding(SplatDimens.SpacingSmall))
         }
         if (selecting) {
             Icon(
@@ -444,6 +446,22 @@ private fun Thumbnail(state: CardState, selecting: Boolean, selected: Boolean) {
                 modifier = Modifier.align(Alignment.TopEnd).padding(SplatDimens.SpacingSmall),
             )
         }
+    }
+}
+
+@Composable
+private fun ImportedChip(modifier: Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(SplatDimens.CornerSmall),
+        modifier = modifier,
+    ) {
+        Text(
+            stringResource(R.string.lib_imported),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = SplatDimens.SpacingSmall, vertical = SplatDimens.SpacingXSmall),
+        )
     }
 }
 

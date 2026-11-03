@@ -4,6 +4,7 @@ import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import kotlinx.coroutines.flow.Flow
+import java.io.OutputStream
 
 /** The scans on this phone: a Room row per folder under `scans/`, newest first. */
 interface ScanRepository {
@@ -17,6 +18,12 @@ interface ScanRepository {
 
     /** Sets [status]; counts left null keep their value. */
     suspend fun updateStatus(id: String, status: ScanStatus, splatCount: Int? = null, keyframeCount: Int? = null)
+
+    /**
+     * Adds an imported scan: a new folder whose `splat.ply` [writeSplat] writes (to a temporary file, renamed when it
+     * returns), then its READY row with [splatCount] and `imported`. Any failure removes the folder and rethrows.
+     */
+    suspend fun import(name: String, createdAtMs: Long, splatCount: Int, writeSplat: (OutputStream) -> Unit): Scan
 
     suspend fun rename(id: String, name: String)
 
