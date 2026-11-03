@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -42,14 +43,23 @@ object PoseFreeCaptureWriter {
         )
     }
 
-    /** Writes `capture.json` listing [frames], last; the folder is a capture from here on. */
+    /**
+     * Writes `capture.json` listing [frames], last; the folder is a capture from here on. [mode] is written as `mode`
+     * only when it is not OBJECT.
+     */
     @Throws(IOException::class)
-    fun finish(directory: File, frames: List<FrameEntry>, timestampSource: TimestampSource) {
+    fun finish(
+        directory: File,
+        frames: List<FrameEntry>,
+        timestampSource: TimestampSource,
+        mode: ScanMode = ScanMode.OBJECT,
+    ) {
         frames.forEach { require(it.sharpness.isFinite()) { "${it.filePath}: sharpness must be finite" } }
         prepare(directory)
         val doc = CaptureJson(
             version = SPLATMAN_CAPTURE_VERSION,
             timestampSource = timestampSource,
+            mode = CaptureBundleWriter.storedModeKey(mode),
             frames = frames.map { f ->
                 val k = f.intrinsics
                 CaptureFrameJson(

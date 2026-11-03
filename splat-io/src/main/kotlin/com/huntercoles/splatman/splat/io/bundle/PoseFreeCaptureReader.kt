@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
@@ -36,7 +37,15 @@ object PoseFreeCaptureReader {
         val calibration = decode(doc.calibrationFilePath) {
             calibrationJson.decodeFromString(CameraCalibration.serializer(), calFile.readText(Charsets.UTF_8))
         }
-        return PoseFreeCapture(directory, doc.version, doc.timestampSource, frames, imu, calibration)
+        return PoseFreeCapture(
+            directory,
+            doc.version,
+            doc.timestampSource,
+            frames,
+            imu,
+            calibration,
+            ScanMode.fromKey(doc.mode),
+        )
     }
 
     private fun checkVersion(root: JsonObject?) {

@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.CameraPose
@@ -53,6 +54,8 @@ class CaptureBundle(
     val seed: SeedPoints?,
     /** The capture subject (the point the coverage ring circled), frame W, metres; null when the bundle has none. */
     val subject: Vec3? = null,
+    /** Object or room scan (`splatman_mode`); OBJECT when the key is absent or unknown. */
+    val mode: ScanMode = ScanMode.OBJECT,
 )
 
 /** A bundle that cannot be read: the message names the file or key at fault. */

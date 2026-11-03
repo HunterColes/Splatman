@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -99,6 +100,8 @@ data class PoseFreeCapture(
     val imuFile: File,
     /** The parsed `calibration.json`. */
     val calibration: CameraCalibration,
+    /** Object or room scan (`mode`); OBJECT when the key is absent or unknown. */
+    val mode: ScanMode = ScanMode.OBJECT,
 )
 
 /** `image` of `calibration.json`: the JPEG size, pixels. */
@@ -151,6 +154,8 @@ internal data class CaptureJson(
     @SerialName("imu_file_path") val imuFilePath: String = IMU_FILE,
     @SerialName("calibration_file_path") val calibrationFilePath: String = CALIBRATION_FILE,
     @SerialName("timestamp_source") val timestampSource: TimestampSource,
+    /** The [ScanMode] key; written only for a room scan, absent means object. */
+    val mode: String? = null,
     val frames: List<CaptureFrameJson>,
 )
 

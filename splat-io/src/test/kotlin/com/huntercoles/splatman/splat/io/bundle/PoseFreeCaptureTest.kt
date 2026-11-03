@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -224,5 +225,43 @@ class PoseFreeCaptureTest {
             PoseFreeCaptureWriter.finish(dir, listOf(entry), TimestampSource.REALTIME)
         }
         assertFalse(File(dir, CAPTURE_FILE).exists())
+    }
+
+    @Test
+    fun `an OBJECT capture json is byte-identical to the golden file and has no mode key`() {
+        val dir = File(tmp, "object")
+        val entries = goldenFrames().mapIndexed { i, f -> PoseFreeCaptureWriter.writeFrame(dir, i, f) }
+        PoseFreeCaptureWriter.writeCalibration(dir, goldenCalibration)
+        ImuCsvWriter(File(dir, IMU_FILE)).use { it.gyro(1L, 0.1f, 0.2f, 0.3f) }
+        PoseFreeCaptureWriter.finish(dir, entries, TimestampSource.REALTIME, ScanMode.OBJECT)
+        val expected = javaClass.getResource("/bundle/golden_capture.json")!!.readBytes()
+        assertArrayEquals(expected, File(dir, CAPTURE_FILE).readBytes())
+        assertFalse(File(dir, CAPTURE_FILE).readText().contains("\"mode\""))
+        assertEquals(ScanMode.OBJECT, PoseFreeCaptureReader.read(dir).mode)
+    }
+
+    @Test
+    fun `a ROOM capture round-trips its mode`() {
+        val dir = File(tmp, "room")
+        val entries = goldenFrames().mapIndexed { i, f -> PoseFreeCaptureWriter.writeFrame(dir, i, f) }
+        PoseFreeCaptureWriter.writeCalibration(dir, goldenCalibration)
+        ImuCsvWriter(File(dir, IMU_FILE)).use { it.gyro(1L, 0.1f, 0.2f, 0.3f) }
+        PoseFreeCaptureWriter.finish(dir, entries, TimestampSource.REALTIME, ScanMode.ROOM)
+        val text = File(dir, CAPTURE_FILE).readText()
+        assertTrue(text.contains("\"mode\": \"room\""), text)
+        assertTrue(text.contains("\"splatman_capture_version\": 1"), text)
+        val capture = PoseFreeCaptureReader.read(dir)
+        assertEquals(ScanMode.ROOM, capture.mode)
+        assertEquals(entries, capture.frames.map { it.entry })
+    }
+
+    @Test
+    fun `an unknown or absent capture mode reads as OBJECT`() {
+        val dir = File(tmp, "unknownmode")
+        writeCapture(dir)
+        assertEquals(ScanMode.OBJECT, PoseFreeCaptureReader.read(dir).mode)
+        val file = File(dir, CAPTURE_FILE)
+        file.writeText(file.readText().replaceFirst("{", "{\n    \"mode\": \"cave\","))
+        assertEquals(ScanMode.OBJECT, PoseFreeCaptureReader.read(dir).mode)
     }
 }

@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.math.Quat
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
@@ -215,4 +216,80 @@ class CaptureBundleTest {
 
     private fun assertClose(a: Float, b: Float, tol: Float) =
         assertTrue(abs(a - b) <= tol, "expected $a, got $b (tolerance $tol)")
+
+    @Test
+    fun `an OBJECT bundle is byte-identical to the golden file and has no mode key`() {
+        val dir = File(tmp, "object")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed, mode = ScanMode.OBJECT)
+        val expected = javaClass.getResource("/bundle/golden_transforms.json")!!.readBytes()
+        val actual = File(dir, "transforms.json").readBytes()
+        assertEquals(String(expected, Charsets.UTF_8), String(actual, Charsets.UTF_8))
+        assertArrayEquals(expected, actual)
+        assertFalse(String(actual, Charsets.UTF_8).contains("splatman_mode"))
+        assertEquals(ScanMode.OBJECT, CaptureBundleReader.read(dir).mode)
+    }
+
+    @Test
+    fun `a ROOM bundle round-trips its mode with no subject`() {
+        val dir = File(tmp, "room")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed, mode = ScanMode.ROOM)
+        val text = File(dir, "transforms.json").readText()
+        assertTrue(text.contains("\"splatman_mode\": \"room\""), text)
+        assertTrue(text.contains("\"splatman_version\": 1"), text)
+        assertFalse(text.contains("splatman_subject"), text)
+        val bundle = CaptureBundleReader.read(dir)
+        assertEquals(ScanMode.ROOM, bundle.mode)
+        assertNull(bundle.subject)
+        assertEquals(1, bundle.version)
+        assertEquals(2, bundle.frames.size)
+    }
+
+    @Test
+    fun `an unknown splatman_mode reads as OBJECT`() {
+        val dir = File(tmp, "unknownmode")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed)
+        val json = File(dir, "transforms.json")
+        json.writeText(
+            json.readText().replace("\"splatman_version\": 1", "\"splatman_version\": 1, \"splatman_mode\": \"cave\""),
+        )
+        assertEquals(ScanMode.OBJECT, CaptureBundleReader.read(dir).mode)
+    }
+
+    @Test
+    fun `a transforms json with splatman_mode and no splatman_subject reads`() {
+        val dir = File(tmp, "modenosubject")
+        File(dir, "images").mkdirs()
+        File(dir, "images/a.png").writeBytes(byteArrayOf(1))
+        File(dir, "transforms.json").writeText(
+            """
+            {
+              "camera_model": "OPENCV",
+              "splatman_version": 1,
+              "splatman_mode": "room",
+              "frames": [
+                {
+                  "file_path": "images/a.png",
+                  "transform_matrix": [[1, 0, 0, 1], [0, 1, 0, 2], [0, 0, 1, 3], [0, 0, 0, 1]],
+                  "fl_x": 100.0, "fl_y": 101.0, "cx": 50, "cy": 40, "w": 100, "h": 80
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+        val bundle = CaptureBundleReader.read(dir)
+        assertEquals(ScanMode.ROOM, bundle.mode)
+        assertNull(bundle.subject)
+        assertNull(bundle.seed)
+        assertEquals(1, bundle.frames.size)
+    }
+
+    @Test
+    fun `an older bundle without splatman_mode reads as OBJECT`() {
+        val dir = File(tmp, "oldbundle")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed, Vec3(1f, 2f, 3f))
+        assertFalse(File(dir, "transforms.json").readText().contains("splatman_mode"))
+        val bundle = CaptureBundleReader.read(dir)
+        assertEquals(ScanMode.OBJECT, bundle.mode)
+        assertEquals(Vec3(1f, 2f, 3f), bundle.subject)
+    }
 }

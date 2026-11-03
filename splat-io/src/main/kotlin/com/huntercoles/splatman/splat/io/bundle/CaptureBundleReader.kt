@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.CameraIntrinsics
 import com.huntercoles.splatman.splat.model.DepthImage
@@ -43,7 +44,7 @@ object CaptureBundleReader {
             }
             Vec3(it[0], it[1], it[2])
         }
-        return CaptureBundle(directory, doc.splatmanVersion, frames, seed, subject)
+        return CaptureBundle(directory, doc.splatmanVersion, frames, seed, subject, ScanMode.fromKey(doc.mode))
     }
 
     /** Loads a frame's depth file (little-endian f32 metres); null when it has no depth or no depth size. */

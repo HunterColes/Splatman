@@ -24,4 +24,9 @@ data class KeyframePolicy(
         require(sharpnessQuantile in 0f..1f) { "sharpnessQuantile must be in 0..1, got $sharpnessQuantile" }
         require(maxKeyframes >= 1) { "maxKeyframes must be >= 1, got $maxKeyframes" }
     }
+
+    companion object {
+        /** A room scan (ADR 0013 section 8): sparser keyframes along the walk, more of them in total. */
+        val ROOM: KeyframePolicy = KeyframePolicy(minTranslationM = 0.10f, minRotationDeg = 10f, maxKeyframes = 200)
+    }
 }

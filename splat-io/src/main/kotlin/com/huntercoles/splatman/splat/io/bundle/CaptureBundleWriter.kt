@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.splat.io.bundle
 
+import com.huntercoles.splatman.splat.capture.ScanMode
 import com.huntercoles.splatman.splat.frames.FrameConversions
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.SeedPoints
@@ -24,10 +25,16 @@ object CaptureBundleWriter {
 
     /**
      * Writes [frames], [seed] and the optional capture [subject] (frame W) into [directory] (created if needed);
-     * frame `i` is named `frame_{i+1}`, 5 digits.
+     * frame `i` is named `frame_{i+1}`, 5 digits. [mode] is written as `splatman_mode` only when it is not OBJECT.
      */
     @Throws(IOException::class)
-    fun write(directory: File, frames: List<BundleFrameInput>, seed: SeedPoints, subject: Vec3? = null) {
+    fun write(
+        directory: File,
+        frames: List<BundleFrameInput>,
+        seed: SeedPoints,
+        subject: Vec3? = null,
+        mode: ScanMode = ScanMode.OBJECT,
+    ) {
         if (!directory.isDirectory && !directory.mkdirs()) throw IOException("cannot create ${directory.path}")
         Files.deleteIfExists(File(directory, TRANSFORMS_FILE).toPath())
         val json = frames.mapIndexed { i, f -> writeFrame(directory, i, f) }
@@ -37,10 +44,14 @@ object CaptureBundleWriter {
             splatmanVersion = SPLATMAN_BUNDLE_VERSION,
             plyFilePath = SEED_FILE,
             subject = subject?.let { listOf(it.x, it.y, it.z) },
+            mode = storedModeKey(mode),
             frames = json,
         )
         writeAtomic(File(directory, TRANSFORMS_FILE), encode(doc).toByteArray(Charsets.UTF_8))
     }
+
+    /** The key a bundle stores for [mode]: null (omitted) for OBJECT, so object bundles stay as they were. */
+    internal fun storedModeKey(mode: ScanMode): String? = if (mode == ScanMode.OBJECT) null else mode.key
 
     internal fun encode(doc: TransformsJson): String =
         bundleJson.encodeToString(TransformsJson.serializer(), doc) + "\n"

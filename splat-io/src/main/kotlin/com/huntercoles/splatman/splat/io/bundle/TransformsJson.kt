@@ -16,6 +16,8 @@ internal data class TransformsJson(
     @SerialName("ply_file_path") val plyFilePath: String? = null,
     /** The capture subject `[x, y, z]`, frame W, metres; absent in older bundles and plain Nerfstudio files. */
     @SerialName("splatman_subject") val subject: List<Float>? = null,
+    /** The [com.huntercoles.splatman.splat.capture.ScanMode] key; written only for a room scan, absent means object. */
+    @SerialName("splatman_mode") val mode: String? = null,
     val frames: List<FrameJson>,
 )
 
