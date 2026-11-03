@@ -56,6 +56,58 @@ Strings live in each feature's `res/values/strings.xml` under the keys below.
 | `lib_undo` | Undo |
 | `scan_default_name` | Scan %1$s (the local date and time, e.g. "Scan 1 Nov, 21:40") |
 
+## Library: search, sort and folders
+
+[screens/library.md](screens/library.md#search-sort-and-folders), ticket #301. Rows marked *plural* are Android
+`<plurals>` (one / other); the text shows both. Every `%s` that holds a user's name (scan, folder or query) is
+bidi-wrapped (`BidiFormatter.unicodeWrap`) so emoji and right-to-left names do not reorder the sentence around them.
+Existing keys reused: `lib_name`, `lib_cancel`, `lib_rename`, `lib_undo`, `lib_card_detail` (count · size on a folder
+cell).
+
+| Key | Text | When |
+|---|---|---|
+| `lib_search` | Search scans | ⌕ top bar button, content description |
+| `lib_search_hint` | Search scans | search field placeholder and label, at the root |
+| `lib_search_hint_folder` | Search in %1$s | search field placeholder and label, inside a folder |
+| `lib_search_clear` | Clear search | × button, content description |
+| `lib_search_close` | Close search | ← button, content description |
+| `lib_search_results` | *plural* %1$d scan found / %1$d scans found | TalkBack, when the count changes |
+| `lib_search_none` | No scans found | TalkBack, nothing matches |
+| `lib_search_empty_title` | Nothing called “%1$s” | no match, the query |
+| `lib_search_empty_body` | Check the spelling, or try part of the name. | no match |
+| `lib_search_everywhere` | Search all of Library | no match inside a folder, text button |
+| `lib_search_in_folder` | In %1$s | root results: a scan inside a folder (card line and TalkBack) |
+| `lib_sort_description` | Sort: %1$s | sort chip, TalkBack (%1$s = one of the four below) |
+| `lib_sort_newest` | Newest first | chip label and menu item (default) |
+| `lib_sort_oldest` | Oldest first | |
+| `lib_sort_name` | Name, A to Z | |
+| `lib_sort_size` | Largest first | |
+| `lib_folder_section` | Folders | root section label, when the root has folders and scans |
+| `lib_folder_section_scans` | Scans | root section label, same condition |
+| `lib_folder_new` | New folder | root overflow item, Move sheet row, dialog title |
+| `lib_folder_create` | Create | new folder dialog button |
+| `lib_folder_rename` | Rename folder | folder menu item, rename dialog title |
+| `lib_folder_delete` | Delete folder | folder menu item, confirm button (error colour) |
+| `lib_folder_more` | Options for %1$s | ⋮ on a folder cell, content description |
+| `lib_folder_name_taken` | You already have a folder called %1$s | name dialog, field error |
+| `lib_folder_name_count` | %1$d/60 | name dialog counter, from 50 characters |
+| `lib_folder_count` | *plural* %1$d scan / %1$d scans | folder cell, Move sheet row |
+| `lib_folder_count_empty` | Empty | folder cell and Move row with no scans |
+| `lib_folder_description` | Folder, %1$s, %2$s, %3$s | folder cell, TalkBack: name, count, size ("Folder, Desk stuff, 3 scans, 96 megabytes"); an empty folder drops the size |
+| `lib_folder_empty_title` | This folder is empty | inside an empty folder |
+| `lib_folder_empty_body` | Select scans in Library and tap Move to put them here, or start a scan from here. | inside an empty folder |
+| `lib_folder_delete_title` | Delete the folder %1$s? | confirm dialog |
+| `lib_folder_delete_body` | *plural* Its scan moves back to Library. Nothing is deleted from your phone. / Its %1$d scans move back to Library. Nothing is deleted from your phone. | confirm dialog |
+| `lib_folder_delete_body_empty` | It's empty, so nothing else changes. | confirm dialog, empty folder |
+| `lib_folder_deleted` | Folder deleted | snackbar, with `lib_undo` |
+| `lib_folder_error` | Couldn't save the folder. Try again. | snackbar: create, rename or delete failed |
+| `lib_move` | Move | selection top bar action, content description |
+| `lib_move_title` | *plural* Move %1$d scan to / Move %1$d scans to | Move sheet title |
+| `lib_move_root` | Library | Move sheet row: back to the top level |
+| `lib_move_here_now` | Here now | Move sheet row: where every selected scan already is |
+| `lib_moved` | *plural* Moved %1$d scan to %2$s / Moved %1$d scans to %2$s | snackbar, with `lib_undo`; %2$s is a folder name or `lib_move_root` |
+| `lib_move_error` | Couldn't move the scans. Try again. | snackbar |
+
 ## Capture
 
 | Key | Text | When |
