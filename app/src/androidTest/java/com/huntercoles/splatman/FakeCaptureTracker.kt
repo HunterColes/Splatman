@@ -38,6 +38,10 @@ import kotlin.math.sin
  * a textured 640x480 image and a few feature points. Each frame turns [STEP_DEG] degrees, so the recorder's
  * keyframe policy (10 degrees) takes one every few frames and coverage grows as it goes round. After the first turn
  * it rises to [HIGH_DEG] above the origin over [RISE_FRAMES] frames, so a second band fills and Finish unlocks.
+ *
+ * While [hold] is true it emits nothing. A recording changes the screen on every frame, and on the emulator drawing
+ * one takes about as long as the gap to the next, so Compose never goes idle and every node lookup (which waits for
+ * idle) blocks for good (#189). Tests hold the frames while they look at the screen.
  */
 class FakeCaptureTracker : CaptureTracker {
     private val mutableStatus = MutableStateFlow<PoseSourceStatus>(PoseSourceStatus.Idle)
@@ -52,6 +56,7 @@ class FakeCaptureTracker : CaptureTracker {
         var i = 0
         while (!released) {
             foreground.filter { it }.first()
+            hold.filter { !it }.first()
             emit(frame(i++))
             delay(FRAME_MS)
         }
@@ -115,17 +120,20 @@ class FakeCaptureTracker : CaptureTracker {
         override fun close() = Unit
     }
 
-    private companion object {
-        const val WIDTH = 640
-        const val HEIGHT = 480
-        const val FRAME_MS = 33L
-        const val STEP_DEG = 2.0
-        const val RADIUS_M = 0.3f
-        const val HIGH_DEG = 45.0
-        const val RISE_FRAMES = 60.0
+    companion object {
+        /** True: no frames until it is false again (shared by every instance; tests reset it). */
+        val hold = MutableStateFlow(false)
+
+        private const val WIDTH = 640
+        private const val HEIGHT = 480
+        private const val FRAME_MS = 33L
+        private const val STEP_DEG = 2.0
+        private const val RADIUS_M = 0.3f
+        private const val HIGH_DEG = 45.0
+        private const val RISE_FRAMES = 60.0
 
         /** 27 points 5 cm apart round the origin, full confidence. */
-        val GRID: FeaturePoints = run {
+        private val GRID: FeaturePoints = run {
             val p = FloatArray(81)
             var o = 0
             for (x in -1..1) for (y in -1..1) for (z in -1..1) {

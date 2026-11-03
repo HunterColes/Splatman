@@ -1,5 +1,6 @@
 package com.huntercoles.splatman
 
+import android.os.SystemClock
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -18,6 +19,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.huntercoles.splatman.splat.io.bundle.CaptureBundleReader
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -30,6 +32,9 @@ import java.io.File
  * #41's Record / Stop / Cancel end to end, as #16's Start capture / Finish / Close and Discard on a device without ARCore: [FakeCaptureTrackerModule] swaps the ARCore
  * tracker for [FakeCaptureTracker], which walks a circle. Each test starts on the Capture screen with the tracker
  * running and compares `files/scans/` with what was there before it (earlier tests may have left scans).
+ *
+ * While recording, every look at the screen goes through [runUntil]: it holds the fake's frames first, since a
+ * recording redraws on every frame and Compose would never go idle for the lookup (#189: the test hung for good).
  */
 @OptIn(ExperimentalTestApi::class)
 @HiltAndroidTest
@@ -49,6 +54,7 @@ class RecordStopCancelTest {
 
     @Before
     fun openCapture() {
+        FakeCaptureTracker.hold.value = false
         compose.waitForIdle()
         if (exists(hasText(ONBOARDING_START))) compose.onNodeWithText(ONBOARDING_START).performClick()
         compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
@@ -56,6 +62,11 @@ class RecordStopCancelTest {
         // The label sits inside the button: the FAB's Scan, or the empty Library's Start a scan (it has no FAB).
         compose.onAllNodes(hasText(SCAN) or hasText(START_SCAN), useUnmergedTree = true).onFirst().performClick()
         compose.waitUntilAtLeastOneExists(START_ENABLED, TIMEOUT_MS)
+    }
+
+    @After
+    fun releaseFrames() {
+        FakeCaptureTracker.hold.value = false
     }
 
     @Test
@@ -66,7 +77,7 @@ class RecordStopCancelTest {
 
         // Finish stays locked until the coverage threshold: the fake rises after its first turn.
         compose.onNode(FINISH).assertIsNotEnabled()
-        compose.waitUntilAtLeastOneExists(FINISH and isEnabled(), FINISH_TIMEOUT_MS)
+        runUntil(FINISH_TIMEOUT_MS) { exists(FINISH and isEnabled()) }
         compose.onNode(FINISH).performClick()
         val id = waitForNewScans(1).single()
 
@@ -105,7 +116,7 @@ class RecordStopCancelTest {
     @Test
     fun a2_doubleTapFinishWritesOneBundle() {
         compose.onNode(START_ENABLED).performClick()
-        compose.waitUntilAtLeastOneExists(FINISH and isEnabled(), FINISH_TIMEOUT_MS)
+        runUntil(FINISH_TIMEOUT_MS) { exists(FINISH and isEnabled()) }
 
         // Both taps land in the same frame, before the screen can swap Finish for the saving state.
         val onClick = compose.onNode(FINISH).fetchSemanticsNode().config[SemanticsActions.OnClick].action
@@ -126,11 +137,26 @@ class RecordStopCancelTest {
     /** Waits until the caption ("m:ss · n frames") and the ring ("p% covered") show values matching [ok]. */
     private fun waitForProgress(ok: (Progress) -> Boolean): Progress {
         var seen: Progress? = null
-        compose.waitUntil(TIMEOUT_MS) {
+        runUntil(TIMEOUT_MS) {
             seen = progress()
             seen?.let(ok) == true
         }
         return checkNotNull(seen)
+    }
+
+    /**
+     * Lets the fake tracker run in steps of [RUN_MS] until [ok], which is checked with its frames held so the screen
+     * can settle; fails after [timeoutMs]. The frames stay held when it returns ([releaseFrames] lets them go).
+     */
+    private fun runUntil(timeoutMs: Long, ok: () -> Boolean) {
+        val end = SystemClock.uptimeMillis() + timeoutMs
+        while (true) {
+            FakeCaptureTracker.hold.value = true
+            if (ok()) return
+            if (SystemClock.uptimeMillis() > end) throw AssertionError("not met within $timeoutMs ms")
+            FakeCaptureTracker.hold.value = false
+            Thread.sleep(RUN_MS)
+        }
     }
 
     private fun progress(): Progress? {
@@ -182,5 +208,6 @@ class RecordStopCancelTest {
         const val TRANSFORMS = "transforms.json"
         const val TIMEOUT_MS = 30_000L
         const val SETTLE_MS = 3_000L
+        const val RUN_MS = 500L
     }
 }
