@@ -2,11 +2,16 @@ package com.huntercoles.splatman
 
 import android.content.res.Configuration
 import android.os.ParcelFileDescriptor
+import android.view.KeyEvent
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -19,6 +24,8 @@ import com.huntercoles.splatman.core.preferences.OnboardingPreferences
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -81,6 +88,86 @@ class OnboardingLayoutTest {
         compose.onNodeWithText(NEXT).assertIsDisplayed()
         screenshot("onboarding-landscape-font200.png")
     }
+
+    /**
+     * #276 (#167's focus Acceptance): at 640x360 dp, Tab walks Skip, then the bar's text button, then its filled
+     * button (one row, text button first); the page's title and body sit between Skip and the bar.
+     */
+    @Test
+    fun landscapeFocusOrderIsSkipPageSecondaryPrimary() = walkFocus(LANDSCAPE_SIZE, landscape = true)
+
+    /**
+     * #276: at 360x640 dp the bar is a column with the filled button over the text button, so Tab walks Skip, the
+     * filled button, then the text button; the title and body sit between Skip and the bar.
+     */
+    @Test
+    fun portraitFocusOrderIsSkipPagePrimarySecondary() = walkFocus(PORTRAIT_SIZE, landscape = false)
+
+    /** Checks the focus order on the welcome page, then on the camera (AR) page in whatever AR state the device has. */
+    private fun walkFocus(size: String, landscape: Boolean) {
+        openOnboarding(size)
+        assertFocusOrder(WELCOME_TITLE, WELCOME_BODY, BarButtons(NEXT, null), landscape, "welcome")
+
+        compose.onNodeWithText(NEXT).performClick()
+        compose.waitUntilAtLeastOneExists(hasText(TIPS_TITLE), TIMEOUT_MS)
+        compose.onNodeWithText(NEXT).performClick()
+        compose.waitUntil(TIMEOUT_MS) { !exists(hasText(NEXT)) && CAMERA_PAGES.keys.any { exists(hasText(it)) } }
+        compose.waitForIdle()
+        val title = CAMERA_PAGES.keys.first { exists(hasText(it)) }
+        val (body, bar) = checkNotNull(CAMERA_PAGES[title])
+        assertFocusOrder(title, body, bar, landscape, "camera ($title)")
+    }
+
+    private fun assertFocusOrder(title: String, body: String, bar: BarButtons, landscape: Boolean, page: String) {
+        val buttons = when {
+            bar.secondary == null -> listOf(bar.primary)
+            landscape -> listOf(bar.secondary, bar.primary)
+            else -> listOf(bar.primary, bar.secondary)
+        }
+        assertEquals("Tab order on the $page page", listOf(SKIP) + buttons, tabOrder())
+
+        // The page content is read between Skip and the bar: below Skip, above every bar button.
+        val skip = boundsOf(SKIP)
+        val content = listOf(boundsOf(title), boundsOf(body, substring = true))
+        val barTop = buttons.minOf { boundsOf(it).top }
+        content.forEach {
+            assertTrue("$page: content $it should be under Skip $skip", it.top >= skip.bottom)
+            assertTrue("$page: content $it should be over the bar (top $barTop)", it.bottom <= barTop)
+        }
+    }
+
+    /**
+     * Presses Tab as a hardware keyboard would (through the window, so the app leaves touch mode) until focus comes
+     * back to a stop it has seen, and returns the cycle of focused labels starting at Skip. Tab wraps, and focus may
+     * already sit anywhere (a relaunch, an earlier page), so the cycle, not the first stop, is the order.
+     */
+    private fun tabOrder(): List<String> {
+        val order = mutableListOf<String>()
+        repeat(MAX_TAB_STOPS) {
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+            compose.waitForIdle()
+            val label = focusedLabel()
+            if (label in order) {
+                val cycle = order.drop(order.indexOf(label))
+                val start = cycle.indexOf(SKIP).coerceAtLeast(0)
+                return cycle.drop(start) + cycle.take(start)
+            }
+            order += label
+        }
+        return order
+    }
+
+    private fun focusedLabel(): String {
+        val focused = compose.onAllNodes(isFocused()).fetchSemanticsNodes()
+        if (focused.isEmpty()) return "<nothing>"
+        val config = focused.single().config
+        val text = config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }
+        val description = config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ")
+        return text ?: description ?: "<unlabelled ${focused.single().id}>"
+    }
+
+    private fun boundsOf(text: String, substring: Boolean = false): Rect =
+        compose.onNodeWithText(text, substring = substring).fetchSemanticsNode().boundsInRoot
 
     private fun walkPages(size: String, name: String) {
         openOnboarding(size)
@@ -174,6 +261,9 @@ class OnboardingLayoutTest {
         return ParcelFileDescriptor.AutoCloseInputStream(pfd).use { String(it.readBytes()) }
     }
 
+    /** A page's bottom bar: the filled button and the text button (null: none). */
+    private data class BarButtons(val primary: String, val secondary: String?)
+
     private companion object {
         const val LANDSCAPE_SIZE = "1280x720"
         const val PORTRAIT_SIZE = "720x1280"
@@ -190,6 +280,16 @@ class OnboardingLayoutTest {
             "ARCore is not installed (needs Google Play)",
             "Couldn't check ARCore",
         )
+        /** Camera page title to its body text and bar, per AR state (OnboardingScreen's BottomBar). */
+        val CAMERA_PAGES = mapOf(
+            "Splatman needs your camera" to ("The camera sees the object" to BarButtons("Allow camera", null)),
+            "This phone can't track motion" to
+                ("Scanning needs ARCore, which" to BarButtons("Open a file", "Continue")),
+            "ARCore is not installed (needs Google Play)" to
+                ("Scanning needs Google Play Services for AR." to BarButtons("Install", "Later")),
+            "Couldn't check ARCore" to ("The phone didn't answer" to BarButtons("Try again", "Continue")),
+        )
+        const val MAX_TAB_STOPS = 12
         const val DEVICE_DIR = "/sdcard/Download/splatman-e2e"
         const val TIMEOUT_MS = 30_000L
         const val SETTLE_MS = 1_000L
