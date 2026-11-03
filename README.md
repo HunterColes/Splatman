@@ -16,7 +16,7 @@
 </p>
 
 <h4 align="center">
-  Real-time Gaussian splatting 3D scanner for Android. Capture, optimize, and view 3D models entirely offline with ARCore tracking and on-device processing.
+  Real-time Gaussian splatting 3D scanner for Android. Capture, optimize, and view 3D models entirely offline on-device, with no Google Play Services.
 </h4>
 
 # Download
@@ -40,6 +40,14 @@
     <img alt="Donate Monero" src="https://img.shields.io/badge/Ӿ-Monero-FF6600?logo=monero&logoColor=white&style=for-the-badge"/>
   </a>
 </p>
+
+# One build: foss
+
+Splatman has one build, the free and open-source one: no ARCore, no Google Play Services and no proprietary
+tracker ([ADR 0015](docs/architecture/adr/0015-retire-arcore.md)). A scan records frames, the phone's motion sensors
+and its camera calibration, and the camera positions are worked out after capture with open-source
+structure-from-motion before training, so any phone with a back camera can scan, including de-Googled ones. The older
+`full` flavour with ARCore is being removed; where the text below still says ARCore, it is out of date.
 
 # Features
 

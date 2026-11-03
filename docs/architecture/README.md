@@ -51,6 +51,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0011](adr/0011-crop.md) | Crop: one `CropBox` in W (centre-inclusive rule, UI W-aligned only), 5..95th percentile start box, `splat.uncropped.ply` kept on first Apply with a crash-safe rename order, samples cropped to `filesDir/sample-crops/` |
 | [0013](adr/0013-library-folders.md) | Library folders as Room rows only (DB v4, `MIGRATION_3_4`, `scans.folderId`, no FK), files stay flat; `LibraryText.key` for names and search; NEWEST/OLDEST/NAME/SIZE sort in `library_prefs`; in-memory search; `library/folder/{folderId}` route |
 | [0012](adr/0012-foss-pose-source.md) | foss pose source (proposed): post-capture SfM, OpenCV in native `splat-sfm`, the rest in `splat-core` `sfm`; fallback #201 OpenVINS |
+| [0015](adr/0015-retire-arcore.md) | Retire ARCore and the `full` flavour: foss is the one build (no flavours, dependency guard on every variant); `PoseSource`/`TrackedFrame` stay as the seam for #336; removal cards #343 to #349 after #230 |
 
 ## Build order (child tickets of #2)
 
