@@ -7,6 +7,7 @@ import androidx.room.Room
 import com.huntercoles.splatman.core.coroutines.IoDispatcher
 import com.huntercoles.splatman.library.data.local.LibraryDatabase
 import com.huntercoles.splatman.library.data.local.MIGRATION_2_3
+import com.huntercoles.splatman.library.data.local.MIGRATION_3_4
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.repository.ScanRepositoryImpl
 import com.huntercoles.splatman.library.data.sample.AssetSampleRepository
@@ -41,7 +42,7 @@ object LibraryModule {
     fun provideLibraryDatabase(@ApplicationContext context: Context): LibraryDatabase =
         Room.databaseBuilder(context, LibraryDatabase::class.java, LibraryDatabase.NAME)
             .fallbackToDestructiveMigrationFrom(LibraryDatabase.OLD_POINT_CLOUD_VERSION)
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .build()
 
     @Provides

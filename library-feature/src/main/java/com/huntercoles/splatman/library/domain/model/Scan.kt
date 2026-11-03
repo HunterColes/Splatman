@@ -8,7 +8,8 @@ enum class ScanStatus { CAPTURED, PROCESSING, READY, FAILED }
  * [splatCount] is the size of `splat.ply` once READY (0 before), [keyframeCount] the number of recorded images.
  * [imported] scans came from a file (the import flow): a folder with only `splat.ply`, nothing to rebuild.
  * [sizeBytes] is what the scan folder takes on disk and [thumbnail] its `thumbnail.png` (#175), both read from the
- * folder when the list is read; null when the picture is missing or empty.
+ * folder when the list is read; null when the picture is missing or empty. [folder] is the directory on disk;
+ * [folderId] is the Library folder ([LibraryFolder.id]) the scan shows in, null at the Library root (ADR 0013).
  */
 data class Scan(
     val id: String,
@@ -21,6 +22,7 @@ data class Scan(
     val imported: Boolean = false,
     val sizeBytes: Long = 0,
     val thumbnail: ScanThumbnail? = null,
+    val folderId: String? = null,
 )
 
 /** A scan's `thumbnail.png`: its [path] and [stamp] (last modified), so a rewritten picture is decoded again. */
