@@ -11,17 +11,20 @@ import com.huntercoles.splatman.library.domain.repository.ScanRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
 
 /**
- * Scans as folders under [root] (ADR 0007: `transforms.json`, `images/`, `seed.ply`, `splat.ply`) with a [dao] row
- * each. The folder name is the scan id for scans made here and for adopted folders.
+ * Scans as folders under [root] (ADR 0007: `transforms.json` or the pose-free `capture.json`, `images/`, `seed.ply`,
+ * `splat.ply`) with a [dao] row each. The folder name is the scan id for scans made here and for adopted folders.
  */
 class ScanRepositoryImpl(
     private val dao: ScanDao,
@@ -30,8 +33,18 @@ class ScanRepositoryImpl(
     private val io: CoroutineDispatcher,
 ) : ScanRepository {
 
-    override fun scans(): Flow<List<Scan>> =
-        dao.observeAll().map { rows -> rows.map { it.toScan().onDisk() } }.flowOn(io)
+    /**
+     * Every collection starts with a [sync]: a foss Stop renames its folder in with no row and no processing run
+     * (#341), so the Library adopts it the next time it looks, not only when its view model is first made.
+     */
+    override fun scans(): Flow<List<Scan>> = flow {
+        try {
+            sync()
+        } catch (e: IOException) {
+            Timber.w(e, "Scan folder sync failed")
+        }
+        emitAll(dao.observeAll().map { rows -> rows.map { it.toScan().onDisk() } })
+    }.flowOn(io)
 
     override suspend fun get(id: String): Scan? {
         val row = dao.byId(id) ?: return null
@@ -103,14 +116,17 @@ class ScanRepositoryImpl(
     }
 
     override suspend fun sync() {
+        // Rows before folders: a scan created between the two reads is then listed, never dropped as gone.
+        val rows = dao.all()
         val folders = withContext(io) {
             root.mkdirs()
             root.listFiles()?.filter { it.isDirectory }.orEmpty().associateBy { it.name }
         }
-        val rows = dao.all()
         rows.filter { it.folder !in folders }.forEach { dao.delete(it.id) }
         val known = rows.map { it.folder }.toSet()
-        folders.values.filter { it.name !in known }.forEach { dao.insert(withContext(io) { adopt(it) }) }
+        folders.values.filter { it.name !in known }.forEach { folder ->
+            withContext(io) { adopt(folder) }?.let { dao.insert(it) }
+        }
     }
 
     override suspend fun refresh(id: String) {
@@ -127,11 +143,14 @@ class ScanRepositoryImpl(
     }
 
     /**
-     * A row for a folder found on disk: READY when its `splat.ply` reads, CAPTURED with only a bundle, else FAILED.
-     * A READY folder without `transforms.json` came from the import flow.
+     * A row for a folder found on disk: READY when its `splat.ply` reads, CAPTURED with only a bundle
+     * (`transforms.json` or `capture.json`), else FAILED. A READY folder without either came from the import flow.
+     * Null for a folder with none of the three yet (a capture still being written): it stays hidden until it is one.
      */
-    private fun adopt(folder: File): ScanEntity {
+    private fun adopt(folder: File): ScanEntity? {
         val splat = File(folder, SPLAT_FILE)
+        val bundle = File(folder, TRANSFORMS_FILE).isFile || File(folder, CAPTURE_FILE).isFile
+        if (!splat.exists() && !bundle) return null
         val splatCount = if (splat.isFile) {
             try {
                 splat.inputStream().buffered().use { SplatFileHeader.readPly(it).splatCount }
@@ -143,7 +162,7 @@ class ScanRepositoryImpl(
         }
         val status = when {
             splatCount != null -> ScanStatus.READY
-            !splat.exists() && (File(folder, TRANSFORMS_FILE).isFile || File(folder, CAPTURE_FILE).isFile) -> ScanStatus.CAPTURED
+            !splat.exists() && bundle -> ScanStatus.CAPTURED
             else -> ScanStatus.FAILED
         }
         val keyframes = File(folder, IMAGES_DIR).listFiles()?.count { it.isFile } ?: 0

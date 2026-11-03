@@ -143,7 +143,7 @@ class ScanRepositoryTest {
     }
 
     @Test
-    fun `sync adopts a bundle without a splat as CAPTURED and a broken one as FAILED`() = runTest {
+    fun `sync adopts a bundle without a splat as CAPTURED, a broken one as FAILED, and hides a bare folder`() = runTest {
         File(root, "found-bundle").apply { mkdirs() }.resolve("transforms.json").writeText("{}")
         File(root, "found-broken").apply { mkdirs() }.resolve("splat.ply").writeText("not a ply")
         File(root, "found-empty").mkdirs()
@@ -153,12 +153,12 @@ class ScanRepositoryTest {
 
         assertEquals(ScanStatus.CAPTURED, repository.get("found-bundle")!!.status)
         assertEquals(ScanStatus.FAILED, repository.get("found-broken")!!.status)
-        assertEquals(ScanStatus.FAILED, repository.get("found-empty")!!.status)
-        assertEquals(3, repository.scans().first().size)
+        assertNull(repository.get("found-empty"))
+        assertEquals(2, repository.scans().first().size)
     }
 
     @Test
-    fun `sync adopts a pose-free capture as CAPTURED and keeps broken or bare ones FAILED`() = runTest {
+    fun `sync adopts a pose-free capture as CAPTURED, a broken one FAILED, and hides one without capture json`() = runTest {
         val ok = File(root, "pose-free").apply { mkdirs() }
         File(ok, "capture.json").writeText("{}")
         File(ok, "images").mkdirs()
@@ -177,7 +177,97 @@ class ScanRepositoryTest {
         assertEquals(2, got.keyframeCount)
         assertEquals(false, got.imported)
         assertEquals(ScanStatus.FAILED, repository.get("pose-broken")!!.status)
-        assertEquals(ScanStatus.FAILED, repository.get("only-images")!!.status)
+        assertNull(repository.get("only-images"))
+    }
+
+    @Test
+    fun `Hunter's Pixel scan, capture json written last and no transforms json, lists as CAPTURED on a fresh start`() =
+        runTest {
+            pixelScan(root, PIXEL_SCAN, frames = 16)
+
+            // A fresh start: a new repository over the same (empty) table, and the Library's first look.
+            val fresh = ScanRepositoryImpl(FakeScanDao(), root, ProcessingCanceller { }, Dispatchers.Unconfined)
+            val listed = fresh.scans().first().single()
+
+            assertEquals(PIXEL_SCAN, listed.id)
+            assertEquals(ScanStatus.CAPTURED, listed.status)
+            assertEquals(16, listed.keyframeCount)
+            assertFalse(listed.imported)
+        }
+
+    @Test
+    fun `a scan Stop renames in while the Library is open lists on the Library's next look`() = runTest {
+        assertEquals(emptyList<Any>(), repository.scans().first(), "the Library is open with no scans")
+        val staging = File(tmp, "recording").apply { mkdirs() }
+        val take = pixelScan(staging, PIXEL_SCAN, frames = 33)
+
+        // FossPoseFreeRecorder.stop: the finished folder is renamed into the scans root; nothing writes a row.
+        assertTrue(take.renameTo(File(root, PIXEL_SCAN)))
+
+        repository.scans().first().single().let {
+            assertEquals(PIXEL_SCAN, it.id)
+            assertEquals(ScanStatus.CAPTURED, it.status)
+            assertEquals(33, it.keyframeCount)
+        }
+    }
+
+    @Test
+    fun `a half-written folder stays hidden until its capture json lands`() = runTest {
+        val half = File(root, PIXEL_SCAN).apply { mkdirs() }
+        File(half, "images").mkdirs()
+        File(half, "images/frame_00001.jpg").writeBytes(ByteArray(8))
+        File(half, "imu.csv").writeText("timestamp_ns,sensor,x,y,z\n")
+
+        assertEquals(emptyList<Any>(), repository.scans().first())
+        assertNull(repository.get(PIXEL_SCAN))
+
+        File(half, "capture.json").writeText(captureJson(1))
+        assertEquals(ScanStatus.CAPTURED, repository.scans().first().single().status)
+    }
+
+    @Test
+    fun `a capture json that does not parse leaves the Library listing every scan`() = runTest {
+        File(root, "garbled").apply { mkdirs() }.resolve("capture.json").writeText("{\"poses\": \"none\", \"frames\": [")
+        pixelScan(root, PIXEL_SCAN, frames = 2)
+
+        val listed = repository.scans().first()
+
+        assertEquals(setOf("garbled", PIXEL_SCAN), listed.map { it.id }.toSet())
+        assertEquals(ScanStatus.CAPTURED, repository.get(PIXEL_SCAN)!!.status)
+    }
+
+    @Test
+    fun `a folder with both capture json and transforms json gives one row`() = runTest {
+        pixelScan(root, PIXEL_SCAN, frames = 3).resolve("transforms.json").writeText("{}")
+
+        repository.sync()
+        val listed = repository.scans().first()
+
+        assertEquals(listOf(PIXEL_SCAN), listed.map { it.id })
+        assertEquals(ScanStatus.CAPTURED, listed.single().status)
+    }
+
+    /** #334's scan_20261103_132504 layout under [parent]: images, `imu.csv`, `calibration.json`, `capture.json` last. */
+    private fun pixelScan(parent: File, name: String, frames: Int): File {
+        val folder = File(parent, name).apply { mkdirs() }
+        File(folder, "images").mkdirs()
+        repeat(frames) { File(folder, "images/frame_%05d.jpg".format(it + 1)).writeBytes(ByteArray(16)) }
+        File(folder, "imu.csv").writeText("timestamp_ns,sensor,x,y,z\n1,gyro,0,0,0\n")
+        File(folder, "calibration.json").writeText("{\"image\": {\"w\": 1920, \"h\": 1080}}")
+        File(folder, "capture.json").writeText(captureJson(frames))
+        return folder
+    }
+
+    /** `capture.json` in the shape PoseFreeCaptureWriter writes on the Pixel: `"poses": "none"`, one entry a frame. */
+    private fun captureJson(frames: Int): String {
+        val entries = (1..frames).joinToString(",\n") { i ->
+            ("    {\"file_path\": \"images/frame_%05d.jpg\", \"timestamp_ns\": %d, \"w\": 1920, \"h\": 1080, " +
+                "\"sharpness\": 41.5, \"fl_x\": 1450.2, \"fl_y\": 1450.2, \"cx\": 960.0, \"cy\": 540.0, " +
+                "\"exposure_ns\": 8000000}").format(i, FIRST_NS + i * FRAME_NS)
+        }
+        return "{\n  \"splatman_capture_version\": 1,\n  \"poses\": \"none\",\n  \"imu_file_path\": \"imu.csv\",\n" +
+            "  \"calibration_file_path\": \"calibration.json\",\n  \"timestamp_source\": \"REALTIME\",\n" +
+            "  \"frames\": [\n$entries\n  ]\n}\n"
     }
 
     @Test
@@ -248,6 +338,12 @@ class ScanRepositoryTest {
     }
 
     private fun fixture(): ByteArray = javaClass.getResourceAsStream("/splats/tiny-sh1.ply")!!.use { it.readBytes() }
+
+    private companion object {
+        const val PIXEL_SCAN = "scan_20261103_132504"
+        const val FIRST_NS = 1_000_000_000L
+        const val FRAME_NS = 250_000_000L
+    }
 }
 
 /** In-memory [ScanDao] with Room's semantics: insert ignores an existing id, observeAll is newest first. */
