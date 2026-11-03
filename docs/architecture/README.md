@@ -44,7 +44,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0004](adr/0004-tracking.md) | ARCore (`getPose` + `getImageIntrinsics` + CPU image) behind `PoseSource`; optional at install; no ARCore in a future `foss` flavour |
 | [0005](adr/0005-training.md) | On-device only, no network; seed splat first, then a CPU optimiser; GPU compute later; desktop training via the exported bundle |
 | [0006](adr/0006-rendering.md) | GLES 3.0 sorted instanced quads, data in textures, CPU 16-bit sort off the GL thread; 60 fps at 300k splats |
-| [0007](adr/0007-formats.md) | 3DGS PLY (default), `.splat`, SPZ; glTF later; capture bundle = Nerfstudio `transforms.json` |
+| [0007](adr/0007-formats.md) | 3DGS PLY (default), `.splat`, SPZ; glTF later; capture bundle = Nerfstudio `transforms.json`; pose-free capture (`capture.json`, `imu.csv`, `calibration.json`) |
 | [0008](adr/0008-libraries.md) | Write the maths and codecs; adopt ARCore (optional), kotlinx.serialization, java.util.zip; no INRIA code |
 | [0009](adr/0009-testing.md) | JVM unit tests with fixed fixtures and stated tolerances for every conversion, codec, packet and kernel; CPU rasteriser as golden renderer |
 | [0010](adr/0010-gpu-training.md) | GPU training in a new `splat-gpu` module: GLES 3.1 compute, same sort order as the CPU, no gradient atomics, on-device parity tests with fixed tolerances; fills in point 5 of 0005 |
