@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.parcelize)
     alias(libs.plugins.ksp)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -20,6 +21,8 @@ android {
 
     testOptions {
         targetSdk = 34
+        // Robolectric (the screenshot goldens, #67) needs the merged resources and manifest.
+        unitTests.isIncludeAndroidResources = true
     }
 
     buildFeatures {
@@ -52,6 +55,11 @@ android {
 // The gate (tools/check.sh) runs testDebugUnitTest and lintDebug; with flavours AGP names them per flavour only.
 tasks.register("testDebugUnitTest") { dependsOn("testFullDebugUnitTest", "testFossDebugUnitTest") }
 tasks.register("lintDebug") { dependsOn("lintFullDebug", "lintFossDebug") }
+// The same for the screenshot goldens (#67), whose tasks are per flavour too: both flavours draw the same overlay, so
+// recording one writes the goldens both verify.
+tasks.register("recordRoborazziDebug") { dependsOn("recordRoborazziFossDebug") }
+tasks.register("compareRoborazziDebug") { dependsOn("compareRoborazziFossDebug") }
+tasks.register("verifyRoborazziDebug") { dependsOn("verifyRoborazziFullDebug", "verifyRoborazziFossDebug") }
 
 dependencies {
     implementation(project(":core"))
@@ -77,12 +85,19 @@ dependencies {
     
     // Testing dependencies
     testImplementation(libs.bundles.common.test)
-    testImplementation(libs.test.robolectric)
     testImplementation(libs.test.androidx.core)
+    testImplementation(libs.bundles.screenshot.test)
+    testRuntimeOnly(libs.test.junit.vintage)
     androidTestImplementation(libs.bundles.common.android.test)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.test.android.junit)
     debugImplementation(libs.debug.compose.manifest)
 
     ksp(libs.hilt.compiler)
+}
+
+// Screenshot goldens (#67) under src/test/screenshots: testDebugUnitTest verifies them (roborazzi.test.verify in
+// gradle.properties), recordRoborazziDebug re-records them on purpose (.forgejo/workflows/goldens.yml).
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
 }

@@ -1,0 +1,60 @@
+name: goldens
+# Re-record the screenshot goldens (#67) on the `splatman` runner and print which ones changed: run it on a branch
+# from the forge's Actions tab (workflow_dispatch). The goldens are the Library, Viewer and Capture screens at one
+# phone size, light and dark (*/src/test/screenshots/); every gate run verifies them (testDebugUnitTest, with
+# roborazzi.test.verify in gradle.properties). This job only reports: it commits and pushes nothing. To take a change,
+# record on the branch with `tools/check.sh recordRoborazziDebug`, look at the new pictures and commit them.
+# An empty list means the runner draws exactly what is committed (no machine fonts or clock leak into the goldens).
+# Supply chain and secrets as in ci.yml: no `uses:`, no container, no secret; the read-only job token sits only in the
+# checkout step's environment. Gate file (tools/gate-files.sh): a PR that changes it needs its reviewer to name it.
+# Public repo (CLAUDE.md): this file names no host.
+on:
+  workflow_dispatch:
+concurrency:
+  group: goldens-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  record:
+    name: record goldens
+    runs-on: splatman
+    timeout-minutes: 45
+    steps:
+      - name: checkout
+        # The same checkout as ci.yml's: the job's own server and token, in the environment only, redirects refused.
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          [[ "$SERVER" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ &&
+             "$REPO" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9_-][A-Za-z0-9._-]*$ && "$SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            { echo "checkout: unexpected server, repo or sha"; exit 1; }
+          git init -q .
+          git remote add origin "$SERVER/$REPO.git"
+          GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0="http.$SERVER/.extraHeader" GIT_CONFIG_VALUE_0="Authorization: token $TOKEN" \
+            GIT_CONFIG_KEY_1="http.$SERVER/.followRedirects" GIT_CONFIG_VALUE_1=false GIT_TERMINAL_PROMPT=0 \
+            git fetch -q --no-tags --depth 1 origin "$SHA"
+          git checkout -q --detach FETCH_HEAD
+          echo "checkout: $(git rev-parse HEAD)"
+      - name: gradle hooks
+        # As in ci.yml (#74): no init script or user gradle.properties from another job runs in this build.
+        run: |
+          home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          rm -rf -- "$home/init.d" "$home/init.gradle" "$home/init.gradle.kts" "$home/gradle.properties"
+          echo "gradle hooks: none left in $home"
+      - name: record
+        # Under tools/check.sh's lock and memory caps; ends `gate: green` or `gate: RED: <why>`.
+        run: bash tools/check.sh recordRoborazziDebug
+      - name: changed goldens
+        # Every golden the run changed or added, against the commit (a retired test's golden is left as it is).
+        run: |
+          changed="$(git status --porcelain --untracked-files=all -- ':(glob)**/src/test/screenshots/**')"
+          if [[ -z "$changed" ]]; then
+            echo "goldens: none changed"
+          else
+            printf '%s\n' "$changed"
+            echo "goldens: $(wc -l <<<"$changed") changed (M changed, ?? new)"
+          fi

@@ -31,7 +31,11 @@ test-pitest                         = "1.17.1"
 test-pitest-junit5                  = "1.2.1"
 test-mockk                          = "1.13.13"
 test-turbine                        = "1.2.0"
-test-robolectric                    = "4.12.1"
+# 4.14.1 for Roborazzi's native graphics: the SDK 34 android-all-instrumented jar it runs on carries the fonts (#67).
+test-robolectric                    = "4.14.1"
+# Screenshot goldens on the JVM (#67). 1.60.0 is the newest Roborazzi whose Kotlin metadata (2.0) Kotlin 2.0.21 can
+# read; 1.61.0+ is 2.3.
+test-roborazzi                      = "1.60.0"
 test-androidx-core                  = "1.6.1"
 
 # android test libraries
@@ -58,6 +62,7 @@ kotlin-serialization                = { id = "org.jetbrains.kotlin.plugin.serial
 ksp                                 = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint                              = { id = "org.jmailen.kotlinter", version.ref = "ktlint" }
 pitest                              = { id = "info.solidsoft.pitest", version.ref = "pitest-gradle" }
+roborazzi                           = { id = "io.github.takahirom.roborazzi", version.ref = "test-roborazzi" }
 
 
 [libraries]
@@ -85,6 +90,7 @@ timber                              = { group = "com.jakewharton.timber", name =
 test-junit                          = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "test-junit" }
 test-junit-platform-launcher        = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "test-junit-platform" }
 test-junit4                         = { group = "junit", name = "junit", version = "4.13.2" }
+test-junit-vintage                  = { group = "org.junit.vintage", name = "junit-vintage-engine", version.ref = "test-junit" } # runs the JUnit 4 Robolectric screenshot tests on the JUnit Platform
 test-kotlin                         = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 test-kotlin-coroutines              = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlin-coroutines" }
 test-mockk                          = { group = "io.mockk", name = "mockk", version.ref = "test-mockk" }
@@ -92,6 +98,10 @@ test-mockk-agent                   = { group = "io.mockk", name = "mockk-agent-j
 test-turbine                        = { group = "app.cash.turbine", name = "turbine", version.ref = "test-turbine" }
 test-robolectric                    = { group = "org.robolectric", name = "robolectric", version.ref = "test-robolectric" }
 test-androidx-core                  = { group = "androidx.test", name = "core", version.ref = "test-androidx-core" }
+test-compose-ui                     = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "test-android-compose-ui-test" } # Compose UI tests on the JVM (Robolectric)
+test-roborazzi                      = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "test-roborazzi" }
+test-roborazzi-compose              = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "test-roborazzi" }
+test-roborazzi-junit-rule           = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit-rule", version.ref = "test-roborazzi" }
 
 # android test libraries
 test-android-benchmark-macro        = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "test-android-baseline-profile" }
@@ -114,6 +124,13 @@ common-test = [
     "test-mockk",
     "test-mockk-agent",
     "test-turbine"
+]
+screenshot-test = [
+    "test-compose-ui",
+    "test-robolectric",
+    "test-roborazzi",
+    "test-roborazzi-compose",
+    "test-roborazzi-junit-rule"
 ]
 common-android-test = [
     "test-android-compose",
