@@ -7,6 +7,7 @@ import com.huntercoles.splatman.library.presentation.PendingDeletes
 import com.huntercoles.splatman.viewer.presentation.ScanRecord
 import com.huntercoles.splatman.viewer.presentation.ViewerScanStore
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
+import com.huntercoles.splatman.viewer.rendering.RoomStart
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -15,8 +16,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Gives the viewer the Library's scans: the name, date and frames for its details, and rename and delete (deferred
- * through the Library's [PendingDeletes], so the Library pops up with Undo). */
+/** Gives the viewer the Library's scans: the name, date and frames for its details, a room scan's start pose,
+ * and rename and delete (deferred through the Library's [PendingDeletes], so the Library pops up with Undo). */
 @Module
 @InstallIn(SingletonComponent::class)
 internal object ViewerScanModule {
@@ -30,11 +31,12 @@ internal object ViewerScanModule {
     ): ViewerScanStore = object : ViewerScanStore {
         override suspend fun get(scanId: String): ScanRecord? {
             val scan = scans.get(scanId) ?: return null
-            val size = withContext(io) {
-                folders.folder(scan.folder)?.let { File(it, SplatSource.Scan.SPLAT_FILE) }
-                    ?.takeIf { it.isFile }?.length()
+            val (size, room) = withContext(io) {
+                val folder = folders.folder(scan.folder)
+                val size = folder?.let { File(it, SplatSource.Scan.SPLAT_FILE) }?.takeIf { it.isFile }?.length()
+                size to folder?.let(RoomStart::read)
             }
-            return ScanRecord(scan.name, scan.createdAtMs, scan.keyframeCount, size)
+            return ScanRecord(scan.name, scan.createdAtMs, scan.keyframeCount, size, room)
         }
 
         override suspend fun rename(scanId: String, name: String) = scans.rename(scanId, name)

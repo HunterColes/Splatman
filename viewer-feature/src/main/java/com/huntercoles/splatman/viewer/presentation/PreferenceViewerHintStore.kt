@@ -11,7 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** The gesture hint's flag in the `viewer_prefs` shared preferences. */
+/** The gesture hints' flags in the `viewer_prefs` shared preferences. */
 @Singleton
 class PreferenceViewerHintStore internal constructor(private val store: PreferenceStore) : ViewerHintStore {
 
@@ -22,9 +22,14 @@ class PreferenceViewerHintStore internal constructor(private val store: Preferen
 
     override fun markHintSeen() = store.putBoolean(HINT_SEEN, true)
 
+    override val roomHintSeen: Boolean get() = store.getBoolean(ROOM_HINT_SEEN, false)
+
+    override fun markRoomHintSeen() = store.putBoolean(ROOM_HINT_SEEN, true)
+
     private companion object {
         const val PREFS = "viewer_prefs"
         const val HINT_SEEN = "gesture_hint_seen"
+        const val ROOM_HINT_SEEN = "room_hint_seen"
     }
 }
 

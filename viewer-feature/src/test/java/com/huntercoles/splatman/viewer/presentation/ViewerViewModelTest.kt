@@ -14,6 +14,8 @@ import com.huntercoles.splatman.viewer.presentation.load.SplatSamples
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.presentation.load.TestClouds
 import com.huntercoles.splatman.splat.io.SplatFormat
+import com.huntercoles.splatman.splat.math.Vec3
+import com.huntercoles.splatman.viewer.rendering.RoomStart
 import com.huntercoles.splatman.viewer.rendering.gl.RenderScene
 import com.huntercoles.splatman.viewer.rendering.gl.SceneFraming
 import com.huntercoles.splatman.viewer.rendering.pack.SplatPacker
@@ -87,9 +89,16 @@ class ViewerViewModelTest {
         }
     }
 
-    private class FakeHints(override var hintSeen: Boolean = false) : ViewerHintStore {
+    private class FakeHints(
+        override var hintSeen: Boolean = false,
+        override var roomHintSeen: Boolean = false,
+    ) : ViewerHintStore {
         override fun markHintSeen() {
             hintSeen = true
+        }
+
+        override fun markRoomHintSeen() {
+            roomHintSeen = true
         }
     }
 
@@ -417,6 +426,45 @@ class ViewerViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf(scanId), scans.deleted)
         assertTrue(vm.uiState.value.closed)
+    }
+
+    private val roomStart = RoomStart(Vec3(1f, 1.5f, -2f), Vec3(0f, 0f, -1f))
+
+    @Test
+    fun `#293 a room scan carries its start pose and the room flag, an object scan neither`() = test {
+        val room = loadedScan(FakeScans(mutableMapOf(scanId to record.copy(room = roomStart)))).uiState.value
+        assertEquals(roomStart, room.room)
+        assertTrue(room.details!!.room)
+
+        store.clear()
+        val objectScan = loadedScan().uiState.value
+        assertNull(objectScan.room)
+        assertFalse(objectScan.details!!.room)
+    }
+
+    @Test
+    fun `#293 a sample never opens as a room`() = test {
+        val vm = viewModel(FakeLoader(mapOf(sample to { scene("s") })))
+        vm.onIntent(ViewerIntent.Open(sample))
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.room)
+        assertFalse(vm.uiState.value.details!!.room)
+    }
+
+    @Test
+    fun `#293 the room hint is shown and remembered apart from the object hint`() = test {
+        val hints = FakeHints(hintSeen = true)
+        val scans = FakeScans(mutableMapOf(scanId to record.copy(room = roomStart)))
+        val vm = loadedScan(scans, hints)
+        assertTrue(vm.uiState.value.showHint)
+        vm.onIntent(ViewerIntent.DismissHint)
+        assertTrue(hints.roomHintSeen)
+        store.clear()
+        assertFalse(loadedScan(scans, hints).uiState.value.showHint)
+
+        val fresh = FakeHints(roomHintSeen = true)
+        store.clear()
+        assertTrue(loadedScan(hints = fresh).uiState.value.showHint)
     }
 
     @Test

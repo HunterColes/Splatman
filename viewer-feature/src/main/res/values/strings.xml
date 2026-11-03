@@ -16,6 +16,9 @@
     <string name="view_hint_move">Two fingers to move</string>
     <string name="view_hint_zoom">Pinch to zoom</string>
     <string name="view_hint_ok">Got it</string>
+    <string name="view_hint_room_look">Drag to look around</string>
+    <string name="view_hint_room_move">Two fingers to slide</string>
+    <string name="view_hint_room_walk">Pinch to step in or back</string>
     <string name="view_back">Back</string>
     <string name="view_more">More options</string>
     <string name="view_reset">Reset view</string>
@@ -35,6 +38,7 @@
     <string name="view_info_frames">Built from %1$d frames</string>
     <string name="view_info_imported">Imported from %1$s</string>
     <string name="view_info_format">Format: %1$s</string>
+    <string name="view_info_room">Room scan: opens from inside</string>
     <string name="view_error_title">Can\'t open this splat</string>
     <string name="view_error_body">The file may be damaged or in a format Splatman doesn\'t read.</string>
     <string name="view_error_memory">This splat is too big for this phone\'s memory.</string>
@@ -47,6 +51,13 @@
     <string name="view_a11y_tilt_down">Tilt down</string>
     <string name="view_a11y_zoom_in">Zoom in</string>
     <string name="view_a11y_zoom_out">Zoom out</string>
+    <string name="view_a11y_render_room">3D view inside %1$s, %2$s splats</string>
+    <string name="view_a11y_turn_left">Turn left</string>
+    <string name="view_a11y_turn_right">Turn right</string>
+    <string name="view_a11y_look_up">Look up</string>
+    <string name="view_a11y_look_down">Look down</string>
+    <string name="view_a11y_step_in">Step in</string>
+    <string name="view_a11y_step_back">Step back</string>
     <!-- Export -->
     <string name="exp_title">Share or save</string>
     <plurals name="exp_title_many">

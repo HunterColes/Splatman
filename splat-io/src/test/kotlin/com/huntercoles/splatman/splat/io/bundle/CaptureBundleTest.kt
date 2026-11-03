@@ -183,6 +183,19 @@ class CaptureBundleTest {
     }
 
     @Test
+    fun `poses and mode read without the frame images`() {
+        val dir = File(tmp, "noimages")
+        CaptureBundleWriter.write(dir, goldenFrames(), seed, mode = ScanMode.ROOM)
+        File(dir, "images").deleteRecursively()
+        assertThrows<CaptureBundleException> { CaptureBundleReader.read(dir) }
+
+        val read = CaptureBundleReader.readPoses(dir)
+        assertEquals(ScanMode.ROOM, read.mode)
+        assertEquals(2, read.poses.size)
+        goldenFrames().zip(read.poses).forEach { (want, got) -> assertPoseEquals(want.pose, got) }
+    }
+
+    @Test
     fun `a failed write leaves no transforms json and no temp files`() {
         val dir = File(tmp, "killed")
         CaptureBundleWriter.write(dir, goldenFrames(), seed)

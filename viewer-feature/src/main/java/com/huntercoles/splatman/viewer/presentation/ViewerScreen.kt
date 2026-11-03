@@ -146,7 +146,7 @@ fun ViewerScreen(
     val keepPose = state.reloaded != null
     LaunchedEffect(loaded) {
         exportViewModel.setScene(loaded?.name, loaded?.cloud)
-        if (loaded != null) viewModel.camera.frame(loaded, size, keepPose)
+        if (loaded != null) viewModel.camera.frame(loaded, size, keepPose, state.room)
         renderer.setScene(loaded?.render)
     }
 
@@ -213,6 +213,7 @@ fun ViewerScreen(
                 scene = loaded,
                 title = state.title,
                 cropping = cropping,
+                room = state.details?.room == true,
                 onTap = {
                     viewModel.onIntent(ViewerIntent.DismissHint)
                     if (!talkBack && !cropping) viewModel.onIntent(ViewerIntent.ToggleChrome)
@@ -291,7 +292,10 @@ fun ViewerScreen(
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 SnackbarHost(snackbar, modifier = Modifier.align(Alignment.CenterHorizontally))
                 if (state.showHint && !cropping) {
-                    GestureHint(onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) })
+                    GestureHint(
+                        onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) },
+                        room = state.details?.room == true,
+                    )
                 }
                 AnimatedVisibility(
                     visible = chromeShown,
@@ -370,6 +374,7 @@ private fun GestureLayer(
     scene: LoadedScene,
     title: String,
     cropping: Boolean,
+    room: Boolean,
     onTap: () -> Unit,
     onDoubleTap: () -> Unit,
     onGesture: () -> Unit,
@@ -385,15 +390,29 @@ private fun GestureLayer(
     val description = if (cropping) {
         stringResource(R.string.crop_render_desc, title)
     } else {
-        stringResource(R.string.view_a11y_render, title, NumberFormat.getIntegerInstance().format(scene.count))
+        val render = if (room) R.string.view_a11y_render_room else R.string.view_a11y_render
+        stringResource(render, title, NumberFormat.getIntegerInstance().format(scene.count))
     }
+    // Inside a room the same six moves read as turning, looking and stepping (docs/design/screens/viewer.md).
+    // The controller is in room mode ([ViewerCamera.frame]): orbit() turns about the eye and zoom() steps along the view.
+    val labels = if (room) {
+        listOf(
+            R.string.view_a11y_turn_left, R.string.view_a11y_turn_right, R.string.view_a11y_look_up,
+            R.string.view_a11y_look_down, R.string.view_a11y_step_in, R.string.view_a11y_step_back,
+        )
+    } else {
+        listOf(
+            R.string.view_a11y_rotate_left, R.string.view_a11y_rotate_right, R.string.view_a11y_tilt_up,
+            R.string.view_a11y_tilt_down, R.string.view_a11y_zoom_in, R.string.view_a11y_zoom_out,
+        )
+    }.map { stringResource(it) }
     val actions = listOf(
-        stringResource(R.string.view_a11y_rotate_left) to { orbit(camera, -1, 0) },
-        stringResource(R.string.view_a11y_rotate_right) to { orbit(camera, 1, 0) },
-        stringResource(R.string.view_a11y_tilt_up) to { orbit(camera, 0, 1) },
-        stringResource(R.string.view_a11y_tilt_down) to { orbit(camera, 0, -1) },
-        stringResource(R.string.view_a11y_zoom_in) to { zoom(camera, 1) },
-        stringResource(R.string.view_a11y_zoom_out) to { zoom(camera, -1) },
+        labels[0] to { orbit(camera, -1, 0) },
+        labels[1] to { orbit(camera, 1, 0) },
+        labels[2] to { orbit(camera, 0, 1) },
+        labels[3] to { orbit(camera, 0, -1) },
+        labels[4] to { zoom(camera, 1) },
+        labels[5] to { zoom(camera, -1) },
         stringResource(R.string.view_reset) to onReset,
     )
 

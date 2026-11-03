@@ -1,5 +1,7 @@
 package com.huntercoles.splatman.viewer.presentation
 
+import com.huntercoles.splatman.viewer.rendering.RoomStart
+
 /** What the Library knows about a scan made on this phone, for the viewer's title and details sheet. */
 data class ScanRecord(
     val name: String,
@@ -7,6 +9,8 @@ data class ScanRecord(
     val keyframeCount: Int,
     /** The size of the scan's `splat.ply`, or null when it cannot be read. */
     val sizeBytes: Long?,
+    /** Where a room scan opens (its bundle says `splatman_mode: "room"`); null for an object scan. */
+    val room: RoomStart? = null,
 )
 
 /** The Library's scans as the viewer needs them; the app binds it to library-feature's ScanRepository. */
@@ -19,11 +23,15 @@ interface ViewerScanStore {
     suspend fun delete(scanId: String)
 }
 
-/** The one-time gesture hint's flag. */
+/** The one-time gesture hints' flags: the orbit hint and, apart from it, the room hint. */
 interface ViewerHintStore {
     val hintSeen: Boolean
 
     fun markHintSeen()
+
+    val roomHintSeen: Boolean
+
+    fun markRoomHintSeen()
 }
 
 /** The rename dialog's rules (docs/design/screens/viewer.md: max 80 characters, a counter past 60). */

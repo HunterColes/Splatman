@@ -2,8 +2,10 @@ package com.huntercoles.splatman.viewer.presentation
 
 import androidx.compose.ui.unit.IntSize
 import com.huntercoles.splatman.splat.io.SplatFormat
+import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.TestClouds
+import com.huntercoles.splatman.viewer.rendering.RoomStart
 import com.huntercoles.splatman.viewer.rendering.gl.RenderScene
 import com.huntercoles.splatman.viewer.rendering.gl.SceneFraming
 import com.huntercoles.splatman.viewer.rendering.pack.SplatPacker
@@ -53,5 +55,20 @@ class ViewerCameraTest {
 
         assertTrue(camera.frame(scene(), IntSize(1080, 2400)))
         assertNotEquals(zoomed, camera.controller.getDistance())
+    }
+
+    @Test
+    fun `#293 a room scan is framed from inside at its start pose`() {
+        val camera = ViewerCamera()
+        val start = RoomStart(Vec3(0.2f, 0.1f, 0.3f), Vec3(0f, 0f, -1f))
+        assertTrue(camera.frame(scene(), IntSize(1080, 2400), room = start))
+        assertTrue(camera.controller.isRoom)
+        val eye = camera.controller.eye()
+        assertEquals(start.eye.x, eye.x, 1e-4f)
+        assertEquals(start.eye.y, eye.y, 1e-4f)
+        assertEquals(start.eye.z, eye.z, 1e-4f)
+
+        assertTrue(camera.frame(scene(), IntSize(1080, 2400)))
+        assertFalse(camera.controller.isRoom)
     }
 }

@@ -10,6 +10,7 @@ import com.huntercoles.splatman.viewer.presentation.load.SplatFileException
 import com.huntercoles.splatman.viewer.presentation.load.SplatLoader
 import com.huntercoles.splatman.viewer.presentation.load.SplatSamples
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
+import com.huntercoles.splatman.viewer.rendering.RoomStart
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -39,7 +40,10 @@ sealed interface ViewerLoad {
 /** Why the Viewer reopens its source: a crop was applied (`crop_done`) or reverted (`crop_reverting`). */
 enum class ViewerReload { CROPPED, REVERTED }
 
-/** The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). */
+/**
+ * The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). [room]: a scan
+ * captured in room mode, which opens from inside (docs/design/screens/viewer.md "Room scans").
+ */
 data class ViewerDetails(
     val name: String,
     val createdAtMs: Long?,
@@ -47,6 +51,7 @@ data class ViewerDetails(
     val sizeBytes: Long?,
     val frames: Int?,
     val format: SplatFormat,
+    val room: Boolean = false,
 )
 
 /** The rename dialog: the field's [text], clipped to [RenameRules.MAX_LENGTH]. */
@@ -64,6 +69,8 @@ data class ViewerUiState(
     /** A scan made on this phone: it can be renamed and deleted. */
     val canEdit: Boolean = false,
     val details: ViewerDetails? = null,
+    /** A room scan's start pose: the camera opens inside it ([ViewerCamera.frame]); null orbits from outside. */
+    val room: RoomStart? = null,
     val chromeVisible: Boolean = true,
     val autoRotate: Boolean = false,
     val showHint: Boolean = false,
@@ -178,7 +185,7 @@ class ViewerViewModel @Inject constructor(
 
     private fun dismissHint() {
         if (!_uiState.value.showHint) return
-        hints.markHintSeen()
+        if (_uiState.value.room != null) hints.markRoomHintSeen() else hints.markHintSeen()
         _uiState.update { it.copy(showHint = false) }
     }
 
@@ -232,6 +239,7 @@ class ViewerViewModel @Inject constructor(
                 reloaded = null,
                 canEdit = false,
                 details = null,
+                room = if (reload != null) it.room else null,
                 showDetails = false,
                 rename = null,
                 confirmDelete = false,
@@ -286,8 +294,10 @@ class ViewerViewModel @Inject constructor(
         record: ScanRecord?,
         reload: ViewerReload?,
     ): ViewerUiState {
-        if (next !is ViewerLoad.Loaded) return copy(load = next, title = source.name)
+        if (next !is ViewerLoad.Loaded) return copy(load = next, title = source.name, room = null)
         val scene = next.scene
+        // Only a scan made on this phone has a bundle; samples and picked files have no mode and orbit as before.
+        val room = record?.room?.takeIf { source is SplatSource.Scan }
         val name = record?.name ?: scene.name
         return copy(
             load = next,
@@ -300,8 +310,11 @@ class ViewerViewModel @Inject constructor(
                 sizeBytes = record?.sizeBytes ?: scene.sizeBytes,
                 frames = record?.keyframeCount?.takeIf { source is SplatSource.Scan },
                 format = scene.format,
+                room = room != null,
             ),
-            showHint = !hints.hintSeen,
+            room = room,
+            // A room scan has its own hint, shown once apart from the object hint (viewer.md "Room scans").
+            showHint = if (room != null) !hints.roomHintSeen else !hints.hintSeen,
             reloaded = reload,
         )
     }

@@ -42,6 +42,14 @@ data class BundleFrame(
     val depthIntrinsics: CameraIntrinsics?,
 )
 
+/** What [CaptureBundleReader.readPoses] reads from `transforms.json` alone, with no frame file required. */
+data class BundlePoses(
+    /** Object or room scan (`splatman_mode`); OBJECT when the key is absent or unknown. */
+    val mode: ScanMode,
+    /** `T_W_Cgl` of every frame, in file order. */
+    val poses: List<CameraPose>,
+)
+
 /** A capture bundle read from disk (ADR 0007). */
 class CaptureBundle(
     /** The bundle directory. */

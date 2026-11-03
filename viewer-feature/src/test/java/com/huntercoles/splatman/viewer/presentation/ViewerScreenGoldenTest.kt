@@ -80,9 +80,16 @@ class ViewerScreenGoldenTest {
         override suspend fun delete(scanId: String) = Unit
     }
 
-    private class FirstRun(override var hintSeen: Boolean = false) : ViewerHintStore {
+    private class FirstRun(
+        override var hintSeen: Boolean = false,
+        override var roomHintSeen: Boolean = false,
+    ) : ViewerHintStore {
         override fun markHintSeen() {
             hintSeen = true
+        }
+
+        override fun markRoomHintSeen() {
+            roomHintSeen = true
         }
     }
 

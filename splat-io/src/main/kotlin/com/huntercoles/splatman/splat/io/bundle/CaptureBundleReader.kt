@@ -20,6 +20,32 @@ object CaptureBundleReader {
 
     @Throws(CaptureBundleException::class)
     fun read(directory: File): CaptureBundle {
+        val doc = readTransforms(directory)
+        val frames = doc.frames.mapIndexed { i, f -> readFrame(directory, i, f) }
+        val seed = doc.plyFilePath?.let { readSeedPly(existing(directory, it, "ply_file_path")) }
+        val subject = doc.subject?.let {
+            if (it.size != 3 || it.any { c -> !c.isFinite() }) {
+                throw CaptureBundleException("$TRANSFORMS_FILE: splatman_subject must be 3 finite numbers")
+            }
+            Vec3(it[0], it[1], it[2])
+        }
+        return CaptureBundle(directory, doc.splatmanVersion, frames, seed, subject, ScanMode.fromKey(doc.mode))
+    }
+
+    /**
+     * The scan mode and the frame poses (in frame order) from `transforms.json` alone: image, depth and seed files
+     * need not exist, so it still works after Settings "Clear frames" has deleted `images/` (#293).
+     */
+    @Throws(CaptureBundleException::class)
+    fun readPoses(directory: File): BundlePoses {
+        val doc = readTransforms(directory)
+        val poses = doc.frames.mapIndexed { i, f ->
+            poseFromNerfstudioMatrix(f.transformMatrix, "frames[$i] (${f.filePath})")
+        }
+        return BundlePoses(ScanMode.fromKey(doc.mode), poses)
+    }
+
+    private fun readTransforms(directory: File): TransformsJson {
         val transforms = File(directory, TRANSFORMS_FILE)
         if (!transforms.isFile) {
             throw CaptureBundleException("not a capture bundle: no $TRANSFORMS_FILE in ${directory.path}")
@@ -36,15 +62,7 @@ object CaptureBundleReader {
                 "$TRANSFORMS_FILE: splatman_version ${doc.splatmanVersion} is newer than $SPLATMAN_BUNDLE_VERSION",
             )
         }
-        val frames = doc.frames.mapIndexed { i, f -> readFrame(directory, i, f) }
-        val seed = doc.plyFilePath?.let { readSeedPly(existing(directory, it, "ply_file_path")) }
-        val subject = doc.subject?.let {
-            if (it.size != 3 || it.any { c -> !c.isFinite() }) {
-                throw CaptureBundleException("$TRANSFORMS_FILE: splatman_subject must be 3 finite numbers")
-            }
-            Vec3(it[0], it[1], it[2])
-        }
-        return CaptureBundle(directory, doc.splatmanVersion, frames, seed, subject, ScanMode.fromKey(doc.mode))
+        return doc
     }
 
     /** Loads a frame's depth file (little-endian f32 metres); null when it has no depth or no depth size. */

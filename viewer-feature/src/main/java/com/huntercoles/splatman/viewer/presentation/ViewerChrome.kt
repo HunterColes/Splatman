@@ -198,17 +198,26 @@ internal fun ViewerBottomBar(
     }
 }
 
-/** The one-time gesture hint: three rows and "Got it". */
+/**
+ * The one-time gesture hint: three rows and "Got it". [room]: the inside-the-room wording (look around, slide, step
+ * in or back) with the same icons, so both variants have the same height.
+ */
 @Composable
-internal fun GestureHint(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun GestureHint(onDismiss: () -> Unit, modifier: Modifier = Modifier, room: Boolean = false) {
     Card(
         modifier = modifier.padding(horizontal = SplatDimens.SpacingDefault),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(modifier = Modifier.padding(SplatDimens.SpacingDefault)) {
-            HintRow(Icons.Default.TouchApp, stringResource(R.string.view_hint_spin))
-            HintRow(Icons.Default.OpenWith, stringResource(R.string.view_hint_move))
-            HintRow(Icons.Default.ZoomIn, stringResource(R.string.view_hint_zoom))
+            if (room) {
+                HintRow(Icons.Default.TouchApp, stringResource(R.string.view_hint_room_look))
+                HintRow(Icons.Default.OpenWith, stringResource(R.string.view_hint_room_move))
+                HintRow(Icons.Default.ZoomIn, stringResource(R.string.view_hint_room_walk))
+            } else {
+                HintRow(Icons.Default.TouchApp, stringResource(R.string.view_hint_spin))
+                HintRow(Icons.Default.OpenWith, stringResource(R.string.view_hint_move))
+                HintRow(Icons.Default.ZoomIn, stringResource(R.string.view_hint_zoom))
+            }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.view_hint_ok))
             }
@@ -227,7 +236,7 @@ private fun HintRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text:
     }
 }
 
-/** The details sheet: name, date, splats, size, how it was made and the format; selectable text. */
+/** The details sheet: name, date, splats, size, how it was made, the format and "Room scan"; selectable text. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DetailsSheet(details: ViewerDetails, onDismiss: () -> Unit) {
@@ -259,6 +268,9 @@ internal fun DetailsSheet(details: ViewerDetails, onDismiss: () -> Unit) {
                     Text(stringResource(R.string.view_info_format, format))
                 } else {
                     Text(stringResource(R.string.view_info_imported, format))
+                }
+                if (details.room) {
+                    Text(stringResource(R.string.view_info_room))
                 }
             }
         }

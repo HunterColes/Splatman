@@ -199,6 +199,9 @@ cell).
 | `view_loading` | Opening %1$s… |
 | `view_hint` | Drag to spin · Two fingers to move · Pinch to zoom |
 | `view_hint_ok` | Got it |
+| `view_hint_room_look` | Drag to look around |
+| `view_hint_room_move` | Two fingers to slide |
+| `view_hint_room_walk` | Pinch to step in or back |
 | `view_reset` | Reset view |
 | `view_autorotate` | Auto-rotate |
 | `view_share` | Share |
@@ -210,6 +213,11 @@ cell).
 | `view_info_size` | %1$s |
 | `view_info_frames` | Built from %1$d frames in %2$s |
 | `view_info_imported` | Imported from %1$s |
+| `view_info_room` | Room scan: opens from inside |
+| `view_a11y_render_room` | 3D view inside %1$s, %2$s splats |
+| `view_a11y_turn_left` / `_turn_right` | Turn left / Turn right |
+| `view_a11y_look_up` / `_look_down` | Look up / Look down |
+| `view_a11y_step_in` / `_step_back` | Step in / Step back |
 | `view_error_title` | Can't open this splat |
 | `view_error_body` | The file may be damaged or in a format Splatman doesn't read. |
 | `view_error_memory` | This splat is too big for this phone's memory. |
