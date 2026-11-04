@@ -324,6 +324,19 @@ class ViewerViewModelTest {
     }
 
     @Test
+    fun `#402 a library scan with no keyframes was imported and shows no frame count`() = test {
+        val imported = loadedScan(FakeScans(mutableMapOf(scanId to record.copy(keyframeCount = 0)))).uiState.value
+        assertEquals(null, imported.details!!.frames)
+        assertEquals(SplatFormat.PLY, imported.details!!.format)
+        assertTrue(imported.canEdit)
+    }
+
+    @Test
+    fun `#402 a captured library scan still shows its frame count`() = test {
+        assertEquals(42, loadedScan().uiState.value.details!!.frames)
+    }
+
+    @Test
     fun `a sample maps to its file name, shows as imported and cannot be renamed or deleted`() = test {
         val vm = viewModel(FakeLoader(mapOf(sample to { scene("Tape file") })))
         vm.onIntent(ViewerIntent.Open(sample))

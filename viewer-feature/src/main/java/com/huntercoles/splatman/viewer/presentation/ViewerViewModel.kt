@@ -44,8 +44,9 @@ sealed interface ViewerLoad {
 enum class ViewerReload { CROPPED, REVERTED, ERASED }
 
 /**
- * The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). [room]: a scan
- * captured in room mode, which opens from inside (docs/design/screens/viewer.md "Room scans").
+ * The details sheet's text: [frames] null means the splat was imported (a sample, a picked file, or a Library scan
+ * with no keyframes). [room]: a scan captured in room mode, which opens from inside (docs/design/screens/viewer.md
+ * "Room scans").
  */
 data class ViewerDetails(
     val name: String,
@@ -311,7 +312,9 @@ class ViewerViewModel @Inject constructor(
                 createdAtMs = record?.createdAtMs,
                 splats = scene.count,
                 sizeBytes = record?.sizeBytes ?: scene.sizeBytes,
-                frames = record?.keyframeCount?.takeIf { source is SplatSource.Scan },
+                // An imported Library file has a row with no keyframes (ScanRecord has no imported flag): it shows
+                // "Imported from <format>", like a sample, not "Built from 0 frames" (#402).
+                frames = record?.keyframeCount?.takeIf { source is SplatSource.Scan && it > 0 },
                 format = scene.format,
                 room = room != null,
             ),
