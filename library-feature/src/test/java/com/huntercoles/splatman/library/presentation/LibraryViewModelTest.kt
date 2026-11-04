@@ -1,6 +1,9 @@
 package com.huntercoles.splatman.library.presentation
 
+import androidx.lifecycle.SavedStateHandle
 import com.huntercoles.splatman.core.utils.MainDispatcherExtension
+import com.huntercoles.splatman.library.data.prefs.LibraryPreferences
+import com.huntercoles.splatman.library.domain.LandingFolder
 import com.huntercoles.splatman.library.domain.model.OpenTarget
 import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
@@ -37,6 +40,10 @@ class LibraryViewModelTest {
     val main = MainDispatcherExtension(dispatcher)
 
     private val repository = FakeScanRepository()
+    private val folders = FakeFolderRepository()
+    private val store = MemoryPreferenceStore()
+    private val preferences = LibraryPreferences(store)
+    private val landing = LandingFolder()
     private val progress = mutableMapOf<String, MutableSharedFlow<Int?>>()
     private var canScan = true
     private val shared = mutableListOf<List<ShareScan>>()
@@ -55,7 +62,12 @@ class LibraryViewModelTest {
 
     private fun TestScope.viewModel(): LibraryViewModel {
         val vm = LibraryViewModel(
+            savedStateHandle = SavedStateHandle(),
             scanRepository = repository,
+            folderRepository = folders,
+            libraryPreferences = preferences,
+            landingFolder = landing,
+            defaultDispatcher = dispatcher,
             sampleRepository = SampleRepository { listOf(sample) },
             buildProgress = BuildProgress { id -> progress.getOrPut(id) { MutableSharedFlow(replay = 1) } },
             scanSupport = ScanSupport { canScan },
@@ -93,13 +105,31 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `scans become cards in the repository's order`() = runTest(dispatcher) {
+    fun `A1 scans become cards in the remembered sort, not the repository's order`() = runTest(dispatcher) {
         val vm = viewModel()
-        repository.emit(listOf(scan("b"), scan("a")))
+        repository.emit(listOf(scan("old"), scan("new").copy(createdAtMs = 2_000)))
         runCurrent()
 
-        assertEquals(listOf("b", "a"), vm.cards().map { it.id })
+        assertEquals(listOf("new", "old"), vm.cards().map { it.id })
         assertTrue(vm.uiState.value.showFab)
+    }
+
+    @Test
+    fun `A3 a selected scan that stops matching stays unselected when it matches again`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repository.emit(listOf(scan("lamp").copy(name = "Lamp"), scan("chair").copy(name = "Chair")))
+        vm.onIntent(LibraryIntent.OpenSearch)
+        vm.onIntent(LibraryIntent.LongPress("lamp"))
+        vm.onIntent(LibraryIntent.Toggle("chair"))
+        runCurrent()
+
+        vm.onIntent(LibraryIntent.Query("chair"))
+        runCurrent()
+        vm.onIntent(LibraryIntent.Query(""))
+        runCurrent()
+
+        assertEquals(setOf("chair"), vm.uiState.value.selectedIds)
+        assertEquals(listOf("chair"), vm.cards().filter { it.selected }.map { it.id })
     }
 
     @Test

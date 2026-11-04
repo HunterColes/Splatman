@@ -1,5 +1,6 @@
 package com.huntercoles.splatman.library.presentation
 
+import com.huntercoles.splatman.library.domain.LibrarySort
 import com.huntercoles.splatman.library.domain.model.OpenTarget
 import com.huntercoles.splatman.library.domain.model.Sample
 import com.huntercoles.splatman.library.domain.model.Scan
@@ -39,6 +40,31 @@ data class LibraryCard(
     val sizeText: String = "",
     /** The scan's `thumbnail.png`, or null: a plain block shows instead. */
     val thumbnail: ScanThumbnail? = null,
+    /** The folder this scan is in, shown on its card in a root search only; null for a loose scan or no search. */
+    val inFolderName: String? = null,
+)
+
+/** Where the Library is: its root (folders and loose scans) or inside one folder (ADR 0013). */
+sealed interface LibraryPlace {
+    data object Root : LibraryPlace
+
+    /** Inside folder [id]; [name] is its current name (kept while it vanishes, until the screen leaves). */
+    data class Folder(val id: String, val name: String) : LibraryPlace
+}
+
+/** The search field: [open] while it shows; [query] as typed (a blank one filters nothing). Closing clears it. */
+data class SearchState(val open: Boolean = false, val query: String = "")
+
+/**
+ * One folder cell at the root: [scanCount] scans, [sizeBytes] the sum of their sizes, and up to four
+ * [thumbnails] of its scans in the current sort.
+ */
+data class FolderCard(
+    val id: String,
+    val name: String,
+    val scanCount: Int,
+    val sizeBytes: Long,
+    val thumbnails: List<ScanThumbnail> = emptyList(),
 )
 
 /** The body of the Library: placeholders on first load, the empty state, or the grid. */
@@ -47,7 +73,14 @@ sealed interface LibraryContent {
 
     data object Empty : LibraryContent
 
+    /** The grid: the place's scans (at the root the loose ones, or every match in a search); may be empty. */
     data class Cards(val cards: List<LibraryCard>) : LibraryContent
+
+    /** Inside a folder that holds no scans. */
+    data object FolderEmpty : LibraryContent
+
+    /** A search for [query] (as typed) matched no folder and no scan. */
+    data class NoMatch(val query: String) : LibraryContent
 }
 
 /** Why Share is off: a scan with no splat yet (waiting or building), or one whose build failed. */
@@ -75,6 +108,12 @@ data class LibraryUiState(
     val scanAvailable: Boolean = true,
     /** True while the share files are being written. */
     val sharing: Boolean = false,
+    val place: LibraryPlace = LibraryPlace.Root,
+    /** The remembered sort, the same in every place. */
+    val sort: LibrarySort = LibrarySort.NEWEST,
+    val search: SearchState = SearchState(),
+    /** The root's folder cells (only the matching ones in a search), in the sort; empty inside a folder. */
+    val folders: List<FolderCard> = emptyList(),
 ) {
     val selecting: Boolean get() = selectedIds.isNotEmpty()
 
@@ -126,6 +165,17 @@ sealed interface LibraryIntent {
 
     /** Shares the selection, or [ids] when given (a card's TalkBack Share action), through the share sheet. */
     data class Share(val ids: Set<String>? = null) : LibraryIntent
+
+    /** Picks the sort for every place; it is remembered across restarts. */
+    data class SetSort(val sort: LibrarySort) : LibraryIntent
+
+    data object OpenSearch : LibraryIntent
+
+    /** The search field's text changed. */
+    data class Query(val text: String) : LibraryIntent
+
+    /** Closes search: clears the query and ends the selection. */
+    data object CloseSearch : LibraryIntent
 }
 
 /** One-off things the Library screen does for the ViewModel. */
@@ -144,13 +194,25 @@ sealed interface LibraryEvent {
 
     /** The share files could not be written: say so in a snackbar. */
     data object ShareFailed : LibraryEvent
+
+    /** The open folder is gone (deleted elsewhere): go back to the root. */
+    data object LeaveFolder : LibraryEvent
+
+    /** A new query or sort: scroll the grid to its top. */
+    data object ScrollToTop : LibraryEvent
 }
 
 /**
  * The card for this scan: READY carries its splat count, PROCESSING the build [percent] (null until the run reports
- * one), every other status maps to its own card state. [sizeText] is the folder size, already formatted.
+ * one), every other status maps to its own card state. [sizeText] is the folder size, already formatted;
+ * [inFolderName] names the Library folder of a root search result.
  */
-fun Scan.toCard(selected: Boolean = false, percent: Int? = null, sizeText: String = ""): LibraryCard = LibraryCard(
+fun Scan.toCard(
+    selected: Boolean = false,
+    percent: Int? = null,
+    sizeText: String = "",
+    inFolderName: String? = null,
+): LibraryCard = LibraryCard(
     id = id,
     name = name,
     createdAtMs = createdAtMs,
@@ -165,4 +227,5 @@ fun Scan.toCard(selected: Boolean = false, percent: Int? = null, sizeText: Strin
     imported = imported,
     sizeText = sizeText,
     thumbnail = thumbnail,
+    inFolderName = inFolderName,
 )

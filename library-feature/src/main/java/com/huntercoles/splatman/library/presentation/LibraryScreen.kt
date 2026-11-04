@@ -173,6 +173,9 @@ fun LibraryScreen(
                 is LibraryEvent.Share -> if (!actions.onShare(event.files)) launch { snackbar.showSnackbar(shareError) }
                 LibraryEvent.ShareGone -> launch { snackbar.showSnackbar(shareGone) }
                 LibraryEvent.ShareFailed -> launch { snackbar.showSnackbar(shareError) }
+                LibraryEvent.ScrollToTop -> launch { grid.scrollToItem(0) }
+                // Only a folder place emits it; the folder screen (a later card) pops back to the root.
+                LibraryEvent.LeaveFolder -> Unit
             }
         }
     }
@@ -230,6 +233,8 @@ fun LibraryScreen(
                     onDelete = { card -> onIntent(LibraryIntent.RequestDelete(setOf(card.id))) },
                     onShare = { card -> onIntent(LibraryIntent.Share(setOf(card.id))) },
                 )
+                // Only a folder or a search reaches these; their screens draw them (the folder and search cards).
+                LibraryContent.FolderEmpty, is LibraryContent.NoMatch -> Unit
             }
         }
     }
