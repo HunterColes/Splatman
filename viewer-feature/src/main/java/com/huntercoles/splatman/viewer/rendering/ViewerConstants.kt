@@ -34,4 +34,14 @@ object ViewerConstants {
 
     /** Auto-rotate speed: a full turn in about 20 s. */
     const val AUTO_ROTATE_RAD_PER_S = 0.3f
+
+    // Erase marked look (docs/design/screens/erase.md, "The marked look"; ADR 0014 rule 4)
+    /** Tint mixed into a marked splat's colour, 0xRRGGBB (`ERASE_TINT = #FF3D71`). */
+    const val ERASE_TINT = 0xFF3D71
+
+    /** How much of [ERASE_TINT] replaces a marked splat's colour (`ERASE_TINT_MIX`). */
+    const val ERASE_TINT_MIX = 0.6f
+
+    /** A marked splat's alpha factor (`ERASE_ALPHA`). */
+    const val ERASE_ALPHA = 0.5f
 }

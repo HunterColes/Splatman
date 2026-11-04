@@ -196,6 +196,7 @@ object GlConst {
     const val TEXTURE_2D = 0x0DE1
     const val TEXTURE0 = 0x84C0
     const val TEXTURE1 = 0x84C1
+    const val TEXTURE2 = 0x84C2
     const val TEXTURE_MIN_FILTER = 0x2801
     const val TEXTURE_MAG_FILTER = 0x2800
     const val TEXTURE_WRAP_S = 0x2802
@@ -206,6 +207,7 @@ object GlConst {
     const val RGBA32UI = 0x8D70
     const val RGBA_INTEGER = 0x8D99
     const val R32UI = 0x8236
+    const val R8UI = 0x8232
     const val RED_INTEGER = 0x8D94
     const val RGBA8 = 0x8058
     const val RGBA = 0x1908

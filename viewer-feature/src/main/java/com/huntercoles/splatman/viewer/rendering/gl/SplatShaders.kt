@@ -19,6 +19,11 @@ package com.huntercoles.splatman.viewer.rendering.gl
  * is the centre in box coordinates. A splat whose centre is not inside (`|local| <= u_cropHalf` per axis, boundary
  * inclusive, NaN outside, the same test as `CropBox.contains`) has its alpha multiplied by `u_cropDim`; with no box
  * the renderer sets `u_cropDim = 1.0` and the test is skipped, so the output is unchanged.
+ *
+ * Erase mask (ADR 0014 rule 4): with `u_maskOn == 1`, `u_mask` is an R8UI texture [MASK_WIDTH] texels wide, one per
+ * splat index (splat `i` at `(i % MASK_WIDTH, i / MASK_WIDTH)`). A nonzero texel mixes `u_eraseTint` into the colour
+ * at `u_eraseMix` and multiplies alpha by `u_eraseAlpha`. With `u_maskOn == 0` nothing is fetched. The mask and the
+ * crop dim never apply together: with the mask on, the crop test is skipped.
  */
 object SplatShaders {
     /** Splats per indexed draw: the largest whose four vertices per splat fit `GL_UNSIGNED_SHORT` indices. */
@@ -26,6 +31,9 @@ object SplatShaders {
 
     /** Texels per row of the order texture (`slot & 2047`, `slot >> 11` in [VERTEX]). */
     const val ORDER_WIDTH = 2048
+
+    /** Texels per row of the erase mask texture (`splat & 2047`, `splat >> 11` in [VERTEX]). */
+    const val MASK_WIDTH = 2048
 
     /** Indices per splat in [chunkIndices]. */
     const val INDICES_PER_SPLAT = 6
@@ -55,6 +63,11 @@ object SplatShaders {
         uniform vec3 u_cropCentre;
         uniform mat3 u_cropAxes;
         uniform vec3 u_cropHalf;
+        uniform usampler2D u_mask;
+        uniform int u_maskOn;
+        uniform vec3 u_eraseTint;
+        uniform float u_eraseMix;
+        uniform float u_eraseAlpha;
 
         out vec4 v_color;
         out vec2 v_pos;
@@ -129,7 +142,13 @@ object SplatShaders {
             v_color = vec4(
                 float(c.w & 255u), float((c.w >> 8u) & 255u), float((c.w >> 16u) & 255u), float(c.w >> 24u)
             ) / 255.0;
-            if (u_cropDim < 1.0) {
+            if (u_maskOn == 1) {
+                uint marked = texelFetch(u_mask, ivec2(int(splat & 2047u), int(splat >> 11u)), 0).r;
+                if (marked != 0u) {
+                    v_color.rgb = mix(v_color.rgb, u_eraseTint, u_eraseMix);
+                    v_color.a *= u_eraseAlpha;
+                }
+            } else if (u_cropDim < 1.0) {
                 vec3 local = abs((centre - u_cropCentre) * u_cropAxes);
                 if (!all(lessThanEqual(local, u_cropHalf))) v_color.a *= u_cropDim;
             }

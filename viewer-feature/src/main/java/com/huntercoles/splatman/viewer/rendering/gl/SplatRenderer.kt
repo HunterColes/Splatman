@@ -2,8 +2,10 @@ package com.huntercoles.splatman.viewer.rendering.gl
 
 import android.opengl.GLSurfaceView
 import com.huntercoles.splatman.splat.edit.CropBox
+import com.huntercoles.splatman.splat.edit.EraseMask
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
+import com.huntercoles.splatman.viewer.rendering.ViewerConstants
 import com.huntercoles.splatman.viewer.rendering.pack.PackedSplats
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +47,10 @@ data class RenderStats(val fps: Float, val frameMs: Float, val scale: Float, val
  *
  * Crop box ([setCropBox], ADR 0011): splats whose centre is outside the box draw at [CROP_DIM_ALPHA] of their alpha
  * (a shader uniform: no re-pack, no re-sort) and [CropBoxOverlay] draws the box on top.
+ *
+ * Erase mask ([setEraseMask], ADR 0014 rule 4): an R8UI texture on unit 2, one texel per splat index, re-uploaded
+ * whole at most once a frame when [EraseMask.version] moved (bytes read without a lock); marked splats draw with the
+ * erase look (no re-pack, no re-sort). If a crop box is set as well, the erase look wins and the crop dim is off.
  */
 class SplatRenderer(
     private val camera: GaussianCameraController,
@@ -56,10 +62,12 @@ class SplatRenderer(
 
     private class SceneUpdate(val scene: RenderScene?)
     private class CropUpdate(val box: CropBox?)
+    private class MaskUpdate(val mask: EraseMask?)
 
     private val sortScope = CoroutineScope(SupervisorJob() + sortDispatcher)
     private val pending = AtomicReference<SceneUpdate?>(null)
     private val pendingCrop = AtomicReference<CropUpdate?>(null)
+    private val pendingMask = AtomicReference<MaskUpdate?>(null)
     private val _stats = MutableStateFlow<RenderStats?>(null)
 
     /**
@@ -85,6 +93,16 @@ class SplatRenderer(
     private var uCropCentre = -1
     private var uCropAxes = -1
     private var uCropHalf = -1
+    private var uMask = -1
+    private var uMaskOn = -1
+    private var uEraseTint = -1
+    private var uEraseMix = -1
+    private var uEraseAlpha = -1
+    private var eraseMask: EraseMask? = null
+    private var maskTexture = 0
+    private var maskVersion = 0
+    private var maskUploaded = false
+    private var maskBytes: ByteBuffer? = null
     private val overlay = CropBoxOverlay(gl)
     private var cropBox: CropBox? = null
     private val cropAxes = FloatArray(9)
@@ -132,6 +150,14 @@ class SplatRenderer(
         pendingCrop.set(CropUpdate(box))
     }
 
+    /**
+     * Draws the splats [mask] marks with the erase look from the next frame on (null = off, frees the texture). Any
+     * thread; makes no GL call. Later changes to [mask] show once its [EraseMask.version] moves.
+     */
+    fun setEraseMask(mask: EraseMask?) {
+        pendingMask.set(MaskUpdate(mask))
+    }
+
     /** Stops the sort worker. Any thread; GL names die with the context. */
     fun dispose() {
         sortScope.cancel()
@@ -147,6 +173,8 @@ class SplatRenderer(
         fboHeight = 0
         activeOrder = -1
         orderCount = 0
+        maskTexture = 0
+        maskUploaded = false
         sorter?.invalidate()
 
         program = buildProgram()
@@ -161,6 +189,11 @@ class SplatRenderer(
         uCropCentre = gl.getUniformLocation(program, "u_cropCentre")
         uCropAxes = gl.getUniformLocation(program, "u_cropAxes")
         uCropHalf = gl.getUniformLocation(program, "u_cropHalf")
+        uMask = gl.getUniformLocation(program, "u_mask")
+        uMaskOn = gl.getUniformLocation(program, "u_maskOn")
+        uEraseTint = gl.getUniformLocation(program, "u_eraseTint")
+        uEraseMix = gl.getUniformLocation(program, "u_eraseMix")
+        uEraseAlpha = gl.getUniformLocation(program, "u_eraseAlpha")
         maxTextureSize = gl.getInteger(GlConst.MAX_TEXTURE_SIZE)
 
         vao = gl.genVertexArray()
@@ -204,8 +237,10 @@ class SplatRenderer(
 
         pending.getAndSet(null)?.let { applyScene(it.scene) }
         pendingCrop.getAndSet(null)?.let { applyCrop(it.box) }
+        pendingMask.getAndSet(null)?.let { applyMask(it.mask) }
         val current = scene
         if (current != null && !textureReady) uploadTexture(current.packed)
+        eraseMask?.let { mask -> if (!maskUploaded || mask.version != maskVersion) uploadMask(mask) }
 
         synchronized(camera) {
             camera.advance(frameMs / MS_PER_S)
@@ -265,6 +300,50 @@ class SplatRenderer(
             cropAxes[3 * k + 2] = axes[k].z
         }
         cropModel = CropBoxOverlay.modelOf(box)
+    }
+
+    private fun applyMask(mask: EraseMask?) {
+        if (mask === eraseMask) return
+        if (maskTexture != 0) gl.deleteTexture(maskTexture)
+        maskTexture = 0
+        maskUploaded = false
+        eraseMask = mask
+        if (mask == null) maskBytes = null
+    }
+
+    /** Uploads the whole of [mask] as an R8UI texture [SplatShaders.MASK_WIDTH] wide; an oversized one is skipped. */
+    private fun uploadMask(mask: EraseMask) {
+        // Read the version first: a write landing during the copy moves it again and is uploaded next frame.
+        maskVersion = mask.version
+        maskUploaded = true
+        val count = mask.count
+        val rows = (count + SplatShaders.MASK_WIDTH - 1) / SplatShaders.MASK_WIDTH
+        if (count == 0) return
+        if (rows > maxTextureSize && maxTextureSize > 0) {
+            Timber.w("Erase mask %dx%d exceeds GL_MAX_TEXTURE_SIZE %d", SplatShaders.MASK_WIDTH, rows, maxTextureSize)
+            return
+        }
+        val texels = rows * SplatShaders.MASK_WIDTH
+        val buf = maskBytes?.takeIf { it.capacity() == texels }
+            ?: ByteBuffer.allocateDirect(texels).order(ByteOrder.nativeOrder()).also { maskBytes = it }
+        buf.clear()
+        buf.put(mask.bytes, 0, count)
+        while (buf.hasRemaining()) buf.put(0.toByte())
+        buf.flip()
+        if (maskTexture == 0) maskTexture = gl.genTexture()
+        gl.activeTexture(GlConst.TEXTURE2)
+        gl.bindTexture(GlConst.TEXTURE_2D, maskTexture)
+        gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_MIN_FILTER, GlConst.NEAREST)
+        gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_MAG_FILTER, GlConst.NEAREST)
+        gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_WRAP_S, GlConst.CLAMP_TO_EDGE)
+        gl.texParameteri(GlConst.TEXTURE_2D, GlConst.TEXTURE_WRAP_T, GlConst.CLAMP_TO_EDGE)
+        gl.pixelStorei(GlConst.UNPACK_ALIGNMENT, 1)
+        gl.texImage2D(
+            GlConst.TEXTURE_2D, GlConst.R8UI, SplatShaders.MASK_WIDTH, rows,
+            GlConst.RED_INTEGER, GlConst.UNSIGNED_BYTE, buf,
+        )
+        gl.pixelStorei(GlConst.UNPACK_ALIGNMENT, 4)
+        gl.activeTexture(GlConst.TEXTURE0)
     }
 
     private fun uploadTexture(packed: PackedSplats) {
@@ -334,8 +413,20 @@ class SplatRenderer(
         gl.uniformMatrix4fv(uProj, proj)
         gl.uniform2f(uFocal, proj[0] * targetW / 2f, proj[5] * targetH / 2f)
         gl.uniform2f(uViewport, targetW.toFloat(), targetH.toFloat())
+        val mask = eraseMask
+        val maskOn = mask != null && maskTexture != 0 && mask.count >= orderCount
+        gl.uniform1i(uMask, 2)
+        gl.uniform1i(uMaskOn, if (maskOn) 1 else 0)
+        if (maskOn) {
+            gl.activeTexture(GlConst.TEXTURE2)
+            gl.bindTexture(GlConst.TEXTURE_2D, maskTexture)
+            gl.activeTexture(GlConst.TEXTURE0)
+            gl.uniform3f(uEraseTint, ERASE_TINT_R, ERASE_TINT_G, ERASE_TINT_B)
+            gl.uniform1f(uEraseMix, ViewerConstants.ERASE_TINT_MIX)
+            gl.uniform1f(uEraseAlpha, ViewerConstants.ERASE_ALPHA)
+        }
         val box = cropBox
-        if (box == null) {
+        if (box == null || maskOn) {
             gl.uniform1f(uCropDim, 1f)
         } else {
             gl.uniform1f(uCropDim, CROP_DIM_ALPHA)
@@ -447,6 +538,10 @@ class SplatRenderer(
                 h.x > 0f && h.y > 0f && h.z > 0f
         }
 
+        private const val CHANNEL_MAX = 255f
+        private const val ERASE_TINT_R = (ViewerConstants.ERASE_TINT shr 16 and 0xFF) / CHANNEL_MAX
+        private const val ERASE_TINT_G = (ViewerConstants.ERASE_TINT shr 8 and 0xFF) / CHANNEL_MAX
+        private const val ERASE_TINT_B = (ViewerConstants.ERASE_TINT and 0xFF) / CHANNEL_MAX
         private const val NS_PER_MS = 1_000_000f
         private const val MS_PER_S = 1000f
         private const val STATS_INTERVAL_NS = 500_000_000L

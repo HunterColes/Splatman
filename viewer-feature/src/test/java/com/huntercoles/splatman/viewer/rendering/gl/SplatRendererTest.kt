@@ -2,10 +2,12 @@ package com.huntercoles.splatman.viewer.rendering.gl
 
 import com.huntercoles.splatman.splat.edit.BoxFace
 import com.huntercoles.splatman.splat.edit.CropBox
+import com.huntercoles.splatman.splat.edit.EraseMask
 import com.huntercoles.splatman.splat.math.Quat
 import com.huntercoles.splatman.splat.math.Vec3
 import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
+import com.huntercoles.splatman.viewer.rendering.ViewerConstants
 import com.huntercoles.splatman.viewer.rendering.pack.SplatPacker
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -373,5 +375,153 @@ class SplatRendererTest {
         assertEquals(4, gl.count("createProgram"), "splat and overlay programs, twice")
         frame()
         assertEquals(4, overlayDraws().size, "the box is still drawn on the new context")
+    }
+
+    private fun maskUploads(g: FakeGl = gl) = g.named("texImage2D").filter { it.args[0] == GlConst.R8UI }
+    private fun maskOn() = uniform("uniform1i", "u_maskOn").last().args[1]
+
+    /** The texture name bound just before the last mask upload. */
+    private fun maskTextureName(): Any? {
+        val upload = gl.calls.indexOfLast { it.name == "texImage2D" && it.args[0] == GlConst.R8UI }
+        return gl.calls.subList(0, upload).last { it.name == "bindTexture" }.args[0]
+    }
+
+    @Test
+    fun `with no erase mask nothing is uploaded and the mask is off`() {
+        drawing()
+        assertTrue(maskUploads().isEmpty())
+        assertEquals(0, maskOn())
+    }
+
+    @Test
+    fun `a mask uploads an R8UI texture 2048 wide on its own unit and turns the erase look on`() {
+        drawing()
+        val mask = EraseMask(5000).apply { mark(1) }
+        val before = gl.calls.size
+        renderer.setEraseMask(mask)
+        assertEquals(before, gl.calls.size, "setEraseMask makes no GL call")
+        frame()
+        assertEquals(
+            listOf(listOf<Any?>(GlConst.R8UI, 2048, 3, 3 * 2048, GlConst.RED_INTEGER, GlConst.UNSIGNED_BYTE)),
+            maskUploads().map { it.args },
+        )
+        val upload = gl.calls.indexOfLast { it.name == "texImage2D" && it.args[0] == GlConst.R8UI }
+        val unit = gl.calls.subList(0, upload).last { it.name == "activeTexture" }.args[0]
+        assertEquals(GlConst.TEXTURE2, unit)
+        assertEquals(1, maskOn())
+        assertEquals(2, uniform("uniform1i", "u_mask").last().args[1])
+        assertEquals(
+            listOf(1f, 0x3D / 255f, 0x71 / 255f),
+            uniform("uniform3f", "u_eraseTint").last().args.drop(1),
+        )
+        assertEquals(ViewerConstants.ERASE_TINT_MIX, uniform("uniform1f", "u_eraseMix").last().args[1])
+        assertEquals(ViewerConstants.ERASE_ALPHA, uniform("uniform1f", "u_eraseAlpha").last().args[1])
+    }
+
+    @Test
+    fun `new versions re-upload once a frame however many arrived, the same version never`() {
+        drawing()
+        val mask = EraseMask(8)
+        renderer.setEraseMask(mask)
+        frame()
+        assertEquals(1, maskUploads().size)
+        frame()
+        frame()
+        assertEquals(1, maskUploads().size, "same version, no re-upload")
+
+        mask.mark(0)
+        mask.mark(3)
+        mask.beginStroke()
+        mask.mark(5)
+        frame()
+        assertEquals(2, maskUploads().size, "three versions, one upload")
+        frame()
+        assertEquals(2, maskUploads().size)
+
+        renderer.setEraseMask(mask)
+        frame()
+        assertEquals(2, maskUploads().size, "handing over the same mask again does not re-upload")
+    }
+
+    @Test
+    fun `a mask change neither re-sorts nor re-uploads the splats`() {
+        drawing()
+        val buffers = gl.count("bufferData")
+        val mask = EraseMask(8)
+        renderer.setEraseMask(mask)
+        frame()
+        scheduler.advanceUntilIdle()
+        for (i in 0 until 8) {
+            mask.mark(i)
+            frame()
+            scheduler.advanceUntilIdle()
+        }
+        assertEquals(9, maskUploads().size)
+        assertEquals(1, splatUploads().size, "no packed texture upload")
+        assertEquals(1, gl.orderUploads.size, "no re-sort")
+        assertEquals(buffers, gl.count("bufferData"))
+    }
+
+    @Test
+    fun `null deletes the mask texture and turns the mask off`() {
+        drawing()
+        renderer.setEraseMask(EraseMask(8).apply { mark(2) })
+        frame()
+        val name = maskTextureName()
+        renderer.setEraseMask(null)
+        frame()
+        assertEquals(listOf(name), gl.named("deleteTexture").map { it.args[0] })
+        assertEquals(0, maskOn())
+        frame()
+        assertEquals(1, maskUploads().size)
+    }
+
+    @Test
+    fun `a lost context re-creates the mask texture and re-uploads it`() {
+        drawing()
+        renderer.setEraseMask(EraseMask(8).apply { mark(2) })
+        frame()
+        val callsBefore = gl.calls.size
+        start()
+        frame()
+        assertEquals(2, maskUploads().size)
+        assertTrue(gl.calls.drop(callsBefore).none { it.name == "deleteTexture" }, "old names are not deleted")
+        scheduler.advanceUntilIdle()
+        frame()
+        assertEquals(2, maskUploads().size)
+        assertEquals(1, maskOn())
+    }
+
+    @Test
+    fun `a mask over GL_MAX_TEXTURE_SIZE is skipped and the scene still drawn`() {
+        val small = FakeGl(maxTextureSize = 1)
+        val r = SplatRenderer(camera, small, sortDispatcher, clockNs = { nowNs })
+        try {
+            r.onSurfaceCreated(null, null)
+            r.onSurfaceChanged(null, 100, 100)
+            r.setScene(scene())
+            r.setEraseMask(EraseMask(3000)) // 2 rows of 2048 texels
+            r.onDrawFrame(null)
+            scheduler.advanceUntilIdle()
+            r.onDrawFrame(null)
+            r.onDrawFrame(null)
+            assertTrue(maskUploads(small).isEmpty())
+            assertEquals(1, small.named("texImage2D").count { it.args[0] == GlConst.RGBA32UI })
+            assertEquals(2, small.named("drawElements").size)
+            val on = small.named("uniform1i").filter { it.args[0] == "u_maskOn".hashCode() }
+            assertTrue(on.all { it.args[1] == 0 })
+        } finally {
+            r.dispose()
+        }
+    }
+
+    @Test
+    fun `with a crop box and a mask both set the erase look wins`() {
+        drawing()
+        renderer.setCropBox(CropBox(Vec3(0f, 0f, 0f), Vec3(1f, 1f, 1f), Quat.IDENTITY))
+        renderer.setEraseMask(EraseMask(8).apply { mark(0) })
+        frame()
+        assertEquals(1, maskOn())
+        assertEquals(1f, uniform("uniform1f", "u_cropDim").last().args[1])
     }
 }
