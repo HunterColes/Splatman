@@ -37,8 +37,11 @@ sealed interface ViewerLoad {
     data class Failed(val source: SplatSource, val message: String, val outOfMemory: Boolean = false) : ViewerLoad
 }
 
-/** Why the Viewer reopens its source: a crop was applied (`crop_done`) or reverted (`crop_reverting`). */
-enum class ViewerReload { CROPPED, REVERTED }
+/**
+ * Why the Viewer reopens its source: a crop was applied (`crop_done`), an erase was applied (`erase_done`), or the
+ * edits were reverted (`crop_reverting`).
+ */
+enum class ViewerReload { CROPPED, REVERTED, ERASED }
 
 /**
  * The details sheet's text: [frames] null means the splat was imported (a sample or a picked file). [room]: a scan

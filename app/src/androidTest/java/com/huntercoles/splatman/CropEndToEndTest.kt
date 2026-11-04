@@ -34,7 +34,7 @@ import java.io.File
  * opens, the Bottom side moves in with In, Apply cuts the scene (the render's description and the "Cropped. N splats
  * left" snackbar both show N < 139,410), Save to device writes a PLY whose `element vertex` is N (CreateDocument is
  * answered by an [Instrumentation.ActivityMonitor] with a `file://` uri in the app's cache), and More options >
- * Revert crop > Revert brings back 139,410. A screenshot of crop mode lands in build/e2e (crop-phone.png,
+ * Revert edits > Revert brings back 139,410. A screenshot of crop mode lands in build/e2e (crop-phone.png,
  * crop-tablet.png). A crop left behind by an earlier run is reverted first, and every pass reverts in a finally.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -120,7 +120,7 @@ class CropEndToEndTest {
             assertEquals("element vertex in ${file.name}", count, elementVertex(file))
         } finally {
             if (cropped) {
-                // A2: More options > Revert crop > Revert brings the original back.
+                // A2: More options > Revert edits > Revert brings the original back.
                 revert()
                 waitForRenderCount { it == CACTUS_COUNT }
             }
@@ -258,7 +258,7 @@ class CropEndToEndTest {
         const val CROP_BOTTOM = "Bottom" // crop_face_bottom, the face chip
         const val CROP_IN_BOTTOM = "Move Bottom face in 1 cm" // crop_in_desc
         const val CROP_APPLY = "Apply"
-        const val CROP_REVERT = "Revert crop"
+        const val CROP_REVERT = "Revert edits" // crop_revert
         const val CROP_REVERT_CONFIRM = "Revert"
         const val EXPORT_PLY = "PLY (standard 3DGS)"
         const val EXPORT_SAVE = "Save to device"

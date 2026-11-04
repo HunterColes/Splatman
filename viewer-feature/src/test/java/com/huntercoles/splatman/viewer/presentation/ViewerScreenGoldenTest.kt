@@ -10,6 +10,7 @@ import com.huntercoles.splatman.viewer.export.ExportTarget
 import com.huntercoles.splatman.viewer.export.ExportUseCase
 import com.huntercoles.splatman.viewer.export.ExportViewModel
 import com.huntercoles.splatman.viewer.presentation.crop.CropViewModel
+import com.huntercoles.splatman.viewer.presentation.erase.EraseViewModel
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatLoader
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
@@ -57,8 +58,12 @@ class ViewerScreenGoldenTest {
         viewer.onIntent(ViewerIntent.Open(source))
         val export = ExportViewModel(ExportUseCase(Dispatchers.Unconfined), NoExport, settings)
         val crop = CropViewModel(NoCrops, Dispatchers.Unconfined, Dispatchers.Unconfined)
+        val erase = EraseViewModel(NoCrops, Dispatchers.Unconfined, Dispatchers.Unconfined)
         golden.capture("ViewerScreen", dark) {
-            ViewerScreen(onBack = {}, viewModel = viewer, exportViewModel = export, cropViewModel = crop)
+            ViewerScreen(
+                onBack = {}, viewModel = viewer, exportViewModel = export, cropViewModel = crop,
+                eraseViewModel = erase,
+            )
         }
     }
 

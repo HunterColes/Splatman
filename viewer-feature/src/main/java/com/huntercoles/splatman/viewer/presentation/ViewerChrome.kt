@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,7 +31,9 @@ import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled._360
+import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Crop
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
@@ -41,6 +44,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,10 +67,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.viewer.R
@@ -74,7 +81,7 @@ import java.text.NumberFormat
 import java.util.Date
 
 /**
- * The top bar on a top-down scrim: Back, the name (tap to rename), Details and the overflow menu (Rename, Revert crop
+ * The top bar on a top-down scrim: Back, the name (tap to rename), Details and the overflow menu (Rename, Revert edits
  * while an original is kept, Delete, Open file).
  */
 @Composable
@@ -152,7 +159,11 @@ internal fun ViewerTopBar(
     }
 }
 
-/** The bottom bar on a bottom-up scrim: Reset view, Auto-rotate, Crop, Stats, and Share. All fit at phone width. */
+/**
+ * The bottom bar on a bottom-up scrim: Reset view, Auto-rotate, Crop, Erase, Stats, and Share. The icons never shrink
+ * below 48 dp; when Share's label does not fit what is left (narrow screen, large text) Share becomes a 48 dp filled
+ * icon button (docs/design/screens/erase.md "Fit at 360 dp").
+ */
 @Composable
 @Suppress("LongParameterList")
 internal fun ViewerBottomBar(
@@ -165,6 +176,8 @@ internal fun ViewerBottomBar(
     modifier: Modifier = Modifier,
     canCrop: Boolean = false,
     onCrop: () -> Unit = {},
+    canErase: Boolean = false,
+    onErase: () -> Unit = {},
 ) {
     Row(
         modifier = modifier
@@ -186,14 +199,39 @@ internal fun ViewerBottomBar(
         IconButton(onClick = onCrop, enabled = canCrop) {
             Icon(Icons.Rounded.Crop, contentDescription = stringResource(R.string.crop_action))
         }
+        IconButton(onClick = onErase, enabled = canErase) {
+            Icon(Icons.Rounded.Brush, contentDescription = stringResource(R.string.erase_action))
+        }
         IconToggleButton(checked = showStats, onCheckedChange = { onStats() }) {
             Icon(Icons.Default.Speed, contentDescription = stringResource(R.string.view_stats))
         }
-        Spacer(modifier = Modifier.weight(1f))
-        Button(onClick = onShare) {
-            Icon(Icons.Default.IosShare, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-            Text(stringResource(R.string.view_share), maxLines = 1, softWrap = false)
+        ShareButton(onShare = onShare, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Share at the end of [ViewerBottomBar]: the labelled button when it fits [modifier]'s width, else the icon. */
+@Composable
+private fun ShareButton(onShare: () -> Unit, modifier: Modifier) {
+    val label = stringResource(R.string.view_share)
+    val measurer = rememberTextMeasurer()
+    val style = MaterialTheme.typography.labelLarge
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
+        val textWidth = with(LocalDensity.current) {
+            measurer.measure(label, style, maxLines = 1, softWrap = false).size.width.toDp()
+        }
+        val padding = ButtonDefaults.ButtonWithIconContentPadding
+        val needed = padding.calculateLeftPadding(LayoutDirection.Ltr) + ButtonDefaults.IconSize +
+            ButtonDefaults.IconSpacing + textWidth + padding.calculateRightPadding(LayoutDirection.Ltr)
+        if (needed <= maxWidth) {
+            Button(onClick = onShare, contentPadding = padding) {
+                Icon(Icons.Default.IosShare, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                Text(label, maxLines = 1, softWrap = false)
+            }
+        } else {
+            FilledIconButton(onClick = onShare) {
+                Icon(Icons.Rounded.Share, contentDescription = label)
+            }
         }
     }
 }

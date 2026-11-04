@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
@@ -54,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -72,6 +74,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -94,6 +97,15 @@ import com.huntercoles.splatman.viewer.presentation.crop.CropIntent
 import com.huntercoles.splatman.viewer.presentation.crop.CropOverlay
 import com.huntercoles.splatman.viewer.presentation.crop.CropUiState
 import com.huntercoles.splatman.viewer.presentation.crop.CropViewModel
+import com.huntercoles.splatman.viewer.presentation.erase.EraseBrush
+import com.huntercoles.splatman.viewer.presentation.erase.EraseDiscardDialog
+import com.huntercoles.splatman.viewer.presentation.erase.EraseEffect
+import com.huntercoles.splatman.viewer.presentation.erase.EraseGesture
+import com.huntercoles.splatman.viewer.presentation.erase.EraseIntent
+import com.huntercoles.splatman.viewer.presentation.erase.EraseOverlay
+import com.huntercoles.splatman.viewer.presentation.erase.EraseSession
+import com.huntercoles.splatman.viewer.presentation.erase.EraseUiState
+import com.huntercoles.splatman.viewer.presentation.erase.EraseViewModel
 import com.huntercoles.splatman.viewer.presentation.load.LoadedScene
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
 import com.huntercoles.splatman.viewer.rendering.GaussianCameraController
@@ -111,7 +123,8 @@ import kotlin.math.abs
  * Auto-rotate in the bottom bar, TalkBack custom actions on the render, and arrow, `+`/`-` and `0` keys.
  *
  * Crop mode ([CropViewModel], docs/design/screens/crop.md) replaces the bars with [CropOverlay]; an Apply or a Revert
- * reloads the source through Loading with the camera kept, then shows its snackbar.
+ * reloads the source through Loading with the camera kept, then shows its snackbar. Erase mode ([EraseViewModel],
+ * docs/design/screens/erase.md) does the same with [EraseOverlay]: one finger paints, two move the camera.
  */
 @Composable
 fun ViewerScreen(
@@ -120,12 +133,21 @@ fun ViewerScreen(
     viewModel: ViewerViewModel = hiltViewModel(),
     exportViewModel: ExportViewModel = hiltViewModel(),
     cropViewModel: CropViewModel = hiltViewModel(),
+    eraseViewModel: EraseViewModel = hiltViewModel(),
 ) {
+    ViewerTheme {
+        ViewerContent(onBack, modifier, viewModel, exportViewModel, cropViewModel, eraseViewModel)
+    }
+}
+
+/** The Viewer's always-dark theme, whatever the app theme. */
+@Composable
+internal fun ViewerTheme(content: @Composable () -> Unit) {
     // The viewer background is always dark, so the chrome takes the dark scheme whatever the app theme (as Capture).
     // MaterialTheme alone leaves LocalContentColor to whatever surrounds the screen, so set it from the dark scheme.
     SplatTheme(forceDark = true, systemBars = false) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-            ViewerContent(onBack, modifier, viewModel, exportViewModel, cropViewModel)
+            content()
         }
     }
 }
@@ -138,10 +160,14 @@ private fun ViewerContent(
     viewModel: ViewerViewModel,
     exportViewModel: ExportViewModel,
     cropViewModel: CropViewModel,
+    eraseViewModel: EraseViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val crop by cropViewModel.uiState.collectAsStateWithLifecycle()
     val cropping = crop !is CropUiState.Idle
+    val erase by eraseViewModel.uiState.collectAsStateWithLifecycle()
+    val erasing = erase !is EraseUiState.Idle
+    val session = remember { EraseSession() }
     val context = LocalContext.current
     val view = LocalView.current
     val camera = viewModel.camera.controller
@@ -171,8 +197,24 @@ private fun ViewerContent(
 
     var reloadReason by rememberSaveable { mutableStateOf(ViewerReload.CROPPED) }
     var confirmRevert by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(viewModel, cropViewModel) {
-        viewModel.ready.collect { cropViewModel.onIntent(CropIntent.SourceReady(it)) }
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    // The splat count before an erase Apply, for `erase_done`'s removed count.
+    var eraseFrom by rememberSaveable { mutableStateOf(0) }
+    // ready is a channel: one collector hands each Ready to both modes.
+    LaunchedEffect(viewModel, cropViewModel, eraseViewModel) {
+        viewModel.ready.collect {
+            cropViewModel.onIntent(CropIntent.SourceReady(it))
+            eraseViewModel.onIntent(EraseIntent.SourceReady(it))
+        }
+    }
+    LaunchedEffect(eraseViewModel) {
+        eraseViewModel.effects.collect { effect ->
+            when (effect) {
+                EraseEffect.ReloadSource -> viewModel.onIntent(ViewerIntent.Reload(ViewerReload.ERASED))
+                EraseEffect.IsolatedNone ->
+                    scope.launch { snackbar.showSnackbar(context.getString(R.string.erase_isolated_none)) }
+            }
+        }
     }
     LaunchedEffect(cropViewModel) {
         cropViewModel.effects.collect { effect ->
@@ -188,11 +230,18 @@ private fun ViewerContent(
     LaunchedEffect(reloaded, loaded) {
         if (reloaded == null || loaded == null) return@LaunchedEffect
         viewModel.onIntent(ViewerIntent.ReloadShown)
-        val text = if (reloaded == ViewerReload.CROPPED) {
-            if (viewModel.haptics) view.confirm()
-            context.getString(R.string.crop_done, NumberFormat.getIntegerInstance().format(loaded.count))
-        } else {
-            context.getString(R.string.crop_reverted)
+        val format = NumberFormat.getIntegerInstance()
+        val text = when (reloaded) {
+            ViewerReload.CROPPED -> {
+                if (viewModel.haptics) view.confirm()
+                context.getString(R.string.crop_done, format.format(loaded.count))
+            }
+            ViewerReload.ERASED -> {
+                if (viewModel.haptics) view.confirm()
+                val removed = (eraseFrom - loaded.count).coerceAtLeast(0)
+                context.getString(R.string.erase_done, format.format(removed), format.format(loaded.count))
+            }
+            ViewerReload.REVERTED -> context.getString(R.string.crop_reverted)
         }
         scope.launch { snackbar.showSnackbar(text) }
     }
@@ -209,14 +258,27 @@ private fun ViewerContent(
         is CropUiState.Idle -> null
     }
     LaunchedEffect(cropBox) { renderer.setCropBox(cropBox) }
+    val eraseMask = erase.mask
+    LaunchedEffect(eraseMask) { renderer.setEraseMask(eraseMask) }
+    LaunchedEffect(erasing) { if (!erasing) confirmDiscard = false }
+    // Back and Close confirm only when marks exist; while applying they do nothing.
+    val leaveErase = {
+        when {
+            erase is EraseUiState.Applying -> Unit
+            erase.marked > 0 -> confirmDiscard = true
+            else -> eraseViewModel.onIntent(EraseIntent.Cancel)
+        }
+    }
+    BackHandler(enabled = erasing) { leaveErase() }
     BackHandler(enabled = cropping) {
         if (crop !is CropUiState.Applying) cropViewModel.onIntent(CropIntent.Cancel)
     }
     LaunchedEffect(state.autoRotate) { synchronized(camera) { camera.autoRotate = state.autoRotate } }
     LaunchedEffect(state.closed) { if (state.closed) onBack() }
 
-    val chromeShown = (state.chromeVisible || talkBack || loaded == null) && !cropping
-    ImmersiveWhileHidden(hidden = !chromeShown && !cropping)
+    val editing = cropping || erasing
+    val chromeShown = (state.chromeVisible || talkBack || loaded == null) && !editing
+    ImmersiveWhileHidden(hidden = !chromeShown && !editing)
     val reset = { synchronized(camera) { camera.resetToInitial(animated = resetMs > 0) } }
 
     Box(
@@ -233,6 +295,16 @@ private fun ViewerContent(
                 title = state.title,
                 cropping = cropping,
                 room = state.details?.room == true,
+                erase = if (erasing && loaded != null) {
+                    EraseInput(
+                        marked = erase.marked,
+                        edgePx = with(androidx.compose.ui.platform.LocalDensity.current) { EDGE_EXCLUSION.toPx() },
+                        canPaint = { eraseCanPaint(eraseViewModel.uiState.value, session, talkBack) },
+                        sink = eraseSink(eraseViewModel, session, camera) { erase.brush },
+                    )
+                } else {
+                    null
+                },
                 onTap = {
                     viewModel.onIntent(ViewerIntent.DismissHint)
                     if (!talkBack && !cropping) viewModel.onIntent(ViewerIntent.ToggleChrome)
@@ -309,8 +381,8 @@ private fun ViewerContent(
 
         if (loaded != null) {
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-                SnackbarHost(snackbar, modifier = Modifier.align(Alignment.CenterHorizontally))
-                if (state.showHint && !cropping) {
+                if (!erasing) SnackbarHost(snackbar, modifier = Modifier.align(Alignment.CenterHorizontally))
+                if (state.showHint && !editing) {
                     GestureHint(
                         onDismiss = { viewModel.onIntent(ViewerIntent.DismissHint) },
                         room = state.details?.room == true,
@@ -333,6 +405,12 @@ private fun ViewerContent(
                             viewModel.onIntent(ViewerIntent.EnterCrop)
                             cropViewModel.onIntent(CropIntent.Enter(loaded.cloud))
                         },
+                        canErase = (erase as? EraseUiState.Idle)?.offered == true,
+                        onErase = {
+                            // As crop: auto-rotate stops and stays off, the hint goes.
+                            viewModel.onIntent(ViewerIntent.EnterCrop)
+                            eraseViewModel.onIntent(EraseIntent.Enter(loaded.cloud))
+                        },
                     )
                 }
             }
@@ -349,7 +427,30 @@ private fun ViewerContent(
                     },
                 )
             }
+            if (erasing) {
+                EraseOverlay(
+                    state = erase,
+                    session = session,
+                    haptics = viewModel.haptics,
+                    talkBack = talkBack,
+                    onIntent = { intent ->
+                        if (intent == EraseIntent.Apply) eraseFrom = loaded.count
+                        eraseViewModel.onIntent(intent)
+                    },
+                    onClose = leaveErase,
+                )
+                SnackbarHost(snackbar, modifier = Modifier.align(Alignment.Center))
+            }
         }
+    }
+    if (confirmDiscard && erasing) {
+        EraseDiscardDialog(
+            onDiscard = {
+                confirmDiscard = false
+                eraseViewModel.onIntent(EraseIntent.Cancel)
+            },
+            onKeep = { confirmDiscard = false },
+        )
     }
     if (confirmRevert) {
         RevertCropDialog(
@@ -383,17 +484,72 @@ private fun ViewerContent(
     ExportSheet(exportViewModel, onSaved = { message -> scope.launch { snackbar.showSnackbar(message) } })
 }
 
+/** Erase mode's render input: the count for the description, whether a gesture may paint now, the stroke sink. */
+private class EraseInput(
+    val marked: Int,
+    val edgePx: Float,
+    val canPaint: () -> Boolean,
+    val sink: (IntSize) -> EraseGesture.Sink,
+)
+
+/** Painting is ignored while TalkBack is on, while Remove isolated runs and while applying (erase.md). */
+private fun eraseCanPaint(state: EraseUiState, session: EraseSession, talkBack: Boolean): Boolean =
+    !talkBack && !session.isolating && state !is EraseUiState.Applying && state !is EraseUiState.Idle
+
 /**
- * The render's input and accessibility: drag to orbit (a fling keeps turning), two fingers to pan and pinch, tap
- * and double tap; TalkBack custom actions and arrow, `+`/`-`, `0` keys for the same moves.
+ * Feeds a stroke to [eraseViewModel] in surface pixels: the camera's view-projection when the finger lands holds
+ * for the whole stroke (the camera does not move during one), the brush radius from its dp diameter.
  */
 @Composable
+private fun eraseSink(
+    eraseViewModel: EraseViewModel,
+    session: EraseSession,
+    camera: GaussianCameraController,
+    brush: () -> com.huntercoles.splatman.viewer.presentation.erase.EraseBrushSize,
+): (IntSize) -> EraseGesture.Sink {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val currentBrush by rememberUpdatedState(brush)
+    return remember(eraseViewModel, session, camera, density) {
+        { surface ->
+            object : EraseGesture.Sink {
+                override fun start(x: Float, y: Float) {
+                    val viewProj = synchronized(camera) {
+                        (camera.getProjectionMatrix() * camera.getViewMatrix()).values.copyOf()
+                    }
+                    val radius = with(density) { EraseBrush.diameter(currentBrush()).toPx() } / 2f
+                    eraseViewModel.onIntent(EraseIntent.StrokeStart(viewProj, surface.width, surface.height, radius))
+                    eraseViewModel.onIntent(EraseIntent.StrokeTo(x, y))
+                    session.begin(Offset(x, y))
+                }
+
+                override fun to(x: Float, y: Float) {
+                    eraseViewModel.onIntent(EraseIntent.StrokeTo(x, y))
+                    session.to(Offset(x, y))
+                }
+
+                override fun end() {
+                    eraseViewModel.onIntent(EraseIntent.StrokeEnd)
+                    session.end()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The render's input and accessibility: drag to orbit (a fling keeps turning), two fingers to pan and pinch, tap
+ * and double tap; TalkBack custom actions and arrow, `+`/`-`, `0` keys for the same moves. In erase mode ([erase])
+ * one finger paints instead (no orbit, fling, tap or double tap) and two fingers still pan and pinch.
+ */
+@Composable
+@Suppress("LongParameterList", "LongMethod")
 private fun GestureLayer(
     camera: GaussianCameraController,
     scene: LoadedScene,
     title: String,
     cropping: Boolean,
     room: Boolean,
+    erase: EraseInput?,
     onTap: () -> Unit,
     onDoubleTap: () -> Unit,
     onGesture: () -> Unit,
@@ -406,7 +562,9 @@ private fun GestureLayer(
     val focus = remember { FocusRequester() }
     LaunchedEffect(scene) { runCatching { focus.requestFocus() } }
 
-    val description = if (cropping) {
+    val description = if (erase != null) {
+        stringResource(R.string.erase_render_desc, title, NumberFormat.getIntegerInstance().format(erase.marked))
+    } else if (cropping) {
         stringResource(R.string.crop_render_desc, title)
     } else {
         val render = if (room) R.string.view_a11y_render_room else R.string.view_a11y_render
@@ -462,55 +620,105 @@ private fun GestureLayer(
                 true
             }
             .focusable()
-            .pointerInput(camera) {
-                detectTapGestures(onTap = { tap() }, onDoubleTap = { doubleTap() })
-            }
-            .pointerInput(camera) {
-                val slop = viewConfiguration.touchSlop
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    synchronized(camera) { camera.stopMotion() }
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
-                    var moving = false
-                    var multi = false
-                    var travelled = Offset.Zero
-                    do {
-                        val event = awaitPointerEvent()
-                        val fingers = event.changes.count { it.pressed }
-                        if (fingers >= 2) multi = true
-                        val pan = event.calculatePan()
-                        val zoom = event.calculateZoom()
-                        if (!moving) {
-                            travelled += pan
-                            if (travelled.getDistance() > slop || (fingers >= 2 && abs(zoom - 1f) > PINCH_SLOP)) {
-                                moving = true
-                                gesture()
-                            }
-                        }
-                        if (moving) {
-                            synchronized(camera) {
-                                if (fingers >= 2) {
-                                    if (zoom > 0f) camera.onZoom(1f / zoom)
-                                    camera.onPan(-pan.x * PAN_PER_PX, pan.y * PAN_PER_PX)
-                                } else if (fingers == 1 && !multi) {
-                                    camera.onRotate(pan.x * ORBIT_PER_PX, pan.y * ORBIT_PER_PX)
-                                }
-                            }
-                            event.changes.forEach { if (it.positionChanged()) it.consume() }
-                        }
-                        event.changes.firstOrNull { it.id == down.id }?.let {
-                            tracker.addPosition(it.uptimeMillis, it.position)
-                        }
-                    } while (event.changes.any { it.pressed })
-                    if (moving && !multi) {
-                        val v = tracker.calculateVelocity()
-                        synchronized(camera) { camera.fling(v.x * ORBIT_PER_PX, v.y * ORBIT_PER_PX) }
-                    }
-                }
-            },
+            .then(
+                if (erase != null) {
+                    Modifier.eraseGestures(camera, erase)
+                } else {
+                    Modifier.viewerGestures(camera, onTap = { tap() }, onDoubleTap = { doubleTap() }) { gesture() }
+                },
+            ),
     )
 }
+
+/** The Viewer's touch outside erase mode: tap, double tap, one-finger orbit with fling, two-finger pan and pinch. */
+private fun Modifier.viewerGestures(
+    camera: GaussianCameraController,
+    onTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+    gesture: () -> Unit,
+): Modifier = pointerInput(camera) {
+    detectTapGestures(onTap = { onTap() }, onDoubleTap = { onDoubleTap() })
+}.pointerInput(camera) {
+    val slop = viewConfiguration.touchSlop
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        synchronized(camera) { camera.stopMotion() }
+        val tracker = VelocityTracker()
+        tracker.addPosition(down.uptimeMillis, down.position)
+        var moving = false
+        var multi = false
+        var travelled = Offset.Zero
+        do {
+            val event = awaitPointerEvent()
+            val fingers = event.changes.count { it.pressed }
+            if (fingers >= 2) multi = true
+            val pan = event.calculatePan()
+            val zoom = event.calculateZoom()
+            if (!moving) {
+                travelled += pan
+                if (travelled.getDistance() > slop || (fingers >= 2 && abs(zoom - 1f) > PINCH_SLOP)) {
+                    moving = true
+                    gesture()
+                }
+            }
+            if (moving) {
+                synchronized(camera) {
+                    if (fingers >= 2) {
+                        if (zoom > 0f) camera.onZoom(1f / zoom)
+                        camera.onPan(-pan.x * PAN_PER_PX, pan.y * PAN_PER_PX)
+                    } else if (fingers == 1 && !multi) {
+                        camera.onRotate(pan.x * ORBIT_PER_PX, pan.y * ORBIT_PER_PX)
+                    }
+                }
+                event.changes.forEach { if (it.positionChanged()) it.consume() }
+            }
+            event.changes.firstOrNull { it.id == down.id }?.let {
+                tracker.addPosition(it.uptimeMillis, it.position)
+            }
+        } while (event.changes.any { it.pressed })
+        if (moving && !multi) {
+            val v = tracker.calculateVelocity()
+            synchronized(camera) { camera.fling(v.x * ORBIT_PER_PX, v.y * ORBIT_PER_PX) }
+        }
+    }
+}
+
+/**
+ * Erase mode's touch: [EraseGesture] turns one finger into a stroke and hands two-finger events to pan and pinch.
+ * The lower edge strip is kept from system Back (within the platform's 200 dp), so strokes near it paint.
+ */
+private fun Modifier.eraseGestures(camera: GaussianCameraController, erase: EraseInput): Modifier =
+    systemGestureExclusion { coordinates ->
+        val h = coordinates.size.height.toFloat()
+        val strip = erase.edgePx
+        Rect(0f, (h - strip).coerceAtLeast(0f), coordinates.size.width.toFloat(), h)
+    }.pointerInput(camera, erase.sink) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            synchronized(camera) { camera.stopMotion() }
+            val gesture = EraseGesture(erase.sink(size))
+            try {
+                gesture.event(1, down.position.x, down.position.y, erase.canPaint())
+                down.consume()
+                do {
+                    val event = awaitPointerEvent()
+                    val fingers = event.changes.count { it.pressed }
+                    val first = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
+                    if (gesture.event(fingers, first.position.x, first.position.y)) {
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        synchronized(camera) {
+                            if (zoom > 0f) camera.onZoom(1f / zoom)
+                            camera.onPan(-pan.x * PAN_PER_PX, pan.y * PAN_PER_PX)
+                        }
+                    }
+                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                } while (event.changes.any { it.pressed })
+            } finally {
+                gesture.cancel()
+            }
+        }
+    }
 
 private fun orbit(camera: GaussianCameraController, yaw: Int, pitch: Int) {
     synchronized(camera) { camera.orbitStep(yaw, pitch) }
@@ -657,6 +865,9 @@ private const val GLES_VERSION = 3
 /** Pointer pixels to controller units: about half a turn across a phone screen, a screen of pan per width. */
 private const val ORBIT_PER_PX = 0.03f
 private const val PAN_PER_PX = 0.1f
+
+/** The lower strip kept from system Back gestures in erase mode (the platform caps it at 200 dp). */
+private val EDGE_EXCLUSION = 200.dp
 
 /** A pinch counts as a gesture once the spread changes by this fraction. */
 private const val PINCH_SLOP = 0.02f
