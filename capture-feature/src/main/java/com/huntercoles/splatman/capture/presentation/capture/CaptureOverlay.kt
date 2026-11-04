@@ -177,7 +177,9 @@ internal fun CaptureOverlay(
                     }
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                         Fade(controlsShown) {
-                            FinishButton(state.ready, finishEnabled(state)) { onIntent(CaptureIntent.Stop) }
+                            FinishButton(state.ready, finishEnabled(state), showIcon = !dropExtras) {
+                                onIntent(CaptureIntent.Stop)
+                            }
                         }
                     }
                 }
@@ -609,18 +611,23 @@ private fun finishEnabled(state: CaptureUiState): Boolean =
     state.ready ||
         (state.poseFree && (state.stage == CaptureStage.CAPTURING || state.stage == CaptureStage.PAUSED))
 
-/** Tonal while [enabled] but not [ready]; `primary` filled once [ready]; 38% when disabled. */
+/**
+ * Tonal while [enabled] but not [ready]; `primary` filled once [ready]; 38% when disabled. The label stays on one
+ * line (#380); the narrow layout at 200% font drops the icon ([showIcon]) to make room.
+ */
 @Composable
-private fun FinishButton(ready: Boolean, enabled: Boolean, onFinish: () -> Unit) {
+private fun FinishButton(ready: Boolean, enabled: Boolean, showIcon: Boolean = true, onFinish: () -> Unit) {
     val colors = if (ready) {
         ButtonDefaults.buttonColors()
     } else {
         ButtonDefaults.filledTonalButtonColors()
     }
     FilledTonalButton(onClick = onFinish, enabled = enabled, colors = colors) {
-        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(SplatDimens.SpacingSmall))
-        Text(stringResource(R.string.cap_finish))
+        if (showIcon) {
+            Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(SplatDimens.SpacingSmall))
+        }
+        Text(stringResource(R.string.cap_finish), maxLines = 1, softWrap = false)
     }
 }
 

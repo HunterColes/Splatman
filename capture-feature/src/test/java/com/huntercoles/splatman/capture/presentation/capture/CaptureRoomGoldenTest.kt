@@ -99,4 +99,13 @@ class CaptureRoomGoldenTest {
 
     @Test
     fun aimLargeFontDark() = capture("CaptureRoomAimFont200", aim, dark = true, font = 2f)
+
+    // Object mode at 360 dp and 200% font: Finish keeps its label on one line, its icon dropped (#380).
+    private val objectAim = aim.copy(mode = ScanMode.OBJECT, poseFree = false, instruction = Instruction.AIM)
+
+    @Test
+    fun objectAimLargeFontLight() = capture("CaptureObjectAimFont200", objectAim, dark = false, font = 2f)
+
+    @Test
+    fun objectAimLargeFontDark() = capture("CaptureObjectAimFont200", objectAim, dark = true, font = 2f)
 }
