@@ -2,6 +2,7 @@ package com.huntercoles.splatman.library.data.repository
 
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.local.ScanEntity
+import com.huntercoles.splatman.library.domain.DefaultScanName
 import com.huntercoles.splatman.library.domain.LandingFolder
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
@@ -19,6 +20,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.io.IOException
+import java.time.ZoneId
+import java.util.Locale
 
 /** [ScanRepositoryImpl] over a fake DAO (same contract as the Room one) and a real folder tree. */
 class ScanRepositoryTest {
@@ -246,6 +249,62 @@ class ScanRepositoryTest {
 
         assertEquals(listOf(PIXEL_SCAN), listed.map { it.id })
         assertEquals(ScanStatus.CAPTURED, listed.single().status)
+    }
+
+    /** The repository with en-GB's 24-hour default namer (#426). */
+    private val named by lazy {
+        ScanRepositoryImpl(
+            dao = dao,
+            root = root,
+            canceller = ProcessingCanceller { },
+            io = Dispatchers.Unconfined,
+            namer = DefaultScanName("Scan %1\$s", "d MMM", "HH:mm", Locale.UK, ZoneId.of("Europe/London")),
+        )
+    }
+
+    @Test
+    fun `426 a synced capture folder lists under its default name`() = runTest {
+        pixelScan(root, "scan_20261104_073012", frames = 2)
+
+        named.sync()
+
+        assertEquals(listOf("Scan 4 Nov, 07:30"), named.scans().first().map { it.name })
+        assertEquals("scan_20261104_073012", named.get("scan_20261104_073012")!!.folder)
+    }
+
+    @Test
+    fun `426 a refreshed capture without a row gets the default name and keeps a rename`() = runTest {
+        pixelScan(root, "scan_20261104_073012", frames = 2)
+
+        named.refresh("scan_20261104_073012")
+        assertEquals("Scan 4 Nov, 07:30", named.get("scan_20261104_073012")!!.name)
+
+        named.rename("scan_20261104_073012", "Desk plant")
+        named.sync()
+        named.refresh("scan_20261104_073012")
+        assertEquals("Desk plant", named.get("scan_20261104_073012")!!.name)
+    }
+
+    @Test
+    fun `426 an adopted imported folder keeps its folder name`() = runTest {
+        File(root, "imported_one").apply { mkdirs() }.resolve("splat.ply").writeBytes(fixture())
+
+        named.sync()
+
+        named.get("imported_one")!!.let {
+            assertTrue(it.imported)
+            assertEquals("imported_one", it.name)
+        }
+    }
+
+    @Test
+    fun `426 rows that already exist keep their names`() = runTest {
+        pixelScan(root, PIXEL_SCAN, frames = 1)
+        dao.insert(ScanEntity(PIXEL_SCAN, PIXEL_SCAN, 1, ScanStatus.CAPTURED, 0, 1, PIXEL_SCAN))
+
+        named.sync()
+
+        assertEquals(PIXEL_SCAN, named.get(PIXEL_SCAN)!!.name)
     }
 
     /** #334's scan_20261103_132504 layout under [parent]: images, `imu.csv`, `calibration.json`, `capture.json` last. */

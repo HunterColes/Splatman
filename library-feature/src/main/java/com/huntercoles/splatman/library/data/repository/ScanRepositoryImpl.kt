@@ -4,6 +4,7 @@ import com.huntercoles.splatman.library.data.format.SplatFileHeader
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.local.ScanEntity
 import com.huntercoles.splatman.library.domain.LandingFolder
+import com.huntercoles.splatman.library.domain.ScanNamer
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.model.ScanThumbnail
@@ -27,7 +28,9 @@ import java.util.UUID
  * Scans as folders under [root] (ADR 0007: `transforms.json` or the pose-free `capture.json`, `images/`, `seed.ply`,
  * `splat.ply`) with a [dao] row each. The folder name is the scan id for scans made here and for adopted folders.
  * Rows made by [create], [import] and the [refresh] adoption of a new folder land in [landing]'s Library folder when
- * [folderExists] says it still exists, else at the root; [sync] adopts at the root (ADR 0013 point 8).
+ * [folderExists] says it still exists, else at the root; [sync] adopts at the root (ADR 0013 point 8). A captured
+ * folder adopted without a row is named once by [namer] (copy.md `scan_default_name`, #426); an imported one keeps
+ * its folder name.
  */
 class ScanRepositoryImpl(
     private val dao: ScanDao,
@@ -35,6 +38,7 @@ class ScanRepositoryImpl(
     private val canceller: ProcessingCanceller,
     private val io: CoroutineDispatcher,
     private val landing: LandingFolder = LandingFolder(),
+    private val namer: ScanNamer = ScanNamer { id, _ -> id },
     private val folderExists: suspend (String) -> Boolean = { false },
 ) : ScanRepository {
 
@@ -178,16 +182,18 @@ class ScanRepositoryImpl(
             else -> ScanStatus.FAILED
         }
         val keyframes = File(folder, IMAGES_DIR).listFiles()?.count { it.isFile } ?: 0
+        val createdAtMs = folder.lastModified()
+        val imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists() &&
+            !File(folder, CAPTURE_FILE).exists()
         return ScanEntity(
             id = folder.name,
-            name = folder.name,
-            createdAtMs = folder.lastModified(),
+            name = if (imported) folder.name else namer.name(folder.name, createdAtMs),
+            createdAtMs = createdAtMs,
             status = status,
             splatCount = splatCount ?: 0,
             keyframeCount = keyframes,
             folder = folder.name,
-            imported = status == ScanStatus.READY && !File(folder, TRANSFORMS_FILE).exists() &&
-                !File(folder, CAPTURE_FILE).exists(),
+            imported = imported,
         )
     }
 

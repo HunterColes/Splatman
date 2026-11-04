@@ -42,6 +42,8 @@
     <string name="lib_cancel">Cancel</string>
     <string name="lib_imported">Imported</string>
     <string name="lib_ar_details">Details</string>
+    <!-- copy.md scan_default_name: a new capture's name, the local date and time, e.g. "Scan 1 Nov, 21:40" (#426). -->
+    <string name="scan_default_name">Scan %1$s</string>
     <string name="imp_validating">Reading %1$s…</string>
     <string name="imp_point_cloud">This PLY is a point cloud, not a Gaussian splat. Splatman opens splat files only.</string>
     <string name="imp_unsupported">Splatman opens .ply and .splat splat files. This one is %1$s.</string>

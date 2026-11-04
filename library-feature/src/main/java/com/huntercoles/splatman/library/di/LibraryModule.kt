@@ -13,6 +13,7 @@ import com.huntercoles.splatman.library.data.repository.FolderRepositoryImpl
 import com.huntercoles.splatman.library.data.repository.ScanRepositoryImpl
 import com.huntercoles.splatman.library.data.sample.AssetSampleRepository
 import com.huntercoles.splatman.library.data.storage.ScanStorage
+import com.huntercoles.splatman.library.domain.DefaultScanName
 import com.huntercoles.splatman.library.domain.LandingFolder
 import com.huntercoles.splatman.library.domain.repository.FolderRepository
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
@@ -69,6 +70,7 @@ object LibraryModule {
             io,
             landing,
             folderExists = { folders.exists(it) },
+            namer = DefaultScanName.of(context),
         )
     }
 
