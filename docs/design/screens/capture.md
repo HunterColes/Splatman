@@ -96,3 +96,112 @@ description "46 percent covered. Missing: high, left side" (the builder computes
 Controls are reachable with keyboard and switch access in order: Close, Help, Ring, Capture, Finish. At 200% font,
 the caption and aim hint are dropped first; the instruction wraps to two lines, then truncates with the full text in
 its description.
+
+## Room mode
+
+A second capture mode for scanning a space by walking through it (#284, design README "Later, ranked" #2; built by
+#300, #291, #293). It runs on the one build, the pose-free foss path (ADR
+[0015](../../architecture/adr/0015-retire-arcore.md) section 5): no live tracker, so the gauge counts gyro *Seen*
+cells only and calls its percent an estimate. Same screen, same route (`capture`), same controls, same warning banner
+and Pose-free mode rules; only the differences are listed here. Copy keys: `cap_mode_*`, `cap_room_*`,
+`cap_status_recording_only` ([copy.md](../copy.md#capture-room-mode)). This section stands alone: edits to the
+sections above do not change it.
+
+| Aim (Room selected) | Capturing (gauge) | Large view |
+|---|---|---|
+| ![Room Aim](../../../capture-feature/src/test/screenshots/CaptureRoomAim/CaptureRoomAim_phone-360x780_dark.png) | ![Room gauge](../../../capture-feature/src/test/screenshots/CaptureRoomGauge/CaptureRoomGauge_phone-360x780_dark.png) | ![Room large view](../../../capture-feature/src/test/screenshots/CaptureRoomLarge/CaptureRoomLarge_phone-360x780_dark.png) |
+
+Goldens (dark and light, 360 × 780 dp): `CaptureRoomAim`, `CaptureRoomGauge`, `CaptureRoomLarge` and
+`CaptureRoomAimFont200` under `capture-feature/src/test/screenshots/`.
+
+### Layout (phone, 360 dp, Aim)
+
+```
+┌──────────────────────────────┐
+│ (✕)   [● Camera ready]   (?) │  status pill cap_status_recording_only (secondary dot)
+│                              │
+│                              │  no reticle; taps on the preview do nothing
+│                              │
+│ Start at one side of the room│  instruction pill (cap_room_aim)
+│ Then tap Start and walk…     │  hint, smaller (cap_room_aim_hint)
+│ ╭────────────┬─────────────╮ │
+│ │ ⌜⌟ Object  │ ✓  Room     │ │  mode switch, 48 dp segments, on an OverlayScrim pill
+│ ╰────────────┴─────────────╯ │
+│  ╭gauge──╮                   │
+│  │  0%   │     ( ◉ )  ✓Fin.  │  Finish tonal and disabled until recording runs
+│  │estim. │                   │
+│  ╰───────╯                   │
+└──────────────────────────────┘
+```
+
+### Mode switch
+
+- **Component**: Material 3 `SingleChoiceSegmentedButtonRow` (no new component), two segments: Object
+  (`Icons.Rounded.CropFree`, echoing the reticle) and Room (`Icons.Rounded.MeetingRoom`), labels `cap_mode_object`
+  and `cap_mode_room`. Group description `cap_mode_label`; TalkBack reads "Room, selected" from the segment's own role
+  and state.
+- **Size and place**: in the bottom column between the instruction pill and the gauge row, on an `OverlayScrim`
+  pill (`CornerDefault`, `SpacingSmall` padding). Row height at least `TouchTarget` (48 dp); each segment at least
+  120 dp wide, so the pair fits 360 dp inside the `SpacingDefault` margins.
+- **Colours**: selected `primary` fill, `onPrimary` icon and label, and the M3 check in place of the icon (shape as
+  well as colour). Unselected: no fill, `OverlayOnScrim` icon and label. Both segments have an `outline` 1 dp border.
+- **When it shows**: in Aim, and at 38% (disabled) in Finding surfaces. It fades out (`DurationShort`) as recording
+  starts and does not come back for this scan, Paused included. To change mode the user closes (discard confirm) and
+  scans again; a bundle holds one mode.
+- **Default**: the mode last chosen (a preference, survives restarts); Object on first run. Onboarding is unchanged.
+- **Switching**: instruction, hint and gauge change at once; no haptic; the new selection is announced.
+
+### Room gauge
+
+Same place, size and chrome as the coverage ring (`CoverageRing` 112 dp, `CoverageRingWide` 136 dp at 600 dp+,
+`CoverageRingStroke`, on an `OverlayScrim` disc).
+
+- **Cells**: 24 heading segments × 3 pitch bands from the gyroscope (yaw from the first frame, bands from gravity),
+  looking *outward*: a segment is a direction the camera faced, not a side of a subject. Outer band = tilted down
+  (floor), middle = level (walls), inner = tilted up (ceiling). The `primary` tick outside the ring marks the
+  phone's current heading.
+- **Fill**: one filled state only, *Seen*: frames were kept facing this way, and the segment fills in `secondary`.
+  Not seen: `outline` 1 dp stroke, no fill. With no positions there is no Covered state.
+- **Centre**: the percent of Seen cells in `numeral` (`cap_coverage`), and `cap_room_estimate` under it in
+  `labelSmall`, `OverlayOnScrim`: the number is a guide, not a measure.
+- **Description**: `cap_ring_missing` with room words, "22 percent covered. Missing: ceiling, behind you"
+  (`cap_room_band_*`, `cap_room_side_*`, the side relative to the phone's heading, the largest missing arc).
+  Nothing missing: `cap_ring_complete`.
+- **Large view**: tap the gauge (action `cap_ring_toggle`) for a 200 dp version centred on screen: the same ring,
+  percent and estimate, larger. No walked path and no scale bar (no positions to draw). Tap or Back closes it.
+- **No gyroscope**: the gauge is hidden (its slot stays empty so the controls do not move), no large view, and the
+  instruction while recording is `cap_room_no_gauge`.
+
+### Guidance
+
+- **Instruction while capturing**: `cap_room_walk` (ROOM_WALK) until the walls band has its share of Seen cells, then
+  `cap_room_look_up` (ceiling), then `cap_room_look_down` (floor), then `cap_ready` once Finish unlocks.
+- **ROOM_WALK_ON**: after each further full turn of gyro yaw, `cap_room_walk_on` replaces the step for 3 s. It is
+  how the screen says "walk, don't spin" without a tracker.
+- **ROOM_FULL**: at the keyframe budget (300) nothing more is kept (the caption stops counting, no banner), the
+  instruction becomes `cap_room_full`, and Finish unlocks even below the threshold. The user is never asked to keep
+  going for nothing.
+- **Finish unlocks** at 70% Seen with the walls band done and at least 120 kept frames; without a gyroscope on the
+  120 frames alone; always at the budget. Then `primary` filled, the `CONFIRM` haptic and `cap_ready`, as in
+  Pose-free mode.
+- **Warnings**: the pose-free two only, Too dark (`cap_warn_dark`) > Slow down (`cap_warn_fast`), same banner rules.
+  No reticle and no Lost track, Too plain, Turning on the spot or Too close banners: those needed a tracker
+  (retired with ARCore by ADR 0015).
+- **Help sheet**: same sheet and title, the three `cap_room_tip_*` rows in place of the `onb_tip_*` rows.
+
+### States (differences only)
+
+| State | Object mode (pose-free) | Room mode |
+|---|---|---|
+| Aim | `cap_pf_aim` + `cap_pf_aim_hint`; ring | `cap_room_aim` + `cap_room_aim_hint`; mode switch; gauge at 0% with `cap_room_estimate`; pill `cap_status_recording_only` |
+| Capturing | `cap_walk` → `cap_go_higher` → `cap_go_lower`; ring fills | `cap_room_walk` → `cap_room_look_up` → `cap_room_look_down`, `cap_room_walk_on` after a full turn; gauge fills Seen; pill `cap_status_recording`; switch gone |
+| Paused | `cap_paused`; ring visible | same; switch stays gone; `cap_ready` or `cap_room_full` instead of `cap_paused` once they apply |
+| Full (frame budget) | n/a | `cap_room_full`; caption stops counting; Finish `primary` filled |
+| No gyroscope | ring stays empty | gauge hidden, no large view; `cap_room_no_gauge` while recording; Finish on 120 frames |
+| 360 dp at 200% font | caption and aim hint dropped first | the segments drop their icons, and the caption and `cap_room_aim_hint` go with them (labels are one short word each and never truncate); the instruction wraps to two lines, then ellipsizes with the full text in its description (golden `CaptureRoomAimFont200`) |
+| Wide (600 dp+) | ring and controls in a column on the end edge | same; the switch stays in the bottom column under the instruction |
+| Focus order | Close, Help, Ring, Capture, Finish | Close, Help, Mode switch, Gauge, Capture, Finish (on wide, the end column is put after the switch explicitly) |
+| Discard confirm, Finishing, Finish with no frames | as Pose-free mode | same |
+
+Retired by ADR 0015 (do not build): the full/ARCore column of PR #295's draft, the walked-path drawing and
+`cap_room_scale`, the Covered fill and its depth rule, and the `cap_room_warn_*` banners (lost, plain, spin, close).

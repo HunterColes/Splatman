@@ -86,7 +86,8 @@ the library and settings follow the system light/dark setting.
 
 1. Crop and clean: a box crop ([screens/crop.md](screens/crop.md)) and a floater brush
    ([screens/erase.md](screens/erase.md)) (floaters are the top quality complaint everywhere).
-2. Room mode: capture a space, with a gauge suited to walking through rather than around.
+2. Room mode: capture a space, with a gauge suited to walking through rather than around. Shipped (pose-free, gyro
+   Seen gauge): [screens/capture.md](screens/capture.md#room-mode).
 3. Quality presets (Fast, Balanced, Best) once training time is known on real phones.
 4. In-world coverage overlay (AR dots around the subject) replacing or beside the ring.
 5. AR placement: put a finished splat back into the room through the camera.

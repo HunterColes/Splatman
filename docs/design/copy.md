@@ -157,6 +157,37 @@ cell).
 | `cap_side_near` / `_left` / `_right` / `_far` / `_all` | this side / left side / right side / far side / all the way round | |
 | `cap_ring_toggle` | Show a larger ring | ring tap action |
 
+### Capture: Room mode
+
+Spec: [screens/capture.md](screens/capture.md#room-mode). Every other capture string is shared with Object mode.
+
+| Key | Text | When |
+|---|---|---|
+| `cap_mode_label` | Scan mode | mode switch group description |
+| `cap_mode_object` | Object | mode switch segment |
+| `cap_mode_room` | Room | mode switch segment |
+| `cap_status_recording_only` | Camera ready | status pill in Room mode, camera open, not recording |
+| `cap_room_aim` | Start at one side of the room | Aim (ROOM_AIM) |
+| `cap_room_aim_hint` | Then tap Start and walk slowly through it | Aim, second line; dropped at 200% font |
+| `cap_room_walk` | Walk slowly around the room, facing in | capturing, walls band not yet seen |
+| `cap_room_look_up` | Now go round again, tilted up to the ceiling | walls band seen |
+| `cap_room_look_down` | Once more, tilted down to the floor | ceiling band seen |
+| `cap_room_walk_on` | Take a few steps, then look around again | ROOM_WALK_ON: a further full turn, shown 3 s |
+| `cap_room_full` | That's all the photos this scan can use. Tap Finish | ROOM_FULL: keyframe budget reached |
+| `cap_room_no_gauge` | No motion sensor, so no gauge. Walk the room, then finish | recording, phone has no gyroscope |
+| `cap_room_estimate` | estimate | gauge, under the percent |
+| `cap_room_band_floor` | floor | gauge description: band |
+| `cap_room_band_walls` | walls | gauge description: band |
+| `cap_room_band_ceiling` | ceiling | gauge description: band |
+| `cap_room_side_ahead` | ahead | gauge description: side, from the phone's heading |
+| `cap_room_side_left` | to your left | gauge description: side, from the phone's heading |
+| `cap_room_side_right` | to your right | gauge description: side, from the phone's heading |
+| `cap_room_side_behind` | behind you | gauge description: side, from the phone's heading |
+| `cap_room_side_all` | all the way round | gauge description: side, from the phone's heading |
+| `cap_room_tip_1` | Walk the edge of the room with the phone facing in | help sheet |
+| `cap_room_tip_2` | Include corners and furniture. Blank walls are hard to track | help sheet |
+| `cap_room_tip_3` | Even light works best. Turn lamps on and keep the sun out of view | help sheet |
+
 ## Processing
 
 | Key | Text |
