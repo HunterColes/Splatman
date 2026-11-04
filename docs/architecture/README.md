@@ -54,6 +54,7 @@ stored **w, x, y, z**. Files are converted at their boundary, in one file (`Fram
 | [0012](adr/0012-foss-pose-source.md) | foss pose source (proposed): post-capture SfM, OpenCV in native `splat-sfm`, the rest in `splat-core` `sfm`; fallback #201 OpenVINS |
 | [0015](adr/0015-retire-arcore.md) | Retire ARCore and the `full` flavour: foss is the one build (no flavours, dependency guard on every variant); `PoseSource`/`TrackedFrame` stay as the seam for #336; removal cards #343 to #349 after #230 |
 | [0016](adr/0016-own-vio.md) | Our own VIO, staged: stage 1 visual-inertial BA after capture in Kotlin (splat-core sfm/vi) plus gyro/autofocus guidance; stage 2 live MSCKF in NDK C++ behind a start gate and an 8-week kill gate; tracking stream in the pose-free capture; clean-room rule |
+| [0017](adr/0017-gate-dependency-cache.md) | Gate dependencies from a read-only cache in the runner image (`GRADLE_RO_DEP_CACHE`), Gradle home still emptied per job (#133, #74 kept), sha256 dependency verification, image marker printed by the gate |
 
 ## Build order (child tickets of #2)
 
