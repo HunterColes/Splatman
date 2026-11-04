@@ -3,8 +3,8 @@ package com.huntercoles.splatman
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
-import android.view.ViewTreeObserver
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
@@ -19,7 +19,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -27,8 +27,12 @@ import org.junit.runner.RunWith
 
 /**
  * #279: MainActivity launched with EXTRA_ROUTE and recreated before its first frame (a configuration change landing
- * just after the launch, as seen in #278) still opens the route. The first instance is relaunched from its own
- * onResume, so the relaunch runs before the window's first traversal (and so before the shell has composed).
+ * just after the launch, as seen in #278) still opens the route.
+ *
+ * The first instance is relaunched from its post-resume callback, which runs before ActivityThread adds the window,
+ * and is marked invisible there so its window is never added: it gets no traversal, no composition and no frame, so
+ * the relaunch cannot lose a race with a vsync stamped earlier (#395). Its saved state must say the route was not
+ * opened (the state #279 has to recover from), and the relaunched instance must still open it.
  */
 @OptIn(ExperimentalTestApi::class)
 @HiltAndroidTest
@@ -45,18 +49,24 @@ class RouteRecreateTest {
     private val application get() = instrumentation.targetContext.applicationContext as Application
     private val onboarding by lazy { OnboardingPreferences(instrumentation.targetContext) }
     private var onboardingWasDone = false
+    private var registered = false
     private var scenario: ActivityScenario<MainActivity>? = null
     private val recreator = Recreator()
 
     @Before
     fun libraryStart() {
+        // onActivityPostResumed (the only hook between onResume and the window being added) and
+        // onActivityPostSaveInstanceState exist from API 29.
+        assumeTrue("needs the API 29 post-lifecycle callbacks", Build.VERSION.SDK_INT >= 29)
         onboardingWasDone = onboarding.isOnboardingDone
         onboarding.setOnboardingDone(true)
         application.registerActivityLifecycleCallbacks(recreator)
+        registered = true
     }
 
     @After
     fun reset() {
+        if (!registered) return
         application.unregisterActivityLifecycleCallbacks(recreator)
         scenario?.close()
         onboarding.setOnboardingDone(onboardingWasDone)
@@ -70,44 +80,61 @@ class RouteRecreateTest {
 
         compose.waitUntil(TIMEOUT_MS) { recreator.created >= 2 }
         assertEquals("the activity was not recreated exactly once", 2, recreator.created)
-        assertFalse("the first instance drew a frame before its recreation", recreator.firstDrew)
+        assertEquals(
+            "the first instance's saved state (route opened?) before its recreation",
+            false,
+            recreator.firstRouteOpened,
+        )
         compose.waitUntilAtLeastOneExists(hasText(ABOUT_TAGLINE), TIMEOUT_MS)
         compose.onNodeWithText(ABOUT_TAGLINE).assertIsDisplayed()
     }
 
-    /** Recreates the first MainActivity from its onResume and notes whether that instance ever drew. */
+    /** Recreates the first MainActivity before its window is added and notes what that instance saved. */
     private class Recreator : Application.ActivityLifecycleCallbacks {
         @Volatile var created = 0
-        @Volatile var firstDrew = false
+
+        /** The first instance's saved `splatman.route_opened`; null if it saved no state or no such key. */
+        @Volatile var firstRouteOpened: Boolean? = null
         private var first: Activity? = null
+        private var recreating: Activity? = null
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
             if (activity !is MainActivity) return
             created++
-            if (created == 1) {
-                first = activity
-                activity.window.decorView.viewTreeObserver.addOnDrawListener(
-                    ViewTreeObserver.OnDrawListener { firstDrew = true },
-                )
-            }
+            if (created == 1) first = activity
         }
 
-        override fun onActivityResumed(activity: Activity) {
-            if (activity === first) {
-                first = null
-                activity.recreate()
-            }
+        override fun onActivityPostResumed(activity: Activity) {
+            if (activity !== first) return
+            first = null
+            recreating = activity
+            // performResume has passed its "an activity without a UI must finish" check, and mVisibleFromServer is
+            // still false, so this only stops handleResumeActivity from adding (and later showing) the window.
+            activity.setVisible(false)
+            activity.recreate()
         }
 
+        // Not onActivitySaveInstanceState: that runs inside Activity.onSaveInstanceState, before MainActivity's
+        // override has written its key.
+        override fun onActivityPostSaveInstanceState(activity: Activity, outState: Bundle) {
+            if (activity !== recreating) return
+            firstRouteOpened = if (outState.containsKey(KEY_ROUTE_OPENED)) outState.getBoolean(KEY_ROUTE_OPENED) else null
+        }
+
+        override fun onActivityDestroyed(activity: Activity) {
+            if (activity === recreating) recreating = null
+        }
+
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
         override fun onActivityStarted(activity: Activity) = Unit
+        override fun onActivityResumed(activity: Activity) = Unit
         override fun onActivityPaused(activity: Activity) = Unit
         override fun onActivityStopped(activity: Activity) = Unit
-        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-        override fun onActivityDestroyed(activity: Activity) = Unit
     }
 
     private companion object {
         const val ABOUT_TAGLINE = "Free, offline 3D splat scanner."
+        const val KEY_ROUTE_OPENED = "splatman.route_opened"
         const val TIMEOUT_MS = 30_000L
     }
 }
