@@ -260,13 +260,47 @@ Viewer crop mode ([screens/crop.md](screens/crop.md)). Counts use the localized 
 | `crop_nothing` | Everything is inside the box, so nothing was cut. | snackbar |
 | `crop_error` | Couldn't save the crop. Check free space and try again. | save error |
 | `crop_done` | Cropped. %1$s splats left | snackbar after Apply |
-| `crop_revert` | Revert crop | overflow item, only when an original is kept |
+| `crop_revert` | Revert edits | overflow item, only when an original is kept; covers crop and erase ([erase.md](screens/erase.md#revert-edits-one-label-for-crop-and-erase)) |
 | `crop_revert_title` | Go back to the original? | confirm dialog |
-| `crop_revert_body` | This undoes every crop on this scan, not just the last one. | confirm dialog |
+| `crop_revert_body` | This undoes every crop and erase on this scan, not just the last one. | confirm dialog |
 | `crop_revert_confirm` | Revert | confirm dialog button (beside `crop_cancel`) |
 | `crop_reverting` | Restoring the original… | reverting |
 | `crop_reverted` | Original restored | snackbar |
 | `crop_revert_error` | Couldn't restore the original. Try again. | snackbar |
+
+## Erase
+
+Viewer erase mode ([screens/erase.md](screens/erase.md)). Counts use the localized number formatter. Revert and its
+dialog use the `crop_revert*` keys (one Revert for crop and erase).
+
+| Key | Text | When |
+|---|---|---|
+| `erase_action` | Erase | Viewer bottom bar icon, content description |
+| `erase_title` | Erase | erase mode top bar |
+| `erase_close_desc` | Close erase | Close (×), TalkBack |
+| `erase_hint` | Paint over what to remove. Two fingers to turn. | nothing marked |
+| `erase_hint_marked` | Pink splats get removed. Undo or keep painting. | marked |
+| `erase_count` | 1 splat marked / %1$s splats marked | count pill; plurals (one, other) |
+| `erase_size_picker` | Brush size | segment group, TalkBack |
+| `erase_size_small` | Small | segment |
+| `erase_size_medium` | Medium | segment |
+| `erase_size_large` | Large | segment |
+| `erase_isolated` | Remove isolated splats | tonal button; marks only |
+| `erase_isolated_running` | Finding isolated splats… | button while the pass runs |
+| `erase_isolated_none` | No isolated splats found | snackbar |
+| `erase_undo` | Undo | text button |
+| `erase_undo_desc` | Undo last stroke | Undo, TalkBack |
+| `erase_cancel` | Cancel | button |
+| `erase_apply` | Apply | button; disabled while nothing is marked |
+| `erase_render_desc` | 3D view of %1$s, %2$s splats marked | render, TalkBack |
+| `erase_applying` | Removing splats… | applying |
+| `erase_all` | Every splat is marked. Undo some and try again. | refused: all marked |
+| `erase_error` | Couldn't save. Check free space and try again. | refused: store error |
+| `erase_done` | Removed %1$s splats. %2$s left | snackbar after Apply |
+| `erase_discard_title` | Discard your marks? | Back or Close with marks |
+| `erase_discard_body` | Nothing has been removed yet. | discard dialog |
+| `erase_keep` | Keep painting | discard dialog, dismiss |
+| `erase_discard` | Discard | discard dialog, confirm (`error`) |
 
 ## Export
 

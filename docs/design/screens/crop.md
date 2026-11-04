@@ -16,6 +16,9 @@ this page covers only what the user sees, touches and feels.
 - **On tap**: auto-rotate stops (and stays off after), the gesture hint is dismissed, the top and bottom bars
   crossfade (`DurationShort`) into the crop chrome below, and the box appears at the start box. The camera does not
   move. Single tap no longer hides chrome while in crop mode.
+- **Erase**: crop mode has no Erase action; [erase mode](erase.md) opens from the Viewer bar, so a box is applied
+  or dropped before erase opens. Revert crop is now labelled Revert edits and covers crops and erases
+  ([erase.md](erase.md#revert-edits-one-label-for-crop-and-erase)).
 - **Start box**: per-axis 5th..95th percentile of splat centres (the central 90%), for every source, aligned to the
   world axes W (+Y up). Reset box returns to exactly this box.
 

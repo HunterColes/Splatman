@@ -84,7 +84,8 @@ the library and settings follow the system light/dark setting.
 
 ## Later, ranked
 
-1. Crop and clean: a box crop and a floater brush (floaters are the top quality complaint everywhere).
+1. Crop and clean: a box crop ([screens/crop.md](screens/crop.md)) and a floater brush
+   ([screens/erase.md](screens/erase.md)) (floaters are the top quality complaint everywhere).
 2. Room mode: capture a space, with a gauge suited to walking through rather than around.
 3. Quality presets (Fast, Balanced, Best) once training time is known on real phones.
 4. In-world coverage overlay (AR dots around the subject) replacing or beside the ring.

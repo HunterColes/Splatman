@@ -14,14 +14,16 @@ single tap. Copy keys: `view_*`.
 │                              │
 │                              │
 │                              │
-│  (⟲)  (360)  (⌗)    [ Share ]│  bottom bar on a bottom gradient: Reset view, Auto-rotate
-└──────────────────────────────┘  toggle, Crop (icon buttons 48 dp), Share as a filled button
+│  (⟲) (360) (⌗) (✎)  [ Share ]│  bottom bar on a bottom gradient: Reset view, Auto-rotate
+└──────────────────────────────┘  toggle, Crop, Erase (icon buttons 48 dp), Share as a filled button
 ```
 
 - **Top bar**: Back, the scan name (`titleLarge`, one line, ellipsis; tap to rename), Details (Info icon), overflow
-  (Rename, Revert crop, Delete; Revert crop only while a crop's original is kept, see [crop mode](crop.md#revert-crop)).
+  (Rename, Revert edits, Delete; Revert edits only while an edit's original is kept, see [crop mode](crop.md#revert-crop)
+  and [erase mode](erase.md#revert-edits-one-label-for-crop-and-erase)).
 - **Bottom bar**: Reset view (`view_reset`), Auto-rotate toggle (`view_autorotate`, filled when on, off by default),
-  Crop (`crop_action`) opens [crop mode](crop.md), Share (`view_share`) opens the [export sheet](export.md).
+  Crop (`crop_action`) opens [crop mode](crop.md), Erase (`erase_action`) opens [erase mode](erase.md), Share
+  (`view_share`) opens the [export sheet](export.md).
 - **Gestures**: one finger drag orbits around the scan's centre; two fingers pan; pinch zooms (clamped so the scan
   cannot vanish or be passed through); double-tap animates back to the initial view (`DurationLong`,
   emphasized); single tap toggles chrome. Fling continues the orbit with friction.
@@ -54,6 +56,7 @@ outside shows the backs of its walls. Object scans, samples and imported files (
   the custom actions are renamed for what they do inside: "Turn left", "Turn right", "Look up", "Look down", "Step
   in", "Step back", "Reset view". Arrow keys turn, `+`/`-` step, `0` resets.
 - **Crop**: crop mode keeps its own framing ([crop mode](crop.md)); leaving it returns to the room's pose.
+- **Erase**: two fingers move the room camera as above; one finger paints ([erase mode](erase.md)).
 
 ## States
 
