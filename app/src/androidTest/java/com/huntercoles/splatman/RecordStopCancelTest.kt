@@ -1,5 +1,7 @@
 package com.huntercoles.splatman
 
+import android.Manifest
+import android.os.Build
 import android.os.SystemClock
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -35,6 +37,9 @@ import java.io.File
  *
  * While recording, every look at the screen goes through [runUntil]: it holds the fake's frames first, since a
  * recording redraws on every frame and Compose would never go idle for the lookup (#189: the test hung for good).
+ *
+ * On API 33+ the first Back from a running Processing asks for notifications (`ProcessingEvent.AskNotifications`)
+ * unless POST_NOTIFICATIONS is already granted; [openCapture] grants it so Back leaves for the Library (#274).
  */
 @OptIn(ExperimentalTestApi::class)
 @HiltAndroidTest
@@ -55,6 +60,13 @@ class RecordStopCancelTest {
     @Before
     fun openCapture() {
         FakeCaptureTracker.hold.value = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.uiAutomation.grantRuntimePermission(
+                instrumentation.targetContext.packageName,
+                Manifest.permission.POST_NOTIFICATIONS,
+            )
+        }
         compose.waitForIdle()
         if (exists(hasText(ONBOARDING_START))) compose.onNodeWithText(ONBOARDING_START).performClick()
         compose.waitUntilAtLeastOneExists(hasText(LIBRARY_TITLE), TIMEOUT_MS)
