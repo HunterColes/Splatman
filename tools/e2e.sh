@@ -11,8 +11,16 @@
 #   own process group if that is still alive. Nothing else is killed.
 # - No ARCore on the emulator: the capture test is skipped (a line says so); that is not a failure.
 # Ends with `OK (n tests)` and the screenshots under build/e2e/, or `e2e: RED: <why>`.
+#   tools/e2e.sh splat-sfm   the same emulator and lock, but runs the native SfM module's device tests instead
+#                            (`:splat-sfm:connectedDebugAndroidTest`, #225); no screenshots.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+mode="${1:-app}"
+case $mode in
+  app) task=:app:connectedFullDebugAndroidTest ;;
+  splat-sfm) task=:splat-sfm:connectedDebugAndroidTest ;;
+  *) echo "e2e: RED: unknown mode '$mode' (app or splat-sfm)"; exit 1 ;;
+esac
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 adb="$ANDROID_HOME/platform-tools/adb"
 emulator="$ANDROID_HOME/emulator/emulator"
@@ -22,6 +30,7 @@ avd_home="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 out="$PWD/build/e2e"
 device_dir=/sdcard/Download/splatman-e2e
 results=app/build/outputs/androidTest-results/connected  # flavoured: debug/flavors/full/ below it (#48)
+[[ $mode == app ]] || results=$mode/build/outputs/androidTest-results/connected
 
 red() { echo "e2e: RED: $*"; exit 1; }
 [[ -x $adb && -x $emulator ]] || red "no adb or emulator under $ANDROID_HOME"
@@ -133,7 +142,7 @@ sh input keyevent KEYCODE_WAKEUP || true
 sh wm dismiss-keyguard || true
 for s in window_animation_scale transition_animation_scale animator_duration_scale; do sh settings put global "$s" 0; done
 sh rm -rf "$device_dir" || true
-if ! sh pm path com.google.ar.core | grep -q package:; then
+if [[ $mode == app ]] && ! sh pm path com.google.ar.core | grep -q package:; then
   echo "e2e: ARCore is not installed on $serial: the capture test is skipped (not a failure)"
 fi
 
@@ -141,7 +150,7 @@ log="$(mktemp)"
 set +e
 ( flock -w "${GATE_LOCK_WAIT:-3600}" 9 || { echo "e2e: waited too long for /tmp/splatman-gradle.lock"; exit 1; }
   ./gradlew --console=plain --no-daemon -Dorg.gradle.jvmargs=-Xmx2g -Pkotlin.daemon.jvmargs=-Xmx1g \
-    :app:connectedFullDebugAndroidTest ) 9> /tmp/splatman-gradle.lock 2>&1 | tee "$log"
+    "$task" ) 9> /tmp/splatman-gradle.lock 2>&1 | tee "$log"
 rc=${PIPESTATUS[0]}
 set -e
 
@@ -165,7 +174,7 @@ while IFS= read -r -d "" x; do
 done < <(find "$results" -name '*.xml' -print0 2>/dev/null)
 ((tests > 0)) || red "no test results under $results"
 ((failed == 0)) || red "$failed of $tests tests failed"
-[[ -n $shots ]] || red "no screenshots were pulled to build/e2e/"
+[[ $mode != app || -n $shots ]] || red "no screenshots were pulled to build/e2e/"
 echo "$shots"
 ((skipped == 0)) || echo "e2e: $skipped skipped"
 echo "OK ($((tests - skipped)) tests)"
