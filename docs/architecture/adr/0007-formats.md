@@ -8,6 +8,7 @@ Status: accepted (2026-11-01, council #2)
 | **`.splat`** (antimatter15) | yes | yes | v1 | F (RDF) | 32 B/splat, SH0 only, lossy |
 | **SPZ** (Niantic, v2 and v3) | yes | yes | after PLY | F (RDF), like PLY (#154) | gzip, quantised, ~10x smaller than PLY |
 | glTF `KHR_gaussian_splatting` (`.glb`) | no | yes (`GltfWriter`, #414) | ratified 2026 (research #412) | glTF (= W) | export, float32; no `worldToFile`; SPZ-in-glTF deferred (draft) |
+| Mesh (.glb, glTF 2.0 triangles) | no | yes (ADR 0018) | after #421 | glTF (= W) | vertex colour from SH0, no texture |
 | **Capture bundle** (Nerfstudio `transforms.json`) | yes (re-train) | yes (zip) | v1 storage, export later | NS (ADR 0003) | the training dataset |
 | **Pose-free capture** (`capture.json`, `imu.csv`, `calibration.json`) | no | later | `foss` Capture (#199) | none | input to pose recovery (#200) |
 
