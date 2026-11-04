@@ -1,5 +1,7 @@
 package com.huntercoles.splatman.viewer.crop.store
 
+import com.huntercoles.splatman.splat.edit.EraseMask
+import com.huntercoles.splatman.splat.edit.keepUnmarked
 import com.huntercoles.splatman.splat.io.ply.PlyReader
 import com.huntercoles.splatman.splat.model.SplatCloud
 import com.huntercoles.splatman.viewer.presentation.load.SplatSource
@@ -7,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -111,6 +114,28 @@ class FileCropStoreTest {
         assertFalse(store.hasOriginal(scan))
         assertEquals(listOf(SPLAT), names())
         assertEquals(listOf(scan.scanId), changed)
+    }
+
+    @Test
+    fun `A6 crop Apply, erase Apply, then Revert give back the first original byte for byte`() = runTest {
+        val store = store()
+        val first = splat.readBytes()
+        val cropped = cloud(NEW)
+        store.apply(scan, cropped)
+        val mask = EraseMask(cropped.count).apply {
+            beginStroke()
+            mark(0)
+            mark(2)
+        }
+        store.apply(scan, keepUnmarked(cropped, mask))
+        assertEquals(NEW - 2, countOf(splat))
+        assertArrayEquals(first, original.readBytes())
+
+        store.revert(scan)
+
+        assertArrayEquals(first, splat.readBytes())
+        assertFalse(original.exists())
+        assertFalse(store.hasOriginal(scan))
     }
 
     @Test
