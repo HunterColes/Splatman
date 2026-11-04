@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library folders (docs/design/copy.md "Library: search, sort and folders", #301). Every %s holding a name is
+     bidi-wrapped by the caller. Reused from strings.xml: lib_name, lib_cancel, lib_rename, lib_undo. -->
+<resources>
+    <string name="lib_folder_section">Folders</string>
+    <string name="lib_folder_section_scans">Scans</string>
+    <string name="lib_folder_new">New folder</string>
+    <string name="lib_folder_create">Create</string>
+    <string name="lib_folder_rename">Rename folder</string>
+    <string name="lib_folder_delete">Delete folder</string>
+    <string name="lib_folder_more">Options for %1$s</string>
+    <string name="lib_folder_name_taken">You already have a folder called %1$s</string>
+    <string name="lib_folder_name_count">%1$d/60</string>
+    <plurals name="lib_folder_count">
+        <item quantity="one">%1$d scan</item>
+        <item quantity="other">%1$d scans</item>
+    </plurals>
+    <string name="lib_folder_count_empty">Empty</string>
+    <string name="lib_folder_description">Folder, %1$s, %2$s, %3$s</string>
+    <string name="lib_folder_empty_title">This folder is empty</string>
+    <string name="lib_folder_empty_body">Select scans in Library and tap Move to put them here, or start a scan from here.</string>
+    <string name="lib_folder_delete_title">Delete the folder %1$s?</string>
+    <plurals name="lib_folder_delete_body">
+        <item quantity="one">Its scan moves back to Library. Nothing is deleted from your phone.</item>
+        <item quantity="other">Its %1$d scans move back to Library. Nothing is deleted from your phone.</item>
+    </plurals>
+    <string name="lib_folder_delete_body_empty">It\'s empty, so nothing else changes.</string>
+    <string name="lib_folder_deleted">Folder deleted</string>
+    <string name="lib_folder_error">Couldn\'t save the folder. Try again.</string>
+    <string name="lib_move">Move</string>
+    <plurals name="lib_move_title">
+        <item quantity="one">Move %1$d scan to</item>
+        <item quantity="other">Move %1$d scans to</item>
+    </plurals>
+    <string name="lib_move_root">Library</string>
+    <string name="lib_move_here_now">Here now</string>
+    <plurals name="lib_moved">
+        <item quantity="one">Moved %1$d scan to %2$s</item>
+        <item quantity="other">Moved %1$d scans to %2$s</item>
+    </plurals>
+    <string name="lib_move_error">Couldn\'t move the scans. Try again.</string>
+</resources>
