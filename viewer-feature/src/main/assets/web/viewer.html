@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>__SPLATMAN_TITLE__</title>
+<!--
+  Splatman web viewer: one offline page, a Gaussian splat scan inlined below. No network access of any kind.
+
+  Markers (each exactly once; the Kotlin writer replaces them):
+    title   in <title> only; the caption reads document.title, so the name never sits inside a script.
+    view    the content of #splat-view: {"target":[x,y,z],"distance":d,"yaw":deg,"pitch":deg,"fovY":deg},
+            target in the payload's frame F (+X right, +Y down, +Z forward). The page orbits about W's up
+            (W = F turned 180 degrees about X, +Y up): eye_W = target_W + distance *
+            (cos(pitch) sin(yaw), sin(pitch), cos(pitch) cos(yaw)), pitch > 0 = looking down, as the app's
+            GaussianCameraController (yaw about up, then the eye tilted pitch above the horizon).
+    data    the content of #splat-data: Base64 of SplatCodec's 32-byte .splat records (frame F).
+
+  The renderer is ported from antimatter15/splat (MIT, Copyright (c) 2023 Kevin Kwok): the .splat layout, the
+  packed RGBA32UI splat texture, the instanced quad with the projected 2D covariance, front-to-back blending and
+  the 16-bit counting depth sort. Rewritten here for Splatman (ADR 0008: ported, not vendored); MIT licence.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0A0A0D; color: #E8E5F0; }
+  body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  #caption { position: fixed; left: 12px; bottom: 10px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #caption .title { font-size: 13px; font-weight: 600; }
+  #caption .made { font-size: 11px; opacity: 0.7; }
+  #message { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+             padding: 24px; text-align: center; font-size: 15px; }
+  #message[hidden] { display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="message">Loading</div>
+<div id="caption"><div class="title" id="caption-title"></div><div class="made">Made with Splatman</div></div>
+<noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0A0A0D;">This scan needs JavaScript to show.</div></noscript>
+<script type="application/json" id="splat-view">__SPLATMAN_VIEW__</script>
+<script type="application/octet-stream" id="splat-data">__SPLATMAN_DATA__</script>
+<script>
+(function () {
+  "use strict";
+
+  var BYTES_PER_SPLAT = 32;
+  var TEX_WIDTH = 2048;          // two texels per splat, 1024 splats per row
+  var MIN_FACTOR = 0.25, MAX_FACTOR = 10; // zoom clamps around the start distance, as in the app
+  var DRAG_DEG_PER_PX = 0.3;
+  var PITCH_LIMIT = 89;
+
+  var canvas = document.getElementById("canvas");
+  var message = document.getElementById("message");
+
+  var title = (document.title || "").trim();
+  var captionTitle = document.getElementById("caption-title");
+  captionTitle.textContent = title;
+  captionTitle.hidden = title.length === 0;
+
+  function show(text) { message.textContent = text; message.hidden = false; }
+
+  var gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: true, alpha: true });
+  if (!gl) {
+    show("This scan needs WebGL 2, which this browser does not offer. Open it in a recent Chrome or Firefox.");
+    return;
+  }
+
+  function start() {
+    var bytes;
+    try {
+      bytes = decodePayload();
+    } catch (e) {
+      show("This page holds no readable scan.");
+      return;
+    }
+    var count = bytes.length / BYTES_PER_SPLAT;
+    if (count === 0) { show("This scan is empty."); return; }
+    var scene = buildScene(bytes, count);
+    var view = readView(scene);
+    message.hidden = true;
+    run(scene, view);
+  }
+
+  function decodePayload() {
+    var text = document.getElementById("splat-data").textContent.replace(/\s+/g, "");
+    var bin = atob(text);
+    if (bin.length % BYTES_PER_SPLAT !== 0) throw new Error("payload is not whole splats");
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // ---- packing: position bits + colour in texel 0, the 3D covariance as six halves in texel 1 ----
+
+  var f32 = new Float32Array(1), u32 = new Uint32Array(f32.buffer);
+  function toHalf(v) {
+    if (!(v === v)) v = 0;
+    f32[0] = v;
+    var x = u32[0];
+    var sign = (x >>> 16) & 0x8000;
+    var e = ((x >>> 23) & 0xff) - 112;
+    var m = x & 0x7fffff;
+    if (e >= 31) return sign | 0x7bff;
+    if (e <= 0) {
+      if (e < -10) return sign;
+      m = (m | 0x800000) >>> (1 - e);
+      return sign | ((m + 0x1000) >>> 13);
+    }
+    return sign | (e << 10) | ((m + 0x1000) >>> 13);
+  }
+  function packHalves(a, b) { return (toHalf(a) | (toHalf(b) << 16)) >>> 0; }
+
+  function buildScene(bytes, n) {
+    var fv = new Float32Array(bytes.buffer, 0, n * 8);
+    var rows = Math.ceil(n / 1024);
+    var tex = new Uint32Array(TEX_WIDTH * rows * 4);
+    var texF = new Float32Array(tex.buffer);
+    var positions = new Float32Array(3 * n);
+    var cx = 0, cy = 0, cz = 0, maxScale = 0;
+    for (var i = 0; i < n; i++) {
+      var x = fv[8 * i], y = fv[8 * i + 1], z = fv[8 * i + 2];
+      positions[3 * i] = x; positions[3 * i + 1] = y; positions[3 * i + 2] = z;
+      cx += x; cy += y; cz += z;
+      var sx = fv[8 * i + 3], sy = fv[8 * i + 4], sz = fv[8 * i + 5];
+      maxScale = Math.max(maxScale, sx, sy, sz);
+      var o = 32 * i;
+      var qw = (bytes[o + 28] - 128) / 128, qx = (bytes[o + 29] - 128) / 128,
+          qy = (bytes[o + 30] - 128) / 128, qz = (bytes[o + 31] - 128) / 128;
+      var ql = Math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz);
+      if (ql < 1e-6) { qw = 1; qx = qy = qz = 0; } else { qw /= ql; qx /= ql; qy /= ql; qz /= ql; }
+      // R (row-major) of the unit quaternion, then Sigma = R diag(s^2) R^T.
+      var r00 = 1 - 2 * (qy * qy + qz * qz), r01 = 2 * (qx * qy - qw * qz), r02 = 2 * (qx * qz + qw * qy);
+      var r10 = 2 * (qx * qy + qw * qz), r11 = 1 - 2 * (qx * qx + qz * qz), r12 = 2 * (qy * qz - qw * qx);
+      var r20 = 2 * (qx * qz - qw * qy), r21 = 2 * (qy * qz + qw * qx), r22 = 1 - 2 * (qx * qx + qy * qy);
+      var a = sx * sx, b = sy * sy, c = sz * sz;
+      var s00 = r00 * r00 * a + r01 * r01 * b + r02 * r02 * c;
+      var s01 = r00 * r10 * a + r01 * r11 * b + r02 * r12 * c;
+      var s02 = r00 * r20 * a + r01 * r21 * b + r02 * r22 * c;
+      var s11 = r10 * r10 * a + r11 * r11 * b + r12 * r12 * c;
+      var s12 = r10 * r20 * a + r11 * r21 * b + r12 * r22 * c;
+      var s22 = r20 * r20 * a + r21 * r21 * b + r22 * r22 * c;
+      var t = 8 * i;
+      texF[t] = x; texF[t + 1] = y; texF[t + 2] = z;
+      tex[t + 3] = (bytes[o + 24] | (bytes[o + 25] << 8) | (bytes[o + 26] << 16) | (bytes[o + 27] << 24)) >>> 0;
+      // Scaled by 4 (and back in the shader) to keep tiny splats out of half-float underflow.
+      tex[t + 4] = packHalves(4 * s00, 4 * s01);
+      tex[t + 5] = packHalves(4 * s02, 4 * s11);
+      tex[t + 6] = packHalves(4 * s12, 4 * s22);
+    }
+    cx /= n; cy /= n; cz /= n;
+    var sq = 0;
+    for (var j = 0; j < n; j++) {
+      var dx = positions[3 * j] - cx, dy = positions[3 * j + 1] - cy, dz = positions[3 * j + 2] - cz;
+      sq += dx * dx + dy * dy + dz * dz;
+    }
+    var radius = Math.max(1.5 * Math.sqrt(sq / n), 3 * maxScale, 0.05);
+    return { count: n, rows: rows, tex: tex, positions: positions, centre: [cx, cy, cz], radius: radius };
+  }
+
+  // ---- the start pose ----
+
+  function readView(scene) {
+    var v = null;
+    try { v = JSON.parse(document.getElementById("splat-view").textContent); } catch (e) { v = null; }
+    var ok = function (x) { return typeof x === "number" && isFinite(x); };
+    var fovY = v && ok(v.fovY) && v.fovY > 1 && v.fovY < 170 ? v.fovY : 60;
+    var target = v && v.target && v.target.length === 3 && v.target.every(ok) ? v.target.slice() : scene.centre.slice();
+    var framed = scene.radius / (0.7 * Math.tan(fovY * Math.PI / 360));
+    var distance = v && ok(v.distance) && v.distance > 0 ? v.distance : framed;
+    return {
+      target: target,
+      distance: distance,
+      yaw: v && ok(v.yaw) ? v.yaw : 35,
+      pitch: clamp(v && ok(v.pitch) ? v.pitch : 20, -PITCH_LIMIT, PITCH_LIMIT),
+      fovY: fovY,
+      minDistance: distance * MIN_FACTOR,
+      maxDistance: distance * MAX_FACTOR
+    };
+  }
+
+  function clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); }
+
+  // ---- GL ----
+
+  var VERT = [
+    "#version 300 es",
+    "precision highp float;",
+    "precision highp int;",
+    "uniform highp usampler2D u_texture;",
+    "uniform mat4 projection, view;",
+    "uniform vec2 focal;",
+    "uniform vec2 viewport;",
+    "in vec2 position;",
+    "in int index;",
+    "out vec4 vColor;",
+    "out vec2 vPosition;",
+    "void main() {",
+    "  ivec2 at = ivec2((uint(index) & 0x3ffu) << 1, uint(index) >> 10);",
+    "  uvec4 cen = texelFetch(u_texture, at, 0);",
+    "  vec4 cam = view * vec4(uintBitsToFloat(cen.xyz), 1.0);",
+    "  vec4 clipPos = projection * cam;",
+    "  float lim = 1.2 * clipPos.w;",
+    "  if (cam.z > -0.0001 || clipPos.z < -clipPos.w || clipPos.x < -lim || clipPos.x > lim || clipPos.y < -lim || clipPos.y > lim) {",
+    "    gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return;",
+    "  }",
+    "  uvec4 cov = texelFetch(u_texture, at + ivec2(1, 0), 0);",
+    "  vec2 u1 = unpackHalf2x16(cov.x) * 0.25, u2 = unpackHalf2x16(cov.y) * 0.25, u3 = unpackHalf2x16(cov.z) * 0.25;",
+    "  mat3 Vrk = mat3(u1.x, u1.y, u2.x, u1.y, u2.y, u3.x, u2.x, u3.x, u3.y);",
+    "  mat3 W = mat3(view);",
+    "  mat3 Sc = W * Vrk * transpose(W);",
+    "  float z = -cam.z;",
+    "  vec3 j0 = vec3(focal.x / z, 0.0, focal.x * cam.x / (z * z));",
+    "  vec3 j1 = vec3(0.0, focal.y / z, focal.y * cam.y / (z * z));",
+    "  float a = dot(j0, Sc * j0) + 0.3, b = dot(j0, Sc * j1), c = dot(j1, Sc * j1) + 0.3;",
+    "  float mid = 0.5 * (a + c);",
+    "  float rad = length(vec2(0.5 * (a - c), b));",
+    "  float l1 = mid + rad, l2 = mid - rad;",
+    "  if (l2 <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }",
+    "  vec2 dir = abs(b) < 1e-9 ? (a >= c ? vec2(1.0, 0.0) : vec2(0.0, 1.0)) : normalize(vec2(b, l1 - a));",
+    "  vec2 major = min(sqrt(l1), 1024.0) * dir;",
+    "  vec2 minor = min(sqrt(l2), 1024.0) * vec2(dir.y, -dir.x);",
+    "  vColor = vec4(cen.w & 0xffu, (cen.w >> 8) & 0xffu, (cen.w >> 16) & 0xffu, (cen.w >> 24) & 0xffu) / 255.0;",
+    "  vPosition = position;",
+    "  vec2 centre = clipPos.xy / clipPos.w;",
+    "  gl_Position = vec4(centre + (position.x * major + position.y * minor) * 2.0 / viewport, 0.0, 1.0);",
+    "}"
+  ].join("\n");
+
+  var FRAG = [
+    "#version 300 es",
+    "precision highp float;",
+    "in vec4 vColor;",
+    "in vec2 vPosition;",
+    "out vec4 fragColor;",
+    "void main() {",
+    "  float r2 = dot(vPosition, vPosition);",
+    "  if (r2 > 4.0) discard;",
+    "  float alpha = vColor.a * exp(-0.5 * r2);",
+    "  if (alpha < 1.0 / 255.0) discard;",
+    "  fragColor = vec4(vColor.rgb * alpha, alpha);",
+    "}"
+  ].join("\n");
+
+  function compile(type, src) {
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+
+  function run(scene, view) {
+    var program;
+    try {
+      program = gl.createProgram();
+      gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    } catch (e) {
+      show("This browser's WebGL 2 could not draw the scan.");
+      return;
+    }
+    gl.useProgram(program);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    // Front-to-back "under" blending on a transparent canvas; the page background shows through.
+    gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ONE_MINUS_DST_ALPHA, gl.ONE);
+    gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+
+    var uProjection = gl.getUniformLocation(program, "projection");
+    var uView = gl.getUniformLocation(program, "view");
+    var uFocal = gl.getUniformLocation(program, "focal");
+    var uViewport = gl.getUniformLocation(program, "viewport");
+    gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+
+    var quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]), gl.STATIC_DRAW);
+    var aPosition = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(aPosition);
+    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+    var texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32UI, TEX_WIDTH, scene.rows, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, scene.tex);
+    scene.tex = null;
+
+    var indexBuffer = gl.createBuffer();
+    var aIndex = gl.getAttribLocation(program, "index");
+    gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+    gl.enableVertexAttribArray(aIndex);
+    gl.vertexAttribIPointer(aIndex, 1, gl.INT, 0, 0);
+    gl.vertexAttribDivisor(aIndex, 1);
+
+    var n = scene.count;
+    var order = new Int32Array(n);
+    var keys = new Float32Array(n);
+    var bucketOf = new Uint32Array(n);
+    var counts = new Uint32Array(65536);
+    var lastSortRow = null;
+
+    // Counting sort on 16-bit depth buckets, nearest first (front-to-back blending).
+    function sortFor(m) {
+      var p = scene.positions;
+      var lo = Infinity, hi = -Infinity;
+      for (var i = 0; i < n; i++) {
+        var d = -(m[2] * p[3 * i] + m[6] * p[3 * i + 1] + m[10] * p[3 * i + 2] + m[14]);
+        keys[i] = d;
+        if (d < lo) lo = d;
+        if (d > hi) hi = d;
+      }
+      var k = hi > lo ? 65535 / (hi - lo) : 0;
+      counts.fill(0);
+      for (var j = 0; j < n; j++) {
+        var bkt = ((keys[j] - lo) * k) | 0;
+        bucketOf[j] = bkt;
+        counts[bkt]++;
+      }
+      for (var s = 0, acc = 0; s < 65536; s++) { var c = counts[s]; counts[s] = acc; acc += c; }
+      for (var q = 0; q < n; q++) order[counts[bucketOf[q]]++] = q;
+      gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, order, gl.DYNAMIC_DRAW);
+      lastSortRow = [m[2], m[6], m[10], m[14]];
+    }
+
+    function needsSort(m) {
+      if (!lastSortRow) return true;
+      var scale = Math.max(1e-6, view.distance);
+      return Math.abs(m[2] - lastSortRow[0]) > 1e-3 || Math.abs(m[6] - lastSortRow[1]) > 1e-3 ||
+             Math.abs(m[10] - lastSortRow[2]) > 1e-3 || Math.abs(m[14] - lastSortRow[3]) > 1e-3 * scale;
+    }
+
+    // View matrix: a look-at in W (+Y up), then G = diag(1, -1, -1) takes the F-frame data into W.
+    function viewMatrix() {
+      var yaw = view.yaw * Math.PI / 180, pitch = view.pitch * Math.PI / 180;
+      var t = [view.target[0], -view.target[1], -view.target[2]];
+      var off = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+      var eye = [t[0] + view.distance * off[0], t[1] + view.distance * off[1], t[2] + view.distance * off[2]];
+      var zx = off[0], zy = off[1], zz = off[2];           // camera +Z (backwards), unit
+      var xx = zz, xy = 0, xz = -zx;                         // up x z
+      var xl = Math.hypot(xx, xz) || 1; xx /= xl; xz /= xl;
+      var yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx; // z x x
+      var tx = -(xx * eye[0] + xy * eye[1] + xz * eye[2]);
+      var ty = -(yx * eye[0] + yy * eye[1] + yz * eye[2]);
+      var tz = -(zx * eye[0] + zy * eye[1] + zz * eye[2]);
+      // Column-major; columns 1 and 2 negated for G.
+      return new Float32Array([
+        xx, yx, zx, 0,
+        -xy, -yy, -zy, 0,
+        -xz, -yz, -zz, 0,
+        tx, ty, tz, 1
+      ]);
+    }
+
+    var dirty = true, scheduled = false;
+    function invalidate() {
+      dirty = true;
+      if (!scheduled) { scheduled = true; requestAnimationFrame(frame); }
+    }
+
+    function resize() {
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    }
+
+    function frame() {
+      scheduled = false;
+      if (!dirty) return;
+      dirty = false;
+      resize();
+      var w = canvas.width, h = canvas.height;
+      var f = (h / 2) / Math.tan(view.fovY * Math.PI / 360);
+      var near = Math.max(1e-4, view.minDistance * 0.02), far = view.maxDistance * 20 + scene.radius * 4;
+      var proj = new Float32Array([
+        2 * f / w, 0, 0, 0,
+        0, 2 * f / h, 0, 0,
+        0, 0, -(far + near) / (far - near), -1,
+        0, 0, -2 * far * near / (far - near), 0
+      ]);
+      var m = viewMatrix();
+      if (needsSort(m)) sortFor(m);   // only when the view has changed since the last sort
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniformMatrix4fv(uProjection, false, proj);
+      gl.uniformMatrix4fv(uView, false, m);
+      gl.uniform2f(uFocal, f, f);
+      gl.uniform2f(uViewport, w, h);
+      gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, n);
+    }
+
+    // ---- input: one pointer orbits, two pinch, the wheel zooms ----
+
+    var pointers = new Map();
+    var pinchStart = 0, pinchDistance = 0;
+
+    function zoomTo(d) { view.distance = clamp(d, view.minDistance, view.maxDistance); invalidate(); }
+    function spread() {
+      var pts = Array.from(pointers.values());
+      return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
+
+    canvas.addEventListener("pointerdown", function (e) {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      canvas.classList.add("dragging");
+      if (pointers.size === 2) { pinchStart = spread(); pinchDistance = view.distance; }
+      e.preventDefault();
+    });
+    canvas.addEventListener("pointermove", function (e) {
+      var p = pointers.get(e.pointerId);
+      if (!p) return;
+      var dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      if (pointers.size === 1) {
+        view.yaw -= dx * DRAG_DEG_PER_PX;
+        view.pitch = clamp(view.pitch + dy * DRAG_DEG_PER_PX, -PITCH_LIMIT, PITCH_LIMIT);
+        invalidate();
+      } else if (pointers.size === 2 && pinchStart > 0) {
+        var now = spread();
+        if (now > 0) zoomTo(pinchDistance * pinchStart / now);
+      }
+    });
+    function release(e) {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchStart = 0;
+      if (pointers.size === 0) canvas.classList.remove("dragging");
+    }
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+    canvas.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      var unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      zoomTo(view.distance * Math.exp(e.deltaY * unit * 0.0015));
+    }, { passive: false });
+    window.addEventListener("resize", invalidate);
+
+    dirty = true;
+    frame();
+  }
+
+  // Let the "Loading" line paint before the payload decodes.
+  requestAnimationFrame(function () { setTimeout(start, 0); });
+})();
+</script>
+</body>
+</html>
