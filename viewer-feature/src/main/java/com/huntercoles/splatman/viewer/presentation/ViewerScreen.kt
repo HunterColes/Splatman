@@ -32,12 +32,14 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,7 +54,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -82,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huntercoles.splatman.core.design.SplatColors
 import com.huntercoles.splatman.core.design.SplatDimens
 import com.huntercoles.splatman.core.design.SplatMotion
+import com.huntercoles.splatman.core.design.SplatTheme
 import com.huntercoles.splatman.core.design.splatDuration
 import com.huntercoles.splatman.viewer.R
 import com.huntercoles.splatman.viewer.export.ExportIntent
@@ -112,13 +114,30 @@ import kotlin.math.abs
  * reloads the source through Loading with the camera kept, then shows its snackbar.
  */
 @Composable
-@Suppress("LongMethod", "CyclomaticComplexMethod")
 fun ViewerScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ViewerViewModel = hiltViewModel(),
     exportViewModel: ExportViewModel = hiltViewModel(),
     cropViewModel: CropViewModel = hiltViewModel(),
+) {
+    // The viewer background is always dark, so the chrome takes the dark scheme whatever the app theme (as Capture).
+    // MaterialTheme alone leaves LocalContentColor to whatever surrounds the screen, so set it from the dark scheme.
+    SplatTheme(forceDark = true, systemBars = false) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            ViewerContent(onBack, modifier, viewModel, exportViewModel, cropViewModel)
+        }
+    }
+}
+
+@Composable
+@Suppress("LongMethod", "CyclomaticComplexMethod")
+private fun ViewerContent(
+    onBack: () -> Unit,
+    modifier: Modifier,
+    viewModel: ViewerViewModel,
+    exportViewModel: ExportViewModel,
+    cropViewModel: CropViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val crop by cropViewModel.uiState.collectAsStateWithLifecycle()
@@ -278,10 +297,10 @@ fun ViewerScreen(
                     Text(
                         text = statsLine(current),
                         style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
+                        color = SplatColors.OverlayOnScrim,
                         modifier = Modifier
                             .padding(horizontal = SplatDimens.SpacingDefault)
-                            .background(Color.Black.copy(alpha = 0.5f))
+                            .background(SplatColors.OverlayScrim)
                             .padding(SplatDimens.SpacingXSmall),
                     )
                 }

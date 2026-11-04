@@ -107,7 +107,7 @@ internal fun ViewerTopBar(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            color = Color.White,
+            color = SplatColors.OverlayOnScrim,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -175,7 +175,7 @@ internal fun ViewerBottomBar(
             )
             .padding(SplatDimens.SpacingDefault),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SplatDimens.SpacingSmall),
+        horizontalArrangement = Arrangement.spacedBy(SplatDimens.SpacingXSmall),
     ) {
         IconButton(onClick = onReset) {
             Icon(Icons.Default.RestartAlt, contentDescription = stringResource(R.string.view_reset))
@@ -193,7 +193,7 @@ internal fun ViewerBottomBar(
         Button(onClick = onShare) {
             Icon(Icons.Default.IosShare, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
             Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-            Text(stringResource(R.string.view_share))
+            Text(stringResource(R.string.view_share), maxLines = 1, softWrap = false)
         }
     }
 }
