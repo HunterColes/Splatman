@@ -356,6 +356,9 @@ dialog use the `crop_revert*` keys (one Revert for crop and erase).
 | `exp_video_cancel` | Cancel |
 | `exp_video_stopped` | The video stopped when you left Splatman. Try again. |
 | `exp_video_error` | Couldn't make a video on this phone. PLY and .splat still work. |
+| `exp_html` | Web page (.html) |
+| `exp_html_body` | Opens in any browser, even offline. Your friend can turn it with a finger, no app needed |
+| `exp_html_trimmed` | Keeps the %1$s most visible splats of %2$s |
 
 ## Import
 
