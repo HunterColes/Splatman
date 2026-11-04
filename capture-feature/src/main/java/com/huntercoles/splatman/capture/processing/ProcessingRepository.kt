@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -41,6 +42,8 @@ import javax.inject.Singleton
  * a half file; a `processing.running` marker lives in the folder for the length of a run, so a run the process died in
  * reads back as [ProcessingState.Failed] and can simply be started again. The bundle itself is only read. A finished
  * run also leaves a `thumbnail.png` beside the splat ([ThumbnailWriter]); a thumbnail failure never fails the run.
+ * With Settings > Keep capture frames off ([KeepFrames]), a finished run then deletes the scan's `images/`
+ * ([CaptureFrames]); a failed, cancelled or interrupted run always keeps them.
  */
 @Singleton
 class ProcessingRepository @Inject constructor(
@@ -51,6 +54,7 @@ class ProcessingRepository @Inject constructor(
     private val freeSpace: FreeSpace,
     @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
     private val thumbnails: ThumbnailWriter,
+    private val keepFrames: KeepFrames = KeepFrames { true },
 ) {
     private val states = ConcurrentHashMap<String, MutableStateFlow<ProcessingState>>()
     private val jobs = ConcurrentHashMap<String, Job>()
@@ -115,6 +119,7 @@ class ProcessingRepository @Inject constructor(
                 marker.delete()
                 // Best effort: a failed still is logged inside and the scan is Done all the same.
                 thumbnails.write(cloud, scan)
+                dropFramesUnlessKept(scan)
             }
             state.value = ProcessingState.Done(output)
         } catch (e: CancellationException) {
@@ -193,6 +198,17 @@ class ProcessingRepository @Inject constructor(
             throw NoFramesException("no frames: ${e.message}").apply { initCause(e) }
         }
         return ProcessingState.NeedsPoses(capture.frames.size)
+    }
+
+    /** Settings > Keep capture frames off: a built scan loses its `images/`. Read now, at the end; never throws. */
+    private fun dropFramesUnlessKept(scan: File) {
+        val keep = try {
+            keepFrames.keep()
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Timber.w(e, "could not read Keep capture frames; keeping them")
+            true
+        }
+        if (!keep) CaptureFrames.delete(scan)
     }
 
     private fun cleanUp(temp: File, marker: File) {

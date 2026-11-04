@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.ui.graphics.toArgb
 import com.huntercoles.splatman.capture.recording.SCANS_DIR
 import com.huntercoles.splatman.core.design.SplatColors
+import com.huntercoles.splatman.core.preferences.SettingsPreferences
 import com.huntercoles.splatman.splat.packet.TrainingConfig
 import com.huntercoles.splatman.splat.train.Trainer
 import dagger.Binds
@@ -42,6 +43,9 @@ internal abstract class ProcessingModule {
         @Provides
         fun provideThumbnailWriter(encoder: BitmapThumbnailEncoder): ThumbnailWriter =
             ThumbnailWriter(encoder, SplatColors.ViewerBackground.toArgb())
+
+        @Provides
+        fun provideKeepFrames(settings: SettingsPreferences): KeepFrames = KeepFrames { settings.keepFrames.value }
 
         @Provides
         fun provideFreeSpace(): FreeSpace = FileSystemFreeSpace()
