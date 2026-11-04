@@ -22,6 +22,12 @@ abstract class FolderDao {
     @Query("UPDATE folders SET name = :name, nameKey = :nameKey WHERE id = :id")
     abstract suspend fun updateName(id: String, name: String, nameKey: String): Int
 
+    @Query("SELECT * FROM folders WHERE id = :id")
+    abstract suspend fun byId(id: String): FolderEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM folders WHERE id = :id)")
+    abstract suspend fun exists(id: String): Boolean
+
     @Query("DELETE FROM folders WHERE id = :id")
     abstract suspend fun delete(id: String): Int
 
@@ -37,6 +43,10 @@ abstract class FolderDao {
     /** Puts the scans [ids] in folder [folderId] (null = the Library root); returns the rows changed. */
     @Query("UPDATE scans SET folderId = :folderId WHERE id IN (:ids)")
     abstract suspend fun setFolder(ids: List<String>, folderId: String?): Int
+
+    /** The rows of those scans [ids] that exist. */
+    @Query("SELECT * FROM scans WHERE id IN (:ids)")
+    abstract suspend fun scans(ids: List<String>): List<ScanEntity>
 
     @Query("SELECT id FROM scans WHERE folderId = :folderId")
     abstract suspend fun scanIds(folderId: String): List<String>

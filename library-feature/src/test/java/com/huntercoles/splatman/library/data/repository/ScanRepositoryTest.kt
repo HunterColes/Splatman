@@ -2,6 +2,7 @@ package com.huntercoles.splatman.library.data.repository
 
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.local.ScanEntity
+import com.huntercoles.splatman.library.domain.LandingFolder
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import kotlinx.coroutines.Dispatchers
@@ -335,6 +336,45 @@ class ScanRepositoryTest {
             assertNull(it.thumbnail, "a 0-byte thumbnail.png shows the placeholder")
             assertEquals(1_000L, it.sizeBytes)
         }
+    }
+
+    @Test
+    fun `create, import and refresh adoption land in the open folder while it exists`() = runTest {
+        val landing = LandingFolder().apply { set("plants") }
+        val folders = mutableSetOf("plants")
+        val landed = ScanRepositoryImpl(dao, root, ProcessingCanceller { }, Dispatchers.Unconfined, landing) {
+            it in folders
+        }
+
+        val made = landed.create("made", createdAtMs = 1)
+        val imported = landed.import("imported", 2, 4) { it.write(fixture()) }
+        File(root, "fresh").apply { mkdirs() }.resolve("transforms.json").writeText("{}")
+        landed.refresh("fresh")
+
+        assertEquals("plants", made.folderId)
+        assertEquals("plants", landed.get(imported.id)!!.folderId)
+        assertEquals("plants", landed.get("fresh")!!.folderId)
+
+        folders.clear()
+        assertNull(landed.create("stale", createdAtMs = 3).folderId, "a deleted folder lands at the root")
+        landing.set(null)
+        folders += "plants"
+        assertNull(landed.create("root", createdAtMs = 4).folderId)
+    }
+
+    @Test
+    fun `refresh keeps a known row's folder and sync adopts at the root`() = runTest {
+        val landing = LandingFolder()
+        val landed = ScanRepositoryImpl(dao, root, ProcessingCanceller { }, Dispatchers.Unconfined, landing) { true }
+        val scan = landed.create("s", createdAtMs = 1)
+        landing.set("plants")
+        File(root, "found").apply { mkdirs() }.resolve("transforms.json").writeText("{}")
+
+        landed.sync()
+        landed.refresh(scan.id)
+
+        assertNull(landed.get("found")!!.folderId)
+        assertNull(landed.get(scan.id)!!.folderId)
     }
 
     private fun fixture(): ByteArray = javaClass.getResourceAsStream("/splats/tiny-sh1.ply")!!.use { it.readBytes() }

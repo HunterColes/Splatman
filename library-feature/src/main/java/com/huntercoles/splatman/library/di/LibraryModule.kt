@@ -9,9 +9,12 @@ import com.huntercoles.splatman.library.data.local.LibraryDatabase
 import com.huntercoles.splatman.library.data.local.MIGRATION_2_3
 import com.huntercoles.splatman.library.data.local.MIGRATION_3_4
 import com.huntercoles.splatman.library.data.local.ScanDao
+import com.huntercoles.splatman.library.data.repository.FolderRepositoryImpl
 import com.huntercoles.splatman.library.data.repository.ScanRepositoryImpl
 import com.huntercoles.splatman.library.data.sample.AssetSampleRepository
 import com.huntercoles.splatman.library.data.storage.ScanStorage
+import com.huntercoles.splatman.library.domain.LandingFolder
+import com.huntercoles.splatman.library.domain.repository.FolderRepository
 import com.huntercoles.splatman.library.domain.repository.ProcessingCanceller
 import com.huntercoles.splatman.library.domain.repository.SampleRepository
 import com.huntercoles.splatman.library.domain.repository.ScanRepository
@@ -48,15 +51,30 @@ object LibraryModule {
     @Provides
     fun provideScanDao(database: LibraryDatabase): ScanDao = database.scanDao()
 
-    /** [canceller] is bound by the app (it stops the processing runner's job). */
+    /** [canceller] is bound by the app (it stops the processing runner's job); new rows land in [landing]. */
     @Provides
     @Singleton
     fun provideScanRepository(
         @ApplicationContext context: Context,
-        dao: ScanDao,
+        database: LibraryDatabase,
         canceller: ProcessingCanceller,
+        landing: LandingFolder,
         @IoDispatcher io: CoroutineDispatcher,
-    ): ScanRepository = ScanRepositoryImpl(dao, File(context.filesDir, SCANS_DIR), canceller, io)
+    ): ScanRepository {
+        val folders = database.folderDao()
+        return ScanRepositoryImpl(
+            database.scanDao(),
+            File(context.filesDir, SCANS_DIR),
+            canceller,
+            io,
+            landing,
+            folderExists = { folders.exists(it) },
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideFolderRepository(database: LibraryDatabase): FolderRepository = FolderRepositoryImpl(database)
 
     @Provides
     @Singleton

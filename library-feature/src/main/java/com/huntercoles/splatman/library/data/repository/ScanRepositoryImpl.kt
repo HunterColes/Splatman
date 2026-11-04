@@ -3,6 +3,7 @@ package com.huntercoles.splatman.library.data.repository
 import com.huntercoles.splatman.library.data.format.SplatFileHeader
 import com.huntercoles.splatman.library.data.local.ScanDao
 import com.huntercoles.splatman.library.data.local.ScanEntity
+import com.huntercoles.splatman.library.domain.LandingFolder
 import com.huntercoles.splatman.library.domain.model.Scan
 import com.huntercoles.splatman.library.domain.model.ScanStatus
 import com.huntercoles.splatman.library.domain.model.ScanThumbnail
@@ -25,13 +26,20 @@ import java.util.UUID
 /**
  * Scans as folders under [root] (ADR 0007: `transforms.json` or the pose-free `capture.json`, `images/`, `seed.ply`,
  * `splat.ply`) with a [dao] row each. The folder name is the scan id for scans made here and for adopted folders.
+ * Rows made by [create], [import] and the [refresh] adoption of a new folder land in [landing]'s Library folder when
+ * [folderExists] says it still exists, else at the root; [sync] adopts at the root (ADR 0013 point 8).
  */
 class ScanRepositoryImpl(
     private val dao: ScanDao,
     private val root: File,
     private val canceller: ProcessingCanceller,
     private val io: CoroutineDispatcher,
+    private val landing: LandingFolder = LandingFolder(),
+    private val folderExists: suspend (String) -> Boolean = { false },
 ) : ScanRepository {
+
+    /** The Library folder a new row lands in: [landing]'s when it still exists, else null (the root). */
+    private suspend fun landingFolderId(): String? = landing.folderId.value?.takeIf { folderExists(it) }
 
     /**
      * Every collection starts with a [sync]: a foss Stop renames its folder in with no row and no processing run
@@ -56,7 +64,7 @@ class ScanRepositoryImpl(
         withContext(io) {
             if (!folderOf(id).mkdirs()) throw IOException("Could not create the scan folder $id")
         }
-        val row = ScanEntity(id, name, createdAtMs, ScanStatus.CAPTURED, 0, 0, id)
+        val row = ScanEntity(id, name, createdAtMs, ScanStatus.CAPTURED, 0, 0, id, folderId = landingFolderId())
         dao.insert(row)
         return row.toScan()
     }
@@ -88,7 +96,11 @@ class ScanRepositoryImpl(
                 temp.outputStream().buffered().use(writeSplat)
                 if (!temp.renameTo(File(folder, SPLAT_FILE))) throw IOException("Could not save the splat of $id")
             }
-            val row = ScanEntity(id, name, createdAtMs, ScanStatus.READY, splatCount, 0, id, imported = true)
+            val row = ScanEntity(
+                id, name, createdAtMs, ScanStatus.READY, splatCount, 0, id,
+                imported = true,
+                folderId = landingFolderId(),
+            )
             dao.insert(row)
             val scan = withContext(io) { row.toScan().onDisk() }
             imported = true
@@ -134,7 +146,7 @@ class ScanRepositoryImpl(
         val folder = folderOf(row?.folder ?: id)
         val found = withContext(io) { if (folder.isDirectory) adopt(folder) else null } ?: return
         if (row == null) {
-            dao.insert(found.copy(id = id))
+            dao.insert(found.copy(id = id, folderId = landingFolderId()))
         } else {
             dao.update(
                 row.copy(status = found.status, splatCount = found.splatCount, keyframeCount = found.keyframeCount),
