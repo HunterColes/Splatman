@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenCV REQUIRED CONFIG)
 
-add_library(splat_sfm SHARED jni_bridge.cpp front_end.cpp)
+add_library(splat_sfm SHARED jni_bridge.cpp front_end.cpp reconstruct.cpp)
 target_compile_options(splat_sfm PRIVATE -Wall -Wextra -fvisibility=hidden)
 target_link_libraries(splat_sfm PRIVATE OpenCV::opencv_java4)
 # 16 KB page devices (Android 15+).

@@ -176,6 +176,8 @@ FrontEndResult runFrontEnd(const std::vector<std::string>& paths, const std::vec
                            const std::vector<PairInput>& pairs, const Params& params) {
     checkInputs(paths, intrinsics, pairs, params);
     FrontEndResult result;
+    result.paths = paths;
+    result.intrinsics = intrinsics;
     result.frames.resize(paths.size());
     std::vector<cv::Size> workingSize(paths.size());
 
@@ -205,7 +207,8 @@ FrontEndResult runFrontEnd(const std::vector<std::string>& paths, const std::vec
             const double gatePx = kRotationGateFraction * std::max(sj.width, sj.height);
             matches = rotationGate(matches, fi.keypoints, fj.keypoints, h, gatePx);
         }
-        result.pairs.push_back({pair.i, pair.j, essentialInliers(matches, fi.keypoints, fj.keypoints, kmi, kmj)});
+        result.pairs.push_back({pair.i, pair.j, essentialInliers(matches, fi.keypoints, fj.keypoints, kmi, kmj),
+                                pair.hasRotation, pair.rotation});
     }
     result.stageMs[MATCHING] = elapsedMs(t);
 

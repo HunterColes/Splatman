@@ -45,6 +45,11 @@ android {
         }
     }
 
+    sourceSets {
+        // The frame suite's cactus fixture (#143), for the synthetic scan the reconstruction test renders (#226).
+        getByName("androidTest").assets.srcDir("../splat-train/src/test/resources/frames")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -53,7 +58,12 @@ android {
 
 dependencies {
     implementation(libs.opencv)
+    // NativeSfm.reconstruct returns splat-core's SparseModel (#226).
+    api(project(":splat-core"))
 
     androidTestImplementation(libs.test.android.junit)
     androidTestImplementation(libs.test.android.runner)
+    // The reconstruction test renders the synthetic scan (#224) of the cactus fixture, read by the app's PLY reader.
+    androidTestImplementation(testFixtures(project(":splat-train")))
+    androidTestImplementation(project(":splat-io"))
 }

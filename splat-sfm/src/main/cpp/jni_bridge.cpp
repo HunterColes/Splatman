@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "front_end.h"
+#include "reconstruct.h"
 
 namespace {
 
@@ -146,6 +147,26 @@ auto withHandle(jlong handle, F&& use) {
     return use(*result);
 }
 
+// The same, for reconstruct, which writes its stage times into the result.
+template <typename F>
+auto withMutableHandle(jlong handle, F&& use) {
+    auto* result = reinterpret_cast<FrontEndResult*>(static_cast<intptr_t>(handle));
+    std::lock_guard<std::mutex> lock(gLiveMutex);
+    if (result == nullptr || gLive.count(result) == 0) throw FrontEndError("unknown or released handle");
+    return use(*result);
+}
+
+// A new Java array holding v; throws std::bad_alloc (the VM's OutOfMemoryError stays pending) when it cannot.
+template <typename A, typename T, typename E>
+A javaArray(JNIEnv* env, A (JNIEnv::*make)(jsize), void (JNIEnv::*set)(A, jsize, jsize, const E*),
+            const std::vector<T>& v) {
+    static_assert(sizeof(T) == sizeof(E), "element sizes differ");
+    A out = (env->*make)(static_cast<jsize>(v.size()));
+    if (out == nullptr) throw std::bad_alloc();
+    if (!v.empty()) (env->*set)(out, 0, static_cast<jsize>(v.size()), reinterpret_cast<const E*>(v.data()));
+    return out;
+}
+
 }  // namespace
 
 extern "C" {
@@ -195,6 +216,42 @@ JNIEXPORT jlongArray JNICALL Java_com_huntercoles_splatman_splat_sfm_nativebridg
         jlong values[splat::sfm::STAGE_COUNT];
         for (size_t s = 0; s < ms.size(); ++s) values[s] = static_cast<jlong>(ms[s]);
         env->SetLongArrayRegion(out, 0, static_cast<jsize>(ms.size()), values);
+        return out;
+    });
+}
+
+// Object[]: registered (boolean[]), rotations, translations, points (float[]), colours (byte[]), obsFrame,
+// obsPoint (int[]), obsUv (float[]), caps (int[]: points capped, observations capped as 0/1); NativeSfm wraps it.
+JNIEXPORT jobjectArray JNICALL Java_com_huntercoles_splatman_splat_sfm_nativebridge_NativeSfm_reconstructNative(
+    JNIEnv* env, jclass, jlong handle, jint maxPoints, jint maxObservations) {
+    return guarded<jobjectArray>(env, nullptr, [&]() -> jobjectArray {
+        const splat::sfm::SparseResult r = withMutableHandle(handle, [&](FrontEndResult& fe) {
+            splat::sfm::SparseResult out = splat::sfm::reconstruct(fe, maxPoints, maxObservations);
+            fe.stageMs[splat::sfm::INIT] = out.initMs;
+            fe.stageMs[splat::sfm::REGISTER] = out.registerMs;
+            return out;
+        });
+        jclass objectClass = env->FindClass("java/lang/Object");
+        if (objectClass == nullptr) return nullptr;
+        jobjectArray out = env->NewObjectArray(9, objectClass, nullptr);
+        env->DeleteLocalRef(objectClass);
+        if (out == nullptr) return nullptr;
+        const std::vector<jint> caps{r.pointsCapped ? 1 : 0, r.observationsCapped ? 1 : 0};
+        jobject parts[9] = {
+            javaArray(env, &JNIEnv::NewBooleanArray, &JNIEnv::SetBooleanArrayRegion, r.registered),
+            javaArray(env, &JNIEnv::NewFloatArray, &JNIEnv::SetFloatArrayRegion, r.rotations),
+            javaArray(env, &JNIEnv::NewFloatArray, &JNIEnv::SetFloatArrayRegion, r.translations),
+            javaArray(env, &JNIEnv::NewFloatArray, &JNIEnv::SetFloatArrayRegion, r.points),
+            javaArray(env, &JNIEnv::NewByteArray, &JNIEnv::SetByteArrayRegion, r.colours),
+            javaArray(env, &JNIEnv::NewIntArray, &JNIEnv::SetIntArrayRegion, r.obsFrame),
+            javaArray(env, &JNIEnv::NewIntArray, &JNIEnv::SetIntArrayRegion, r.obsPoint),
+            javaArray(env, &JNIEnv::NewFloatArray, &JNIEnv::SetFloatArrayRegion, r.obsUv),
+            javaArray(env, &JNIEnv::NewIntArray, &JNIEnv::SetIntArrayRegion, caps),
+        };
+        for (jsize k = 0; k < 9; ++k) {
+            env->SetObjectArrayElement(out, k, parts[k]);
+            env->DeleteLocalRef(parts[k]);
+        }
         return out;
     });
 }

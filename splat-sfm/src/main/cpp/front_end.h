@@ -17,7 +17,8 @@ namespace splat::sfm {
 enum class FeatureKind : int { ORB = 0, AKAZE = 1 };
 
 // Stage timings, the order of NativeSfm.stageMs.
-enum Stage : int { LOAD = 0, FEATURES = 1, MATCHING = 2, STAGE_COUNT = 3 };
+// INIT and REGISTER are filled by reconstruct (reconstruct.h); same order as splat-core's SfmStage.
+enum Stage : int { LOAD = 0, FEATURES = 1, MATCHING = 2, INIT = 3, REGISTER = 4, STAGE_COUNT = 5 };
 
 // Pinhole intrinsics of one frame, in pixels of the full-size image (width x height).
 struct Intrinsics {
@@ -50,9 +51,15 @@ struct PairResult {
     int i, j;
     // Verified matches: queryIdx indexes frame i's keypoints, trainIdx frame j's.
     std::vector<cv::DMatch> inliers;
+    // The pair's gyro rotation R_Cj_Ci as given (PairInput), for reconstruction.
+    bool hasRotation = false;
+    std::array<float, 4> rotation{};
 };
 
 struct FrontEndResult {
+    // The inputs reconstruction needs again: image paths (colours) and full-size intrinsics.
+    std::vector<std::string> paths;
+    std::vector<Intrinsics> intrinsics;
     std::vector<FrameFeatures> frames;
     std::vector<PairResult> pairs;
     std::array<int64_t, STAGE_COUNT> stageMs{};

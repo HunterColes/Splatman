@@ -67,7 +67,7 @@ class NativeSfmTest {
             assertEquals(2, stats.size)
             assertTrue("both directions ${stats.toList()}", stats.all { it >= MIN_INLIERS })
             val ms = NativeSfm.stageMs(h)
-            assertEquals(3, ms.size)
+            assertEquals(5, ms.size) // INIT and REGISTER stay 0 until reconstruct (#226)
             assertTrue("stage times ${ms.toList()}", ms.all { it >= 0 })
         } finally {
             NativeSfm.release(h)
