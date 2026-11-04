@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
+import com.huntercoles.splatman.core.design.SplatDimens
 import androidx.compose.ui.unit.dp
 import com.huntercoles.splatman.library.R
 
@@ -69,7 +70,7 @@ fun MoveToSheet(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 6.dp,
             ) {
-                MoveContent(sheet, onNewFolder, onMoveTo, Modifier.padding(vertical = 24.dp))
+                MoveContent(sheet, onNewFolder, onMoveTo, Modifier.padding(vertical = SplatDimens.SpacingLarge))
             }
         }
     } else {
@@ -77,7 +78,7 @@ fun MoveToSheet(
             onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
-            MoveContent(sheet, onNewFolder, onMoveTo, Modifier.padding(bottom = 16.dp))
+            MoveContent(sheet, onNewFolder, onMoveTo, Modifier.padding(bottom = SplatDimens.SpacingDefault))
         }
     }
 }
@@ -94,7 +95,7 @@ private fun MoveContent(
         Text(
             text = pluralStringResource(R.plurals.lib_move_title, count, count),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = SplatDimens.SpacingLarge, vertical = SplatDimens.SpacingMedium),
         )
         LazyColumn {
             item(key = MOVE_ROW_NEW_TAG) {

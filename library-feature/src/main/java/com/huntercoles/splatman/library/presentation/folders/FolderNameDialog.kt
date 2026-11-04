@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import com.huntercoles.splatman.core.design.SplatDimens
 import androidx.compose.ui.unit.dp
 import com.huntercoles.splatman.library.R
 import com.huntercoles.splatman.library.domain.repository.FolderRepository
@@ -101,13 +102,13 @@ internal fun FolderNameCard(
         color = AlertDialogDefaults.containerColor,
         tonalElevation = AlertDialogDefaults.TonalElevation,
     ) {
-        Column(Modifier.padding(24.dp)) {
+        Column(Modifier.padding(SplatDimens.SpacingLarge)) {
             Text(
                 text = stringResource(if (rename) R.string.lib_folder_rename else R.string.lib_folder_new),
                 style = MaterialTheme.typography.headlineSmall,
                 color = AlertDialogDefaults.titleContentColor,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(SplatDimens.SpacingDefault))
             OutlinedTextField(
                 value = field,
                 onValueChange = {
@@ -132,10 +133,10 @@ internal fun FolderNameCard(
                 keyboardActions = KeyboardActions(onDone = { if (dialog.canConfirm) onConfirm() }),
                 singleLine = true,
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(SplatDimens.SpacingLarge))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(SplatDimens.SpacingSmall, Alignment.End),
             ) {
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.lib_cancel)) }
                 TextButton(onClick = onConfirm, enabled = dialog.canConfirm) {
@@ -149,7 +150,7 @@ internal fun FolderNameCard(
 /** The field's supporting line: the taken-name error at the start, the counter at the end from 50 characters on. */
 @Composable
 private fun NameSupport(taken: Boolean, name: String, length: Int) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SplatDimens.SpacingDefault)) {
         Text(
             text = if (taken) {
                 stringResource(R.string.lib_folder_name_taken, BidiFormatter.getInstance().unicodeWrap(name))
